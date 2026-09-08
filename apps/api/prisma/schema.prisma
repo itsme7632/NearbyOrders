@@ -1,10 +1,40 @@
-generator client { provider = "prisma-client-js" }
-datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
+generator client {
+  provider = "prisma-client-js"
+}
 
-enum Role { CUSTOMER BUSINESS_OWNER ADMIN }
-enum BusinessStatus { PENDING APPROVED REJECTED SUSPENDED ARCHIVED }
-enum BookingStatus { PENDING CONFIRMED REJECTED CANCELLED COMPLETED }
-enum OrderStatus { PENDING ACCEPTED REJECTED PREPARING READY COMPLETED CANCELLED }
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  BUSINESS_OWNER
+  ADMIN
+}
+enum BusinessStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+  ARCHIVED
+}
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+  CANCELLED
+  COMPLETED
+}
+enum OrderStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  PREPARING
+  READY
+  COMPLETED
+  CANCELLED
+}
 
 model User {
   id String @id @default(uuid())
@@ -24,18 +54,152 @@ model User {
   auditActions AuditLog[] @relation("AuditActor")
   @@index([role, isSuspended])
 }
-model Category { id String @id @default(uuid()); name String @unique; slug String @unique; isActive Boolean @default(true); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; businesses BusinessCategory[] }
-model Business {
-  id String @id @default(uuid()); ownerId String; name String; slug String @unique; description String?; phone String?; status BusinessStatus @default(PENDING); address String; city String; locality String?; latitude Decimal @db.Decimal(10,7); longitude Decimal @db.Decimal(10,7); currency String @default("PKR"); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; archivedAt DateTime?
-  owner User @relation("BusinessOwner", fields:[ownerId], references:[id]); categories BusinessCategory[]; hours BusinessHour[]; services Service[]; products Product[]; bookings Booking[]; orders Order[]
-  @@index([ownerId]); @@index([status, city]); @@index([latitude, longitude])
+model Category {
+  id String @id @default(uuid())
+  name String @unique
+  slug String @unique
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  businesses BusinessCategory[]
 }
-model BusinessCategory { businessId String; categoryId String; business Business @relation(fields:[businessId], references:[id], onDelete:Cascade); category Category @relation(fields:[categoryId], references:[id]); @@id([businessId, categoryId]); @@index([categoryId]) }
-model BusinessHour { id String @id @default(uuid()); businessId String; dayOfWeek Int; opensAt String?; closesAt String?; isClosed Boolean @default(false); business Business @relation(fields:[businessId], references:[id], onDelete:Cascade); @@unique([businessId, dayOfWeek]) }
-model Service { id String @id @default(uuid()); businessId String; name String; description String?; priceMinor Int; currency String @default("PKR"); durationMinutes Int?; isActive Boolean @default(true); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; business Business @relation(fields:[businessId], references:[id], onDelete:Cascade); bookings Booking[]; @@index([businessId, isActive]) }
-model Product { id String @id @default(uuid()); businessId String; name String; description String?; priceMinor Int; currency String @default("PKR"); isActive Boolean @default(true); createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; business Business @relation(fields:[businessId], references:[id], onDelete:Cascade); items OrderItem[]; @@index([businessId, isActive]) }
-model Booking { id String @id @default(uuid()); customerId String; businessId String; serviceId String?; scheduledAt DateTime; status BookingStatus @default(PENDING); notes String?; createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; customer User @relation(fields:[customerId], references:[id]); business Business @relation(fields:[businessId], references:[id]); service Service? @relation(fields:[serviceId], references:[id]); @@index([businessId,status]); @@index([customerId,status]) }
-model Order { id String @id @default(uuid()); customerId String; businessId String; status OrderStatus @default(PENDING); subtotalMinor Int; currency String @default("PKR"); fulfillmentType String @default("PICKUP"); notes String?; createdAt DateTime @default(now()); updatedAt DateTime @updatedAt; customer User @relation(fields:[customerId], references:[id]); business Business @relation(fields:[businessId], references:[id]); items OrderItem[]; @@index([businessId,status]); @@index([customerId,status]) }
-model OrderItem { id String @id @default(uuid()); orderId String; productId String; name String; unitPriceMinor Int; quantity Int; order Order @relation(fields:[orderId], references:[id], onDelete:Cascade); product Product @relation(fields:[productId], references:[id]); @@index([orderId]) }
-model RefreshToken { id String @id @default(uuid()); userId String; tokenHash String @unique; expiresAt DateTime; revokedAt DateTime?; createdAt DateTime @default(now()); user User @relation(fields:[userId],references:[id],onDelete:Cascade); @@index([userId,expiresAt]) }
-model AuditLog { id String @id @default(uuid()); actorId String?; action String; entityType String; entityId String; metadata Json?; createdAt DateTime @default(now()); actor User? @relation("AuditActor",fields:[actorId],references:[id]); @@index([entityType,entityId]) }
+model Business {
+  id String @id @default(uuid())
+  ownerId String
+  name String
+  slug String @unique
+  description String?
+  phone String?
+  status BusinessStatus @default(PENDING)
+  address String
+  city String
+  locality String?
+  latitude Decimal @db.Decimal(10, 7)
+  longitude Decimal @db.Decimal(10, 7)
+  currency String @default("PKR")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  archivedAt DateTime?
+  owner User @relation("BusinessOwner", fields: [ownerId], references: [id])
+  categories BusinessCategory[]
+  hours BusinessHour[]
+  services Service[]
+  products Product[]
+  bookings Booking[]
+  orders Order[]
+  @@index([ownerId])
+  @@index([status, city])
+  @@index([latitude, longitude])
+}
+model BusinessCategory {
+  businessId String
+  categoryId String
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id])
+  @@id([businessId, categoryId])
+  @@index([categoryId])
+}
+model BusinessHour {
+  id String @id @default(uuid())
+  businessId String
+  dayOfWeek Int
+  opensAt String?
+  closesAt String?
+  isClosed Boolean @default(false)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  @@unique([businessId, dayOfWeek])
+}
+model Service {
+  id String @id @default(uuid())
+  businessId String
+  name String
+  description String?
+  priceMinor Int
+  currency String @default("PKR")
+  durationMinutes Int?
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  bookings Booking[]
+  @@index([businessId, isActive])
+}
+model Product {
+  id String @id @default(uuid())
+  businessId String
+  name String
+  description String?
+  priceMinor Int
+  currency String @default("PKR")
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  items OrderItem[]
+  @@index([businessId, isActive])
+}
+model Booking {
+  id String @id @default(uuid())
+  customerId String
+  businessId String
+  serviceId String?
+  scheduledAt DateTime
+  status BookingStatus @default(PENDING)
+  notes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  customer User @relation(fields: [customerId], references: [id])
+  business Business @relation(fields: [businessId], references: [id])
+  service Service? @relation(fields: [serviceId], references: [id])
+  @@index([businessId, status])
+  @@index([customerId, status])
+}
+model Order {
+  id String @id @default(uuid())
+  customerId String
+  businessId String
+  status OrderStatus @default(PENDING)
+  subtotalMinor Int
+  currency String @default("PKR")
+  fulfillmentType String @default("PICKUP")
+  notes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  customer User @relation(fields: [customerId], references: [id])
+  business Business @relation(fields: [businessId], references: [id])
+  items OrderItem[]
+  @@index([businessId, status])
+  @@index([customerId, status])
+}
+model OrderItem {
+  id String @id @default(uuid())
+  orderId String
+  productId String
+  name String
+  unitPriceMinor Int
+  quantity Int
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+  @@index([orderId])
+}
+model RefreshToken {
+  id String @id @default(uuid())
+  userId String
+  tokenHash String @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, expiresAt])
+}
+model AuditLog {
+  id String @id @default(uuid())
+  actorId String?
+  action String
+  entityType String
+  entityId String
+  metadata Json?
+  createdAt DateTime @default(now())
+  actor User? @relation("AuditActor", fields: [actorId], references: [id])
+  @@index([entityType, entityId])
+}
