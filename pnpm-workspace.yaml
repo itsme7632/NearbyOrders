@@ -4,10 +4,12 @@ packages:
 onlyBuiltDependencies:
   - '@prisma/client'
   - '@prisma/engines'
+  - '@embedded-postgres/linux-x64'
   - argon2
   - esbuild
   - prisma
 allowBuilds:
+  '@embedded-postgres/linux-x64': true
   '@prisma/client': true
   '@prisma/engines': true
   argon2: true

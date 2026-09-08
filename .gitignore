@@ -7,5 +7,6 @@ coverage
 .DS_Store
 *.log
 *.tsbuildinfo
+.local-dev
 android
 ios

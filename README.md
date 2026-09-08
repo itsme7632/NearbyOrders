@@ -1,25 +1,49 @@
 # NearbyOrders
 
-Mobile-first local discovery, booking, and ordering platform for Pakistan. V1 is a pnpm monorepo: React/Vite mobile foundation (wrapped with Capacitor for Android), Fastify/TypeScript REST API, PostgreSQL/Prisma schema, and a deliberately small admin foundation.
+Mobile-first local discovery, booking, and ordering platform for Pakistan. V1 is a pnpm monorepo: React/Vite mobile app (wrapped with Capacitor for Android), Fastify/TypeScript REST API, PostgreSQL/Prisma schema, and a deliberately small admin foundation.
+
+## What works today
+
+- Category browsing, business discovery (search, category filter, nearby radius), and rich business profiles with hours, services, and products
+- Business-owner management screens: profile, services, products, and opening hours (create/edit/activate/deactivate, ownership enforced server-side)
+- Admin category management and business approval endpoints
+- Auth (register/login), customer bookings/orders foundations from Phase 1
 
 ## Start locally
 
-Prerequisites: Node 24+, Corepack/pnpm, Docker (for PostgreSQL only). Copy `.env.example` to `.env`, choose non-default secrets, then run:
+Prerequisites: Node 24+, Corepack/pnpm. No Docker needed: a development PostgreSQL is booted from the `embedded-postgres` dev dependency.
 
 ```sh
-pnpm install                                         # install all workspace dependencies
-docker compose up -d db                              # start PostgreSQL (no other services needed)
-pnpm --filter @nearbyorders/api prisma:generate      # generate the Prisma client
-pnpm --filter @nearbyorders/api prisma:migrate -- --name initial  # create/apply schema
-pnpm dev:api                                         # API on http://localhost:3000 (health: /health)
-pnpm --filter @nearbyorders/mobile dev               # mobile app on http://localhost:5173
+pnpm install                                              # install all workspace dependencies
+sh ./scripts/dev-preview.sh                               # one command: db + migrate + seed + API on :3001 + web on :5173
+SEED_DEMO_DATA=1 sh ./scripts/dev-preview.sh              # same, plus clearly-marked [Demo] businesses for browsing
 ```
 
-Open the printed Vite URL in a browser; use device toolbar widths (360–412px) for the mobile layout. A production web build can be served locally with `pnpm --filter @nearbyorders/mobile preview`.
+Demo logins (only when `SEED_DEMO_DATA=1`, never in production): owner `demo-owner@nearbyorders.test` / `DemoPassw0rd!2026`, customer `demo-customer@nearbyorders.test` / `DemoPassw0rd!2026`.
+
+Prefer manual steps? Each piece runs on its own:
+
+```sh
+sh ./scripts/dev-db.sh start                              # boot the dev PostgreSQL (127.0.0.1:54329)
+export DATABASE_URL="postgresql://daytona@127.0.0.1:54329/nearbyorders?schema=public"
+pnpm --filter @nearbyorders/api prisma:migrate            # apply schema migrations
+pnpm --filter @nearbyorders/api prisma:seed               # seed core categories (SEED_DEMO_DATA=1 adds demo data)
+pnpm dev:api                                              # API on http://localhost:3000 (health: /health)
+pnpm --filter @nearbyorders/mobile dev                    # web app on http://localhost:5173 (proxies /api to :3001)
+```
+
+`sh ./scripts/dev-db.sh stop|status|clean` manages the dev database. CI uses a GitHub Actions `postgres` service instead; production uses real PostgreSQL via `prisma migrate deploy`.
 
 ## Checks
 
-Run the same checks CI runs: `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`. `prisma validate` needs a reachable `DATABASE_URL` only for migrate commands; schema validation runs without a live database. Environment variables are documented in `.env.example`; never commit `.env`.
+```sh
+pnpm typecheck    # all workspaces
+pnpm lint
+pnpm test         # mobile unit tests + DB-backed API integration tests (auto-boots the embedded DB locally)
+pnpm build        # shared -> mobile (vite) -> api (tsc)
+```
+
+Environment variables are documented in `.env.example`; never commit `.env`.
 
 ## Android (Capacitor)
 
@@ -30,13 +54,13 @@ pnpm --filter @nearbyorders/mobile cap:add:android   # first time: web build + c
 pnpm --filter @nearbyorders/mobile cap:sync          # after web changes: rebuild + copy web assets
 ```
 
-Then open `apps/mobile/android/` in Android Studio (SDK 35, JDK 21) and build a debug APK, or run `./gradlew assembleDebug` inside it.
+Then open `apps/mobile/android/` in Android Studio (SDK 35, JDK 21) and build a debug APK, or run `./gradlew assembleDebug` inside it. Point the packaged app at an API host by setting `server.url` in `capacitor.config.ts` or configuring a release API origin.
 
 ## API
 
-The API is versioned at `/api/v1`; `/health` is unprotected. Implemented foundations: register/login/current user, categories, approved-business discovery, owner business/service/product creation, customer bookings/orders, status transitions, and admin dashboard/business approval. Backend authorization is the security boundary. See [architecture](docs/architecture.md).
+Versioned at `/api/v1`; `/health` is unprotected. Implemented: auth (register/login/me), categories (public list, admin CRUD), approved-business discovery (search `q`, `category`, `city`, nearby `nearLat`/`nearLng`/`radiusKm` with distance sorting), business detail by id or slug (hours + services + products), owner business profile update, owner services/products CRUD with activate/deactivate, owner opening-hours replacement, customer bookings/orders, and admin dashboard/business status. Backend authorization and ownership checks are the security boundary. See [architecture](docs/architecture.md).
 
-`POST /auth/logout`, refresh-token rotation, category management UI/API, business hours mutations, and comprehensive admin routes are planned next increments. This foundation intentionally does not include payments, reviews, delivery, promotions, subscriptions, or fake production data.
+Planned next: booking/order flows on top of these resources, admin UI, image hosting. This foundation intentionally does not include payments, reviews, delivery, promotions, subscriptions, or fake production data.
 
 ## Deployment
 

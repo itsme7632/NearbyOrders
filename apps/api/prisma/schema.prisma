@@ -70,6 +70,9 @@ model Business {
   slug String @unique
   description String?
   phone String?
+  email String?
+  imageUrl String?
+  isVerified Boolean @default(false)
   status BusinessStatus @default(PENDING)
   address String
   city String
@@ -131,6 +134,7 @@ model Product {
   description String?
   priceMinor Int
   currency String @default("PKR")
+  imageUrl String?
   isActive Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
