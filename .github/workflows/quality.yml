@@ -27,6 +27,7 @@ jobs:
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @nearbyorders/api prisma:generate
+      - run: pnpm --filter @nearbyorders/shared build
       - run: pnpm --filter @nearbyorders/api exec prisma migrate deploy
       - run: pnpm typecheck
       - run: pnpm lint
