@@ -1,0 +1,12 @@
+import { PrismaClient, Role } from '@prisma/client';
+import { z } from 'zod';
+export const prisma = new PrismaClient();
+export const registerSchema = z.object({email:z.string().email(),password:z.string().min(12).max(128),firstName:z.string().min(1).max(80).optional(),lastName:z.string().max(80).optional(),role:z.enum(['CUSTOMER','BUSINESS_OWNER']).optional()});
+export const businessSchema = z.object({name:z.string().min(2).max(120),description:z.string().max(2000).optional(),address:z.string().min(5),city:z.string().min(2),locality:z.string().max(100).optional(),latitude:z.number().gte(-90).lte(90),longitude:z.number().gte(-180).lte(180),categoryIds:z.array(z.string().uuid()).min(1)});
+export const serviceSchema=z.object({name:z.string().min(2).max(120),description:z.string().max(1000).optional(),priceMinor:z.number().int().nonnegative(),durationMinutes:z.number().int().positive().max(1440).optional()});
+export const productSchema=serviceSchema.omit({durationMinutes:true});
+export const bookingSchema=z.object({businessId:z.string().uuid(),serviceId:z.string().uuid().optional(),scheduledAt:z.coerce.date().refine(d=>d>new Date(),'Must be in the future'),notes:z.string().max(1000).optional()});
+export const orderSchema=z.object({businessId:z.string().uuid(),items:z.array(z.object({productId:z.string().uuid(),quantity:z.number().int().min(1).max(99)})).min(1),notes:z.string().max(1000).optional(),fulfillmentType:z.enum(['PICKUP','DELIVERY','COLLECTION']).default('PICKUP')});
+export const slugify=(value:string)=>value.toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
+export const allowedTransitions={booking:{PENDING:['CONFIRMED','REJECTED','CANCELLED'],CONFIRMED:['COMPLETED','CANCELLED'],REJECTED:[],CANCELLED:[],COMPLETED:[]},order:{PENDING:['ACCEPTED','REJECTED','CANCELLED'],ACCEPTED:['PREPARING','READY','COMPLETED','CANCELLED'],REJECTED:[],PREPARING:['READY','COMPLETED','CANCELLED'],READY:['COMPLETED','CANCELLED'],COMPLETED:[],CANCELLED:[]}} as const;
+export type AuthUser={id:string;role:Role};

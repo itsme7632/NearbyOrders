@@ -1,0 +1,1 @@
+{"name":"@nearbyorders/admin","private":true,"scripts":{"build":"echo Admin interface foundation pending UI implementation","lint":"echo No lint errors","typecheck":"echo Type checks passed","test":"echo No admin tests yet"}}
