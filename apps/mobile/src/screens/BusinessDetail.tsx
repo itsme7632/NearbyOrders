@@ -1,13 +1,47 @@
-import { getBusiness, type Business } from '../api.js';
+import { useState } from 'react';
+import { getBusiness, type Business, type Product } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, CategoryPill, EmptyState, ErrorState, Loading, Money, OpenBadge, VerifiedBadge } from '../components/ui.js';
 import { StoreIcon } from '../components/icons.js';
 import { formatSlotTime } from '../time.js';
+import { addToCart, replaceWith } from '../cart.js';
+import { useCartCount } from '../useCartCount.js';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
-export function BusinessDetailScreen(props: { idOrSlug: string; onBack: () => void; onBook?: (serviceId?: string) => void }) {
+export function BusinessDetailScreen(props: {
+  idOrSlug: string;
+  onBack: () => void;
+  onBook?: (serviceId?: string) => void;
+  /** Signed-in customers can order; owners/others only browse. */
+  canOrder?: boolean;
+  onOpenCart?: () => void;
+}) {
   const business = useAsyncData<Business>(() => getBusiness(props.idOrSlug), [props.idOrSlug]);
+  const cartCount = useCartCount();
+  const [cartNotice, setCartNotice] = useState<string | null>(null);
+  const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
+
+  /** Adds to cart; a foreign-business cart asks the user before replacing. */
+  const handleAdd = (p: Product) => {
+    const b = business.data;
+    if (!b) return;
+    const result = addToCart({ businessId: b.id, businessName: b.name, product: p });
+    if (result.added) {
+      setCartNotice(`Added ${p.name} to your cart.`);
+      setPendingProduct(null);
+      return;
+    }
+    setPendingProduct(p);
+  };
+
+  const confirmReplace = () => {
+    const b = business.data;
+    if (!b || !pendingProduct) return;
+    replaceWith({ businessId: b.id, businessName: b.name, product: pendingProduct });
+    setCartNotice(`Cart updated — now showing items from ${b.name}.`);
+    setPendingProduct(null);
+  };
 
   if (business.loading) return <Loading label="Loading business…" />;
   if (business.error) return <ErrorState message={business.error} onRetry={business.reload} />;
@@ -125,6 +159,33 @@ export function BusinessDetailScreen(props: { idOrSlug: string; onBack: () => vo
       {b.products?.length ? (
         <section className="card" aria-label="Products">
           <h2>Products</h2>
+          {cartNotice ? (
+            <div className="cart-notice" role="status">
+              <span>{cartNotice}</span>
+              {props.onOpenCart && cartCount > 0 ? (
+                <button type="button" className="pill pill-action" onClick={props.onOpenCart}>
+                  View cart ({cartCount})
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          {/* Cross-business guard: never silently replace another shop's items. */}
+          {pendingProduct ? (
+            <div className="cart-conflict" role="alertdialog" aria-label="Cart contains items from another business">
+              <p>
+                Your cart contains items from <strong>another business</strong>. Clear it and add{' '}
+                <strong>{pendingProduct.name}</strong>?
+              </p>
+              <div className="btn-row">
+                <Button sm onClick={confirmReplace}>
+                  Clear cart and add
+                </Button>
+                <Button sm variant="ghost" onClick={() => setPendingProduct(null)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : null}
           <ul className="item-list">
             {b.products.map((p) => (
               <li key={p.id}>
@@ -133,12 +194,30 @@ export function BusinessDetailScreen(props: { idOrSlug: string; onBack: () => vo
                   <Money minor={p.priceMinor} currency={p.currency} />
                 </div>
                 {p.description ? <p className="item-desc">{p.description}</p> : null}
+                {props.canOrder ? (
+                  <div className="item-tags">
+                    <button
+                      type="button"
+                      className="pill pill-action"
+                      onClick={() => handleAdd(p)}
+                      aria-label={`Add ${p.name} to cart`}
+                    >
+                      + Add
+                    </button>
+                  </div>
+                ) : null}
               </li>
             ))}
           </ul>
-          <Button full disabled>
-            Order now — coming soon
-          </Button>
+          {props.canOrder && props.onOpenCart ? (
+            <Button full variant="secondary" onClick={props.onOpenCart}>
+              {cartCount > 0 ? `Go to cart (${cartCount})` : 'Go to cart'}
+            </Button>
+          ) : (
+            <Button full disabled>
+              Sign in as a customer to order
+            </Button>
+          )}
         </section>
       ) : null}
     </div>

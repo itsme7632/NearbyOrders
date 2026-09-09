@@ -27,8 +27,9 @@ import {
 import { Button, EmptyState, ErrorState, Field, Loading, Money, Toggle } from '../components/ui.js';
 import { AlertIcon, CheckIcon, OrdersIcon, StoreIcon } from '../components/icons.js';
 import { ImageUploader, type ImageUploaderState, type PendingImage } from '../components/ImageUploader.js';
+import { OwnerOrders } from './OwnerOrders.js';
 
-type OwnerTab = 'profile' | 'services' | 'products' | 'hours';
+type OwnerTab = 'orders' | 'profile' | 'services' | 'products' | 'hours';
 
 export function OwnerDashboardScreen(props: {
   onBack: () => void;
@@ -112,6 +113,7 @@ export function OwnerDashboardScreen(props: {
       <nav className="owner-tabs" aria-label="Management sections">
         {(
           [
+            ['orders', 'Orders'],
             ['profile', 'Profile'],
             ['services', 'Services'],
             ['products', 'Products'],
@@ -124,6 +126,7 @@ export function OwnerDashboardScreen(props: {
         ))}
       </nav>
 
+      {tab === 'orders' ? <OwnerOrders businessId={active.id} /> : null}
       {tab === 'profile' ? <OwnerProfile business={active} onSaved={businesses.reload} /> : null}
       {tab === 'services' ? <OwnerServices businessId={active.id} /> : null}
       {tab === 'products' ? <OwnerProducts businessId={active.id} /> : null}

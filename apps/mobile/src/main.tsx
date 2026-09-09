@@ -5,7 +5,7 @@ import { navigationTabs, type Tab } from './navigation.js';
 import { getSession, onSessionChange, type Session } from './api.js';
 import { useRoute } from './hooks.js';
 import { BookingsIcon, ExploreIcon, HomeIcon, OrdersIcon, ProfileIcon } from './components/icons.js';
-import { EmptyState } from './components/ui.js';
+import { EmptyState, Loading } from './components/ui.js';
 import { HomeScreen } from './screens/Home.js';
 import { ExploreScreen } from './screens/Explore.js';
 import { BusinessDetailScreen } from './screens/BusinessDetail.js';
@@ -15,6 +15,8 @@ import { OwnerBookingsScreen, OwnerBookingDetailScreen } from './screens/OwnerBo
 import { ProfileScreen } from './screens/Profile.js';
 import { OwnerDashboardScreen } from './screens/OwnerDashboard.js';
 import { CreateBusinessScreen } from './screens/CreateBusiness.js';
+import { CartScreen } from './screens/Cart.js';
+import { OrdersScreen, OrderDetailScreen } from './screens/Orders.js';
 
 function App() {
   const [tab, setTab] = useState<Tab>('Home');
@@ -26,6 +28,8 @@ function App() {
   useEffect(() => onSessionChange(setSession), []);
 
   const openBusiness = (id: string) => push(`/business/${id}`);
+
+  const openCart = () => push('/cart');
 
   const goExplore = (seed: { category?: string; query?: string }) => {
     setTab('Explore');
@@ -40,8 +44,26 @@ function App() {
         idOrSlug={route.idOrSlug}
         onBack={back}
         onBook={(serviceId) => push(`/book/${route.idOrSlug}${serviceId ? `/${serviceId}` : ''}`)}
+        canOrder={session?.user.role === 'CUSTOMER'}
+        onOpenCart={session ? openCart : undefined}
       />
     );
+  } else if (route.name === 'cart') {
+    content = session ? (
+      <CartScreen
+        onBack={back}
+        onBrowse={() => {
+          setTab('Explore');
+          push('/');
+        }}
+        onPlaced={() => {
+          setTab('Orders');
+          push('/');
+        }}
+      />
+    ) : null;
+  } else if (route.name === 'order') {
+    content = session ? <OrderDetailScreen orderId={route.orderId} onBack={back} /> : null;
   } else if (route.name === 'book') {
     // The hash already carries the destination, so after sign-in this same
     // route renders the booking flow again — no separate return logic needed.
@@ -118,19 +140,28 @@ function App() {
   } else if (tab === 'Explore') {
     content = <ExploreScreen key={exploreSeed.nonce} initialCategory={exploreSeed.category} initialQuery={exploreSeed.query} onOpenBusiness={openBusiness} />;
   } else if (tab === 'Orders') {
-    content = (
-      <div className="screen">
-        <EmptyState
-          icon={<OrdersIcon size={30} />}
-          title="No orders yet"
-          body={
-            session
-              ? 'Your orders will appear here once ordering launches.'
-              : 'Sign in to see your orders once ordering launches.'
-          }
+    content =
+      session && session.user.role === 'CUSTOMER' ? (
+        <OrdersScreen
+          onOpenOrder={(id) => push(`/order/${id}`)}
+          onBrowse={() => {
+            setTab('Explore');
+            push('/');
+          }}
         />
-      </div>
-    );
+      ) : session && session.user.role === 'BUSINESS_OWNER' ? (
+        // Owners get incoming orders inside My business → Orders; the Orders
+        // tab routes them there instead of a second dashboard.
+        <OwnerOrdersRedirect onOwnerDashboard={() => push('/owner')} />
+      ) : (
+        <div className="screen">
+          <EmptyState
+            icon={<OrdersIcon size={30} />}
+            title="Your orders"
+            body="Sign in as a customer to place orders and track them here."
+          />
+        </div>
+      );
   } else if (tab === 'Bookings') {
     content = session ? (
       session.user.role === 'BUSINESS_OWNER' ? (
@@ -201,6 +232,13 @@ function App() {
       ) : null}
     </main>
   );
+}
+
+function OwnerOrdersRedirect(props: { onOwnerDashboard: () => void }) {
+  useEffect(() => {
+    props.onOwnerDashboard();
+  });
+  return <Loading label="Opening your business…" />;
 }
 
 createRoot(document.getElementById('root')!).render(<App />);

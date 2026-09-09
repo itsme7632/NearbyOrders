@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
+import type { Prisma } from '@prisma/client';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
@@ -544,6 +545,16 @@ export async function buildApp(): Promise<FastifyInstance> {
     service: { select: { id: true, name: true, durationMinutes: true, priceMinor: true, currency: true } },
   } as const;
 
+  /**
+   * Shared order include. `business.ownerId` is selected only to authorize
+   * owners; it is stripped by publicOrder and never serialized to clients.
+   */
+  const ORDER_INCLUDE = {
+    business: { select: { id: true, name: true, slug: true, ownerId: true } },
+    customer: { select: { firstName: true, lastName: true } },
+    items: true,
+  } as const;
+
   app.get('/api/v1/businesses/:businessId/services/:serviceId/availability', async (q, r) => {
     const { businessId, serviceId } = q.params as { businessId: string; serviceId: string };
     const { date } = availabilityQuerySchema.parse(q.query);
@@ -731,16 +742,57 @@ export async function buildApp(): Promise<FastifyInstance> {
     return { data: publicBooking(await prisma.booking.update({ where: { id: booking.id }, data: { status }, include: BOOKING_INCLUDE })) };
   });
 
+  /**
+   * Customer-safe order shape: no internal user columns, no email. OrderItem
+   * rows carry the purchase-time name/unitPriceMinor, so history survives
+   * later product edits or deletion of the underlying product.
+   */
+  const publicOrder = (o: Prisma.OrderGetPayload<{ include: typeof ORDER_INCLUDE }>) => ({
+    id: o.id,
+    status: o.status,
+    subtotalMinor: o.subtotalMinor,
+    currency: o.currency,
+    fulfillmentType: o.fulfillmentType,
+    notes: o.notes,
+    createdAt: o.createdAt,
+    business: { id: o.business.id, name: o.business.name, slug: o.business.slug },
+    customer: o.customer ? { firstName: o.customer.firstName, lastName: o.customer.lastName } : null,
+    items: o.items.map((i) => ({
+      id: i.id,
+      productId: i.productId,
+      name: i.name,
+      unitPriceMinor: i.unitPriceMinor,
+      quantity: i.quantity,
+      lineTotalMinor: i.unitPriceMinor * i.quantity,
+    })),
+  });
+
   app.post('/api/v1/orders', { preHandler: roles('CUSTOMER') }, async (q, r) => {
     const d = orderSchema.parse(q.body);
+    // Orders may only be placed with approved, visible businesses.
+    const business = await prisma.business.findFirst({
+      where: { id: d.businessId, status: 'APPROVED', archivedAt: null },
+      select: { id: true },
+    });
+    if (!business) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Business not found' } });
+    // Reject duplicate product lines up front instead of silently merging.
+    const requestedIds = d.items.map((i) => i.productId);
+    if (new Set(requestedIds).size !== requestedIds.length)
+      return r.status(400).send({ error: { code: 'INVALID_PRODUCTS', message: 'Duplicate products in the order' } });
+    // Server re-reads every product: price, availability and business linkage
+    // come from the database, never from the client.
     const products = await prisma.product.findMany({
-      where: { id: { in: d.items.map((i) => i.productId) }, businessId: d.businessId, isActive: true },
+      where: { id: { in: requestedIds }, businessId: d.businessId, isActive: true },
     });
     if (products.length !== d.items.length)
       return r.status(400).send({ error: { code: 'INVALID_PRODUCTS', message: 'One or more products are unavailable' } });
-    const subtotalMinor = d.items.reduce((sum, i) => sum + products.find((p) => p.id === i.productId)!.priceMinor * i.quantity, 0);
-    return r.status(201).send({
-      data: await prisma.order.create({
+    // Purchase-time price is stored per item; integer arithmetic only.
+    const subtotalMinor = d.items.reduce(
+      (sum, i) => sum + products.find((p) => p.id === i.productId)!.priceMinor * i.quantity,
+      0,
+    );
+    const created = await prisma.$transaction(async (tx) => {
+      const order = await tx.order.create({
         data: {
           businessId: d.businessId,
           customerId: currentUser(q).id,
@@ -754,32 +806,70 @@ export async function buildApp(): Promise<FastifyInstance> {
             }),
           },
         },
-        include: { items: true },
-      }),
+        include: ORDER_INCLUDE,
+      });
+      return order;
     });
+    return r.status(201).send({ data: publicOrder(created) });
   });
 
   app.get('/api/v1/orders', { preHandler: auth }, async (q) => {
     const u = currentUser(q);
-    return {
-      data:
-        u.role === 'BUSINESS_OWNER'
-          ? await prisma.order.findMany({ where: { business: { ownerId: u.id } }, include: { items: true, customer: true } })
-          : await prisma.order.findMany({ where: { customerId: u.id }, include: { items: true, business: true } }),
-    };
+    // Customers see their own orders; owners see orders for businesses they own
+    // (all their businesses — the dashboard filters per business client-side).
+    // Admins are not a delivery surface for orders; keep the scope explicit.
+    const where = u.role === 'BUSINESS_OWNER' ? { business: { ownerId: u.id } } : { customerId: u.id };
+    const rows = await prisma.order.findMany({
+      where,
+      include: ORDER_INCLUDE,
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    return { data: rows.map(publicOrder) };
+  });
+
+  app.get('/api/v1/orders/:id', { preHandler: auth }, async (q, r) => {
+    const u = currentUser(q);
+    const o = await prisma.order.findUnique({
+      where: { id: (q.params as { id: string }).id },
+      include: ORDER_INCLUDE,
+    });
+    // 404 (not 403) so foreign order ids are not enumerable.
+    if (!o) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Order not found' } });
+    const isOwner = u.role === 'BUSINESS_OWNER' && o.business.ownerId === u.id;
+    const isCustomer = o.customerId === u.id;
+    if (!isOwner && !isCustomer)
+      return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Order not found' } });
+    return { data: publicOrder(o) };
   });
 
   app.patch('/api/v1/orders/:id/status', { preHandler: auth }, async (q, r) => {
     const status = orderStatusSchema.parse((q.body as { status: string }).status);
-    const o = await prisma.order.findUnique({ where: { id: (q.params as { id: string }).id } });
-    if (!o) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Order not found' } });
     const u = currentUser(q);
-    const owner = await prisma.business.findFirst({ where: { id: o.businessId, ownerId: u.id } });
-    const allowed: readonly string[] =
-      u.role === 'CUSTOMER' && o.customerId === u.id ? ['CANCELLED'] : owner ? allowedTransitions.order[o.status] : [];
+    const o = await prisma.order.findUnique({
+      where: { id: (q.params as { id: string }).id },
+      include: { business: { select: { ownerId: true } } },
+    });
+    if (!o) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Order not found' } });
+    const isOwner = u.role === 'BUSINESS_OWNER' && o.business.ownerId === u.id;
+    const isCustomer = o.customerId === u.id;
+    // A customer's only permitted action is cancelling a PENDING order.
+    // Everyone else (including foreign customers) gets 404/409 — never COMPLETED.
+    const allowed: readonly string[] = isOwner
+      ? allowedTransitions.order[o.status]
+      : isCustomer && o.status === 'PENDING'
+        ? ['CANCELLED']
+        : [];
     if (!allowed.includes(status))
-      return r.status(409).send({ error: { code: 'INVALID_TRANSITION', message: 'Status transition is not allowed' } });
-    return { data: await prisma.order.update({ where: { id: o.id }, data: { status } }) };
+      return r.status(isOwner ? 409 : 404).send({
+        error: {
+          code: isOwner ? 'INVALID_TRANSITION' : 'NOT_FOUND',
+          message: isOwner
+            ? `Cannot change a ${o.status.toLowerCase()} order to ${status.toLowerCase()}`
+            : 'Order not found',
+        },
+      });
+    return { data: publicOrder(await prisma.order.update({ where: { id: o.id }, data: { status }, include: ORDER_INCLUDE })) };
   });
 
   /* ------------------------------ Admin ------------------------------ */

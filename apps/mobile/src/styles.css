@@ -454,6 +454,93 @@ p { overflow-wrap: break-word; }
 @media (max-width: 359px) {
   .product-thumb { width: 34px; height: 34px; }
 }
+
+/* ---------------- cart / orders (Phase 4B) ---------------- */
+.cart-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: rgba(16, 132, 82, 0.1);
+  color: var(--success);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.cart-conflict {
+  background: rgba(79, 70, 229, 0.06);
+  border: 1px solid rgba(79, 70, 229, 0.3);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+.cart-conflict p { margin: 0 0 8px; }
+.cart-business { color: var(--muted); margin: 2px 0 10px; font-size: 14px; }
+.cart-list, .order-list { list-style: none; margin: 0; padding: 0; }
+.cart-item { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.cart-item:last-child { border-bottom: 0; }
+.cart-unit { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.cart-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.qty-stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--card);
+}
+.qty-btn {
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.qty-btn:active { background: var(--light); }
+.qty-value { min-width: 34px; text-align: center; font-weight: 700; font-size: 15px; }
+.cart-remove {
+  background: none;
+  color: var(--error);
+  font-weight: 700;
+  font-size: 13.5px;
+  padding: 10px 6px;
+}
+.cart-summary { border-top: 1px dashed var(--border); margin-top: 12px; padding-top: 10px; }
+.cart-line { display: flex; align-items: center; justify-content: space-between; padding: 3px 0; font-size: 14.5px; }
+.cart-total { font-size: 16.5px; font-weight: 800; }
+.order-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+}
+.order-card-static { margin-bottom: 10px; }
+.order-card-open { background: none; width: 100%; text-align: left; padding: 0; }
+.order-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.order-no { font-weight: 800; font-size: 13px; letter-spacing: 0.04em; color: var(--muted); }
+.order-meta { color: var(--muted); font-size: 13px; margin: 4px 0 0; overflow-wrap: anywhere; }
+/* Order status badges reuse the badge system. */
+.status-pending { background: rgba(202, 138, 4, 0.14); color: #a16207; }
+.status-accepted { background: rgba(79, 70, 229, 0.12); color: var(--primary); }
+.status-preparing { background: rgba(2, 132, 199, 0.12); color: #0369a1; }
+.status-ready { background: rgba(22, 163, 74, 0.14); color: var(--success); }
+.status-completed { background: rgba(16, 132, 82, 0.14); color: var(--success); }
+.status-cancelled { background: rgba(220, 38, 38, 0.12); color: var(--error); }
+@media (max-width: 359px) {
+  .qty-btn { width: 36px; height: 36px; }
+  .cart-controls { gap: 6px; }
+}
 /* ---------------- auth (sign in / create account) ---------------- */
 /* Signed-out auth flow: the app hides header/nav; give the card room. */
 .auth-screen { padding-top: 24px; }

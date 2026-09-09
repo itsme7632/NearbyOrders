@@ -7,6 +7,8 @@ export type Route =
   | { name: 'business'; idOrSlug: string }
   | { name: 'book'; businessId: string; serviceId?: string }
   | { name: 'booking'; bookingId: string }
+  | { name: 'cart' }
+  | { name: 'order'; orderId: string }
   | { name: 'owner-dashboard'; justCreated?: boolean; justCreatedName?: string; justCreatedStatus?: string }
   | { name: 'create-business' };
 
@@ -27,6 +29,11 @@ export function parseHash(hash: string): Route {
   if (clean.startsWith('booking/')) {
     const bookingId = clean.slice('booking/'.length);
     if (bookingId) return { name: 'booking', bookingId };
+  }
+  if (clean === 'cart') return { name: 'cart' };
+  if (clean.startsWith('order/')) {
+    const orderId = clean.slice('order/'.length);
+    if (orderId) return { name: 'order', orderId };
   }
   if (clean === 'create-business') return { name: 'create-business' };
   if (clean === 'owner') {

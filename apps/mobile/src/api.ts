@@ -118,6 +118,32 @@ export type Product = {
   isActive: boolean;
 };
 
+export type OrderStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
+
+export type OrderItem = {
+  id: string;
+  productId: string;
+  /** Purchase-time product name — stable even if the product changes later. */
+  name: string;
+  unitPriceMinor: number;
+  quantity: number;
+  lineTotalMinor: number;
+};
+
+export type Order = {
+  id: string;
+  status: OrderStatus;
+  subtotalMinor: number;
+  currency: string;
+  fulfillmentType: string;
+  notes: string | null;
+  createdAt: string;
+  business: { id: string; name: string; slug: string };
+  /** First name / last name only — never email or credentials. */
+  customer: { firstName: string | null; lastName: string | null } | null;
+  items: OrderItem[];
+};
+
 export type BusinessHour = {
   id: string;
   dayOfWeek: number;
@@ -280,3 +306,22 @@ export const listBusinessBookings = (businessId: string) =>
 /** Owner/admin status change; the backend enforces ownership + allowed transitions. */
 export const setBookingStatus = (id: string, status: 'CONFIRMED' | 'REJECTED' | 'COMPLETED' | 'CANCELLED') =>
   request<Booking>(`/bookings/${id}/status`, { method: 'PATCH', body: { status }, auth: true });
+
+/* ------------------------------- orders ---------------------------- */
+
+/** Creates an order; the server re-prices everything from the database. */
+export const createOrder = (input: { businessId: string; items: { productId: string; quantity: number }[]; notes?: string }) =>
+  request<Order>('/orders', { method: 'POST', body: input, auth: true });
+
+/** Orders visible to the current user (customer: own, owner: own businesses). */
+export const listOrders = () => request<Order[]>('/orders', { auth: true });
+
+/** Alias kept for readability at call sites. */
+export const listMyOrders = listOrders;
+
+export const getOrder = (id: string) => request<Order>(`/orders/${id}`, { auth: true });
+export const getMyOrder = getOrder;
+
+/** Owner lifecycle changes; customers may only cancel a PENDING order. */
+export const setOrderStatus = (id: string, status: OrderStatus) =>
+  request<Order>(`/orders/${id}/status`, { method: 'PATCH', body: { status }, auth: true });
