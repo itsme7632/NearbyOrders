@@ -21,17 +21,18 @@
   background: var(--bg);
 }
 * { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; }
 
 main {
   min-height: 100vh;
-  padding: 20px;
-  padding-bottom: 96px;
+  padding: 16px clamp(14px, 4vw, 20px) 96px;
   max-width: 640px;
   margin: 0 auto;
+  width: 100%;
 }
 
-header {
+.app-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -96,14 +97,29 @@ nav {
   padding: 12px 8px calc(12px + env(safe-area-inset-bottom));
   box-shadow: 0 -3px 14px rgba(30, 27, 75, 0.07);
 }
-nav button { font-size: 12px; padding: 6px 10px; border-radius: 10px; }
+nav button {
+  font-size: 12.5px;
+  padding: 10px 8px;
+  border-radius: 10px;
+  min-width: 54px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 nav button.active { color: var(--primary); font-weight: 800; }
 
 /* ---------------- sections & headings ---------------- */
 .section-head { display: flex; align-items: baseline; justify-content: space-between; margin: 20px 0 10px; }
 .section-head h2, .card h2 { font-size: 17px; margin: 0; }
-h1 { font-size: 22px; margin: 6px 0; }
+h1 {
+  font-size: clamp(20px, 5.5vw, 24px);
+  line-height: 1.25;
+  margin: 6px 0;
+  overflow-wrap: break-word;
+}
 .muted { color: var(--muted); }
+p { overflow-wrap: break-word; }
 
 /* ---------------- chips & pills ---------------- */
 .category-grid { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -125,10 +141,11 @@ h1 { font-size: 22px; margin: 6px 0; }
   border: 1px solid var(--border);
   background: var(--card);
   border-radius: 999px;
-  padding: 8px 14px;
+  padding: 10px 14px;
   font-size: 13px;
   font-weight: 600;
   color: var(--navy);
+  min-height: 38px;
 }
 .chip-active { background: var(--primary); border-color: var(--primary); color: #fff; }
 .pill {
@@ -185,11 +202,12 @@ h1 { font-size: 22px; margin: 6px 0; }
 .business-card:active { transform: scale(0.98); border-color: var(--primary); }
 .business-card-body { flex: 1; min-width: 0; }
 .business-card-title { display: flex; align-items: center; gap: 6px; }
-.biz-name { font-weight: 700; font-size: 15px; }
+.biz-name { font-weight: 700; font-size: 15px; min-width: 0; overflow-wrap: anywhere; }
 .biz-desc {
   margin: 4px 0 0;
   color: var(--muted);
   font-size: 13px;
+  overflow-wrap: anywhere;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -211,22 +229,96 @@ h1 { font-size: 22px; margin: 6px 0; }
 .item-list { list-style: none; margin: 0 0 12px; padding: 0; }
 .item-list li { padding: 10px 0; border-bottom: 1px solid var(--border); }
 .item-list li:last-child { border-bottom: 0; }
-.item-row { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
-.item-name { font-weight: 600; font-size: 14.5px; }
-.item-desc { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
+.item-row { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.item-name { font-weight: 600; font-size: 14.5px; min-width: 0; overflow-wrap: anywhere; }
+.item-row .money { flex-shrink: 0; }
+.item-desc { margin: 3px 0 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
 .item-tags { margin-top: 6px; }
-.money { font-variant-numeric: tabular-nums; font-weight: 700; }
+.money { font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
 
 /* ---------------- business hero ---------------- */
-.back-link { color: var(--secondary); font-weight: 600; padding: 0; margin-bottom: 6px; }
-.biz-hero { margin-top: 8px; }
-.biz-hero-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.biz-hero-meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
-.biz-hero-desc { color: var(--muted); margin: 6px 0; }
-.biz-contact { color: var(--navy); font-size: 14px; }
-.biz-contact p { margin: 3px 0; }
+.back-link {
+  color: var(--secondary);
+  font-weight: 600;
+  padding: 10px 12px 10px 0;
+  margin-bottom: 2px;
+  display: inline-block;
+  min-height: 44px;
+}
+/* Single-column mobile hero: title, badges, description, then contact card. */
+.biz-hero { margin-top: 8px; display: block; }
+.biz-hero-name {
+  width: 100%;
+  margin: 0 0 10px;
+}
+.biz-hero-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+.biz-hero-desc {
+  color: var(--muted);
+  margin: 0 0 12px;
+  width: 100%;
+  line-height: 1.55;
+}
+.contact-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 6px 14px;
+}
+.contact-card-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 10px 0 4px;
+}
+.contact-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  min-height: 48px;
+  border-bottom: 1px solid var(--border);
+  text-decoration: none;
+  color: inherit;
+  text-align: left;
+}
+.contact-row:last-child { border-bottom: 0; }
+.contact-icon {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--light);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+}
+.contact-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.contact-main {
+  font-weight: 600;
+  font-size: 14.5px;
+  overflow-wrap: anywhere;
+}
+.contact-sub { font-size: 12.5px; color: var(--muted); }
+.contact-chevron { flex: 0 0 auto; color: var(--muted); font-size: 20px; }
 .hours-list { list-style: none; margin: 8px 0 0; padding: 0; }
-.hours-list li { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; border-bottom: 1px dashed var(--border); }
+.hours-list li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; font-size: 14px; border-bottom: 1px dashed var(--border); }
+.hours-list li span { overflow-wrap: anywhere; }
 .hours-list li:last-child { border-bottom: 0; }
 .hours-list li.closed { color: var(--muted); }
 
@@ -243,7 +335,7 @@ h1 { font-size: 22px; margin: 6px 0; }
 }
 .btn:active { transform: scale(0.98); }
 .btn-full { width: 100%; margin-top: 12px; }
-.btn-sm { padding: 8px 12px; font-size: 13px; border-radius: 10px; }
+.btn-sm { padding: 10px 14px; font-size: 13px; border-radius: 10px; }
 .btn-primary { background: var(--primary); color: #fff; }
 .btn-secondary { background: var(--light); color: var(--primary); }
 .btn-danger { background: rgba(239, 68, 68, 0.12); color: var(--error); }
@@ -265,7 +357,7 @@ h1 { font-size: 22px; margin: 6px 0; }
   outline-offset: 1px;
   border-color: var(--primary);
 }
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+.form-grid { display: grid; grid-template-columns: 1fr; gap: 0; }
 .link-btn { display: block; margin: 14px auto 0; color: var(--secondary); font-weight: 600; font-size: 14px; }
 
 /* ---------------- states ---------------- */
@@ -324,7 +416,7 @@ h1 { font-size: 22px; margin: 6px 0; }
 .role-picker { display: flex; gap: 8px; }
 
 /* ---------------- toggle ---------------- */
-.toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 0; }
 .toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
 .toggle-track {
   width: 40px;
@@ -354,7 +446,7 @@ h1 { font-size: 22px; margin: 6px 0; }
 
 /* ---------------- hours editor ---------------- */
 .hours-editor { list-style: none; margin: 10px 0 0; padding: 0; }
-.hours-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--border); }
+.hours-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 8px 0; border-bottom: 1px dashed var(--border); }
 .hours-row:last-child { border-bottom: 0; }
 .hours-day { width: 42px; font-weight: 700; font-size: 13.5px; }
 .hours-closed { color: var(--muted); font-size: 13.5px; }
@@ -362,13 +454,21 @@ h1 { font-size: 22px; margin: 6px 0; }
 .hours-times input {
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 8px;
+  padding: 10px 8px;
   font: inherit;
-  font-size: 13.5px;
+  font-size: 14px;
   width: 108px;
   background: var(--card);
 }
 
+/* Narrow phones: give the two time inputs a full shared row instead of
+   competing with the day label and toggle for width. */
+@media (max-width: 419px) {
+  .hours-times { margin-left: 0; width: 100%; }
+  .hours-times input { flex: 1; width: auto; min-width: 0; }
+}
+
 @media (min-width: 480px) {
-  .form-grid { grid-template-columns: 1fr 1fr; }
+  main { padding: 20px 20px 96px; }
+  .form-grid { grid-template-columns: 1fr 1fr; gap: 0 10px; }
 }

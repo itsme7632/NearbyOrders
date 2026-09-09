@@ -21,21 +21,45 @@ export function BusinessDetailScreen(props: { idOrSlug: string; onBack: () => vo
       </button>
 
       <header className="biz-hero">
-        <div className="biz-hero-title">
-          <h1>{b.name}</h1>
+        <h1 className="biz-hero-name">{b.name}</h1>
+        <div className="biz-hero-badges">
           <VerifiedBadge verified={b.isVerified} />
-        </div>
-        <div className="biz-hero-meta">
           {b.categories.map((c) => (
             <CategoryPill key={c.id} name={c.name} />
           ))}
           {b.isOpenNow !== undefined ? <OpenBadge open={b.isOpenNow} /> : null}
         </div>
         {b.description ? <p className="biz-hero-desc">{b.description}</p> : null}
-        <div className="biz-contact">
-          <p>📍 {[b.address, place].filter(Boolean).join(' · ')}</p>
-          {b.phone ? <p>📞 {b.phone}</p> : null}
-          {b.email ? <p>✉ {b.email}</p> : null}
+        <div className="contact-card">
+          <h2 className="contact-card-title">Contact &amp; location</h2>
+          <a className="contact-row" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([b.address, b.city].filter(Boolean).join(', '))}`} target="_blank" rel="noreferrer">
+            <span className="contact-icon" aria-hidden>📍</span>
+            <span className="contact-text">
+              <span className="contact-main">{b.address}</span>
+              {place ? <span className="contact-sub">{place}</span> : null}
+            </span>
+            <span className="contact-chevron" aria-hidden>›</span>
+          </a>
+          {b.phone ? (
+            <a className="contact-row" href={`tel:${b.phone.replace(/[^\d+]/g, '')}`}>
+              <span className="contact-icon" aria-hidden>📞</span>
+              <span className="contact-text">
+                <span className="contact-main">{b.phone}</span>
+                <span className="contact-sub">Tap to call</span>
+              </span>
+              <span className="contact-chevron" aria-hidden>›</span>
+            </a>
+          ) : null}
+          {b.email ? (
+            <a className="contact-row" href={`mailto:${b.email}`}>
+              <span className="contact-icon" aria-hidden>✉️</span>
+              <span className="contact-text">
+                <span className="contact-main">{b.email}</span>
+                <span className="contact-sub">Tap to email</span>
+              </span>
+              <span className="contact-chevron" aria-hidden>›</span>
+            </a>
+          ) : null}
         </div>
       </header>
 

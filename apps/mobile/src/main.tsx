@@ -66,7 +66,7 @@ function App() {
 
   return (
     <main>
-      <header>
+      <header className="app-header">
         <button className="logo" onClick={() => { setTab('Home'); push('/'); }} aria-label="NearbyOrders home">
           NearbyOrders
         </button>
