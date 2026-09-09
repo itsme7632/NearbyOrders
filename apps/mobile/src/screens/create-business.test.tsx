@@ -98,7 +98,8 @@ describe('CreateBusinessScreen', () => {
     fillValidForm();
     fireEvent.click(screen.getByText('Create business'));
 
-    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('biz-new', 'Gulberg Grill'));
+    // Third argument is the server-returned status (mock has none → undefined).
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('biz-new', 'Gulberg Grill', undefined));
     expect(api.createBusiness).toHaveBeenCalledWith({
       name: 'Gulberg Grill',
       categoryIds: ['cat-1'],

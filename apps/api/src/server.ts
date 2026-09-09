@@ -54,6 +54,11 @@ const PUBLIC_BUSINESS_INCLUDE = {
   hours: true,
 } as const;
 
+/** Flattens join rows (BusinessCategory[]) to the category objects clients expect. */
+const flattenCategories = (
+  rows: { category: unknown }[],
+): unknown[] => rows.map((bc) => bc.category);
+
 type SessionedRequest = FastifyRequest & { currentUser?: AuthUser & { email: string } };
 
 /** Builds the Fastify app. Exported so integration tests can boot it against a test database. */
@@ -303,6 +308,11 @@ export async function buildApp(): Promise<FastifyInstance> {
       quetta: { latitude: 30.1798, longitude: 66.975 },
     };
     const fallback = FALLBACK_COORDS[d.city.trim().toLowerCase()] ?? { latitude: 30.3753, longitude: 69.3451 };
+    // Dev/preview-only convenience (AUTO_APPROVE_BUSINESSES=true): skip the
+    // admin approval wait for NEW businesses. Strictly server-configured —
+    // there is deliberately no client-controllable path to approval, and the
+    // default stays PENDING.
+    const status = process.env.AUTO_APPROVE_BUSINESSES === 'true' ? 'APPROVED' : 'PENDING';
     const b = await prisma.business.create({
       data: {
         ...input,
@@ -310,20 +320,36 @@ export async function buildApp(): Promise<FastifyInstance> {
         longitude: longitude ?? fallback.longitude,
         slug: `${slugify(d.name)}-${Date.now().toString(36)}`,
         ownerId: currentUser(q).id,
+        status,
         categories: { create: categoryIds.map((categoryId) => ({ categoryId })) },
       },
-      include: { categories: true },
+      include: { categories: { include: { category: true } } },
     });
-    return r.status(201).send({ data: b });
+    if (status === 'APPROVED')
+      await prisma.auditLog.create({
+        data: {
+          actorId: currentUser(q).id,
+          action: 'BUSINESS_AUTO_APPROVED',
+          entityType: 'Business',
+          entityId: b.id,
+          metadata: { reason: 'AUTO_APPROVE_BUSINESSES' },
+        },
+      });
+    return r.status(201).send({ data: { ...b, categories: flattenCategories(b.categories) } });
   });
 
   app.get('/api/v1/businesses/mine', { preHandler: roles('BUSINESS_OWNER') }, async (q) => ({
-    data: await prisma.business.findMany({
-      where: { ownerId: currentUser(q).id, archivedAt: null },
-      include: { ...PUBLIC_BUSINESS_INCLUDE, services: { orderBy: { name: 'asc' } }, products: { orderBy: { name: 'asc' } } },
-      orderBy: { createdAt: 'asc' },
-    }),
+    data: (
+      await prisma.business.findMany({
+        where: { ownerId: currentUser(q).id, archivedAt: null },
+        include: { ...PUBLIC_BUSINESS_INCLUDE, services: { orderBy: { name: 'asc' } }, products: { orderBy: { name: 'asc' } } },
+        orderBy: { createdAt: 'asc' },
+      })
+    ).map((b) => ({ ...b, categories: flattenCategories(b.categories) })),
   }));
+
+  /** Optional profile fields the owner may explicitly clear (client sends ""/null). */
+  const CLEARABLE_BUSINESS_FIELDS = ['description', 'locality', 'phone', 'email', 'imageUrl'] as const;
 
   app.patch('/api/v1/businesses/:id', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
     const id = (q.params as { id: string }).id;
@@ -331,13 +357,24 @@ export async function buildApp(): Promise<FastifyInstance> {
     const d = businessUpdateSchema.parse(q.body);
     const { categoryIds, ...rest } = d;
     const data: Record<string, unknown> = { ...rest };
+    // A cleared optional field normalizes to undefined, but the client DID send
+    // the key — translate that to a real DB null so the value is actually
+    // removed instead of silently kept.
+    const rawBody = (q.body ?? {}) as Record<string, unknown>;
+    for (const key of CLEARABLE_BUSINESS_FIELDS) {
+      if (key in rawBody && rawBody[key] !== undefined && data[key] === undefined) data[key] = null;
+    }
     if (categoryIds) {
       const validCategories = await prisma.category.findMany({ where: { id: { in: categoryIds }, isActive: true } });
       if (validCategories.length !== categoryIds.length)
         return r.status(400).send({ error: { code: 'INVALID_CATEGORY', message: 'One or more categories are invalid' } });
       data.categories = { deleteMany: {}, create: categoryIds.map((categoryId) => ({ categoryId })) };
     }
-    return { data: await prisma.business.update({ where: { id }, data, include: { categories: true } }) };
+    return {
+      data: await prisma.business
+        .update({ where: { id }, data, include: { categories: { include: { category: true } } } })
+        .then((b) => ({ ...b, categories: flattenCategories(b.categories) })),
+    };
   });
 
   app.get('/api/v1/businesses/:id/hours', async (q, r) => {

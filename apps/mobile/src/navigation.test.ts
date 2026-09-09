@@ -24,6 +24,21 @@ describe('hash routing', () => {
     expect(parseHash('#/owner')).toEqual({ name: 'owner-dashboard' });
   });
 
+  it('carries post-creation status for the onboarding banner', () => {
+    expect(parseHash('#/owner?created=Butt%20Spices&status=APPROVED')).toEqual({
+      name: 'owner-dashboard',
+      justCreated: true,
+      justCreatedName: 'Butt Spices',
+      justCreatedStatus: 'APPROVED',
+    });
+    expect(parseHash('#/owner?created=Butt%20Spices')).toEqual({
+      name: 'owner-dashboard',
+      justCreated: true,
+      justCreatedName: 'Butt Spices',
+      justCreatedStatus: undefined,
+    });
+  });
+
   it('parses booking flow routes with optional service preselection', () => {
     expect(parseHash('#/book/biz-1')).toEqual({ name: 'book', businessId: 'biz-1', serviceId: undefined });
     expect(parseHash('#/book/biz-1/svc-9')).toEqual({ name: 'book', businessId: 'biz-1', serviceId: 'svc-9' });

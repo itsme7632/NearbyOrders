@@ -53,7 +53,21 @@ async function request<T>(path: string, options: { method?: string; body?: unkno
   if (!res.ok) {
     const err = (payload as { error?: { code?: string; message?: string } } | null)?.error;
     if (res.status === 401 && session) setSession(null);
-    throw new ApiError(res.status, err?.code ?? 'UNKNOWN', err?.message ?? `Request failed (${res.status})`);
+    // Validation failures carry a Zod field map — surface it so users see
+    // which field to fix instead of a generic "Invalid request".
+    const details = (payload as { error?: { details?: { fieldErrors?: Record<string, string[]> } } } | null)?.error?.details
+      ?.fieldErrors;
+    const fieldMessage =
+      details && Object.keys(details).length > 0
+        ? Object.entries(details)
+            .map(([field, messages]) => `${field}: ${messages.join(', ')}`)
+            .join('; ')
+        : null;
+    throw new ApiError(
+      res.status,
+      err?.code ?? 'UNKNOWN',
+      fieldMessage ?? err?.message ?? `Request failed (${res.status})`,
+    );
   }
   return ((payload as { data?: T })?.data ?? (payload as T)) as T;
 }
@@ -176,7 +190,17 @@ export const createBusiness = (input: {
 
 export const updateBusiness = (
   id: string,
-  patch: Partial<{ name: string; description: string; phone: string; email: string; address: string; city: string; locality: string; imageUrl: string; categoryIds: string[] }>,
+  patch: Partial<{
+    name: string;
+    description: string | null;
+    phone: string | null;
+    email: string | null;
+    address: string;
+    city: string;
+    locality: string | null;
+    imageUrl: string | null;
+    categoryIds: string[];
+  }>,
 ) => request<Business>(`/businesses/${id}`, { method: 'PATCH', body: patch, auth: true });
 
 /* ------------------- services / products / hours ------------------- */

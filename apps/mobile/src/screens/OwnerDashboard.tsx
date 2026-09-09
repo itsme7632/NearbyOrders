@@ -28,7 +28,12 @@ import { OrdersIcon, CheckIcon, StoreIcon } from '../components/icons.js';
 
 type OwnerTab = 'profile' | 'services' | 'products' | 'hours';
 
-export function OwnerDashboardScreen(props: { onBack: () => void; onListBusiness?: () => void; justCreatedName?: string | null }) {
+export function OwnerDashboardScreen(props: {
+  onBack: () => void;
+  onListBusiness?: () => void;
+  justCreatedName?: string | null;
+  justCreatedStatus?: string | null;
+}) {
   const businesses = useAsyncData<Business[]>(() => getMyBusinesses(), []);
   const [businessId, setBusinessId] = useState<string | undefined>(undefined);
   const [tab, setTab] = useState<OwnerTab>('profile');
@@ -76,8 +81,10 @@ export function OwnerDashboardScreen(props: { onBack: () => void; onListBusiness
         <div className="created-banner" role="status">
           <CheckIcon size={16} />
           <span>
-            <strong>{props.justCreatedName}</strong> has been created. Add your services and opening hours below; it appears in customer
-            search once approved.
+            <strong>{props.justCreatedName}</strong> has been created. Add your services and opening hours below.
+            {props.justCreatedStatus === 'APPROVED'
+              ? ' It\'s now visible to customers.'
+              : ' It will appear in customer search once approved.'}
           </span>
         </div>
       ) : null}
@@ -118,7 +125,8 @@ export function OwnerDashboardScreen(props: { onBack: () => void; onListBusiness
 
 /* ------------------------------ Profile ------------------------------ */
 
-function OwnerProfile(props: { business: Business; onSaved: () => void }) {
+/** Exported for tests; the dashboard renders it inside the Profile tab. */
+export function OwnerProfile(props: { business: Business; onSaved: () => void }) {
   const b = props.business;
   const [form, setForm] = useState({
     name: b.name,
@@ -137,19 +145,47 @@ function OwnerProfile(props: { business: Business; onSaved: () => void }) {
   const categories = useAsyncData<Category[]>(() => listCategories(), []);
 
   const save = async () => {
+    if (saving) return; // guard against double submission
+    // Server-side mirrors: required fields must be present and valid; optional
+    // fields are sent as null when cleared so the server nulls the column.
+    const trimmed = {
+      name: form.name.trim(),
+      description: form.description.trim(),
+      phone: form.phone.trim(),
+      email: form.email.trim(),
+      address: form.address.trim(),
+      city: form.city.trim(),
+      locality: form.locality.trim(),
+      imageUrl: form.imageUrl.trim(),
+    };
+    const fieldErrors: string[] = [];
+    if (trimmed.name.length < 2) fieldErrors.push('Business name must be at least 2 characters.');
+    if (trimmed.name.length > 120) fieldErrors.push('Business name must be at most 120 characters.');
+    if (trimmed.address.length < 5) fieldErrors.push('Enter the street address (at least 5 characters).');
+    if (trimmed.city.length < 2) fieldErrors.push('Enter your city.');
+    if (trimmed.description.length > 2000) fieldErrors.push('Description must be at most 2000 characters.');
+    if (trimmed.locality.length > 100) fieldErrors.push('Area / locality must be at most 100 characters.');
+    if (trimmed.phone && !/^[+\d][\d\s-]{5,19}$/.test(trimmed.phone)) fieldErrors.push('Enter a valid phone number, e.g. +92 300 1234567.');
+    if (trimmed.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed.email)) fieldErrors.push('Enter a valid email address.');
+    if (trimmed.imageUrl && !/^https?:\/\/\S+$/.test(trimmed.imageUrl)) fieldErrors.push('Logo / image URL must be a valid URL.');
+    if (fieldErrors.length > 0) {
+      setError(fieldErrors.join(' '));
+      return;
+    }
     setSaving(true);
     setError(null);
     setSaved(false);
     try {
       await updateBusiness(b.id, {
-        name: form.name,
-        description: form.description || undefined,
-        phone: form.phone || undefined,
-        email: form.email || undefined,
-        address: form.address,
-        city: form.city,
-        locality: form.locality || undefined,
-        imageUrl: form.imageUrl || undefined,
+        name: trimmed.name,
+        // Cleared optional fields go as null so the server nulls the column.
+        description: trimmed.description || null,
+        phone: trimmed.phone || null,
+        email: trimmed.email || null,
+        address: trimmed.address,
+        city: trimmed.city,
+        locality: trimmed.locality || null,
+        imageUrl: trimmed.imageUrl || null,
         categoryIds: [...categoryIds],
       });
       setSaved(true);

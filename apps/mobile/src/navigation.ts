@@ -7,7 +7,7 @@ export type Route =
   | { name: 'business'; idOrSlug: string }
   | { name: 'book'; businessId: string; serviceId?: string }
   | { name: 'booking'; bookingId: string }
-  | { name: 'owner-dashboard'; justCreated?: boolean; justCreatedName?: string }
+  | { name: 'owner-dashboard'; justCreated?: boolean; justCreatedName?: string; justCreatedStatus?: string }
   | { name: 'create-business' };
 
 /** Parses `#/business/<idOrSlug>`, `#/book/...`, `#/booking/<id>`, `#/owner`, `#/create-business` style hash routes. */
@@ -30,9 +30,11 @@ export function parseHash(hash: string): Route {
   }
   if (clean === 'create-business') return { name: 'create-business' };
   if (clean === 'owner') {
-    const created = new URLSearchParams(queryPart ?? '').get('created');
+    const params = new URLSearchParams(queryPart ?? '');
+    const created = params.get('created');
+    const status = params.get('status') ?? undefined;
     return created
-      ? { name: 'owner-dashboard', justCreated: true, justCreatedName: created }
+      ? { name: 'owner-dashboard', justCreated: true, justCreatedName: created, justCreatedStatus: status }
       : { name: 'owner-dashboard' };
   }
   return { name: 'tabs' };

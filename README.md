@@ -22,6 +22,14 @@ SEED_DEMO_DATA=1 sh ./scripts/dev-preview.sh              # same, plus clearly-m
 
 Demo logins (only when `SEED_DEMO_DATA=1`, never in production): owner `demo-owner@nearbyorders.test` / `DemoPassw0rd!2026`, customer `demo-customer@nearbyorders.test` / `DemoPassw0rd!2026`.
 
+### `AUTO_APPROVE_BUSINESSES`
+
+Development/preview convenience, read server-side only. When exactly `true`, **newly created** businesses are `APPROVED` immediately instead of `PENDING`, so the full onboarding → discovery → booking flow can be exercised without the (still unbuilt) Admin UI. Every auto-approval is recorded in the audit log (`BUSINESS_AUTO_APPROVED`).
+
+- Default (unset/anything else): businesses stay `PENDING` and require admin approval — production behavior is untouched.
+- The flag is never client-controllable: no API field (`autoApprove` etc.) can trigger it, and it is not exposed in responses.
+- `scripts/dev-preview.sh` sets it for the local/preview stack; production deployments must not.
+
 Prefer manual steps? Each piece runs on its own:
 
 ```sh

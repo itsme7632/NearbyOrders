@@ -24,12 +24,27 @@ const timeOfDay = z
   .string()
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Must be HH:MM (24h)');
 
-const optionalUrl = z
-  .string()
-  .url()
-  .max(500)
+/**
+ * Optional string field that also accepts an empty string or null (a cleared
+ * form input) and normalizes it to undefined. Mobile forms keep controlled
+ * inputs as strings, so "cleared" arrives as "" — and clearing to null must
+ * remain expressible so owners can remove an optional value again.
+ */
+const optionalText = (max: number) =>
+  z
+    .union([z.string().max(max), z.literal(''), z.null()])
+    .optional()
+    .transform((v) => (v === null || v === '' ? undefined : v));
+
+const optionalEmail = z
+  .union([z.string().email().max(120), z.literal(''), z.null()])
   .optional()
-  .or(z.literal('').transform(() => undefined));
+  .transform((v) => (v === null || v === '' ? undefined : v));
+
+const optionalUrl = z
+  .union([z.string().url().max(500), z.literal(''), z.null()])
+  .optional()
+  .transform((v) => (v === null || v === '' ? undefined : v));
 
 const phone = z.string().min(7).max(20).regex(/^[+\d][\d\s-]+$/, 'Invalid phone number');
 
@@ -57,16 +72,19 @@ export const categoryUpdateSchema = categoryCreateSchema.partial().refine(
 
 const businessCore = {
   name: z.string().min(2).max(120),
-  description: z.string().max(2000).optional(),
+  description: optionalText(2000),
   address: z.string().min(5),
   city: z.string().min(2),
-  locality: z.string().max(100).optional(),
+  locality: optionalText(100),
   // Optional for self-service onboarding; the create handler applies a
   // city-centre fallback so the not-null schema contract stays intact.
   latitude: z.number().gte(-90).lte(90).optional(),
   longitude: z.number().gte(-180).lte(180).optional(),
-  phone: phone.optional(),
-  email: z.string().email().max(120).optional(),
+  phone: z
+    .union([phone, z.literal(''), z.null()])
+    .optional()
+    .transform((v) => (v === null || v === '' ? undefined : v)),
+  email: optionalEmail,
   imageUrl: optionalUrl,
 };
 
@@ -85,8 +103,13 @@ export const businessUpdateSchema = z
     locality: businessCore.locality,
     latitude: businessCore.latitude.optional(),
     longitude: businessCore.longitude.optional(),
-    phone: businessCore.phone,
-    email: businessCore.email,
+    // Cleared optional fields arrive as null/'' from the profile form and must
+    // normalize to undefined (i.e. "no value"), not fail validation.
+    phone: z
+      .union([phone, z.literal(''), z.null()])
+      .optional()
+      .transform((v) => (v === null || v === '' ? undefined : v)),
+    email: optionalEmail,
     imageUrl: optionalUrl,
     categoryIds: z.array(z.string().uuid()).min(1).optional(),
   })

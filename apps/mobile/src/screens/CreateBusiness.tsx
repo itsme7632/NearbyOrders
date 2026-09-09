@@ -25,7 +25,10 @@ export function validateBusinessForm(form: FormState): Partial<Record<keyof Form
 }
 
 /** Self-service business creation form for business owners (Phase 3C.5). */
-export function CreateBusinessScreen(props: { onBack: () => void; onCreated: (id: string, name: string) => void }) {
+export function CreateBusinessScreen(props: {
+  onBack: () => void;
+  onCreated: (id: string, name: string, status?: string) => void;
+}) {
   const categories = useAsyncData<Category[]>(() => listCategories(), []);
   const [form, setForm] = useState<FormState>(initialForm);
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
@@ -56,7 +59,9 @@ export function CreateBusinessScreen(props: { onBack: () => void; onCreated: (id
         city: form.city.trim(),
       };
       const business = await createBusiness(payload);
-      props.onCreated(business.id, business.name);
+      // The server-returned status drives post-creation messaging (approved
+      // vs pending review); never claim approval the backend did not return.
+      props.onCreated(business.id, business.name, business.status);
     } catch (e) {
       if (e instanceof ApiError) {
         if (e.status === 0) setApiError(e.message);
@@ -174,7 +179,7 @@ export function CreateBusinessScreen(props: { onBack: () => void; onCreated: (id
 
         <div className="onboard-note">
           <StoreIcon size={16} />
-          <span>New listings are reviewed before they appear in customer search.</span>
+          <span>Listings may be reviewed before appearing in customer search; you'll see the status on the next screen.</span>
         </div>
 
         <Button full onClick={() => void submit()} disabled={saving}>

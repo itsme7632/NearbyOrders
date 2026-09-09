@@ -9,6 +9,9 @@
 #   PORT            port for the Vite dev server (default 5173; Freebuff injects it)
 #   API_PORT        port for the API (default 3001)
 #   SEED_DEMO_DATA  set to 1 to seed clearly-marked [Demo] businesses (recommended for preview)
+#   AUTO_APPROVE_BUSINESSES  set to true so newly created businesses skip the
+#     admin-approval wait in this dev/preview stack only. Server-side flag;
+#     never client-controllable. Production/unset default stays PENDING.
 set -u
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -18,6 +21,11 @@ DATABASE_URL="${DATABASE_URL:-postgresql://daytona@127.0.0.1:54329/nearbyorders?
 export DATABASE_URL
 CORS_ORIGIN="http://localhost:$PORT,http://127.0.0.1:$PORT"
 export CORS_ORIGIN
+# Dev/preview convenience only: new businesses are approved immediately so the
+# full product flow can be tested without the (still unbuilt) Admin UI.
+# Production never sets this and keeps the PENDING → admin approval flow.
+AUTO_APPROVE_BUSINESSES="${AUTO_APPROVE_BUSINESSES:-true}"
+export AUTO_APPROVE_BUSINESSES
 
 echo "[preview] 1/5 database"
 sh "$ROOT/scripts/dev-db.sh" start

@@ -22,6 +22,7 @@ function App() {
   const [session, setSession] = useState<Session | null>(getSession());
   const [exploreSeed, setExploreSeed] = useState<{ category?: string; query?: string; nonce: number }>({ nonce: 0 });
   const [justCreatedName, setJustCreatedName] = useState<string | null>(null);
+  const [justCreatedStatus, setJustCreatedStatus] = useState<string | null>(null);
   useEffect(() => onSessionChange(setSession), []);
 
   const openBusiness = (id: string) => push(`/business/${id}`);
@@ -86,6 +87,7 @@ function App() {
         onBack={back}
         onListBusiness={session.user.role === 'BUSINESS_OWNER' ? () => push('/create-business') : undefined}
         justCreatedName={route.justCreated ? route.justCreatedName : null}
+        justCreatedStatus={route.justCreated ? route.justCreatedStatus ?? null : null}
       />
     ) : (
       <ProfileScreen onOwnerDashboard={() => push('/owner')} />
@@ -96,9 +98,10 @@ function App() {
       session && session.user.role === 'BUSINESS_OWNER' ? (
         <CreateBusinessScreen
           onBack={back}
-          onCreated={(_id, name) => {
+          onCreated={(_id, name, status) => {
             setJustCreatedName(name);
-            push(`/owner?created=${encodeURIComponent(name)}`);
+            setJustCreatedStatus(status ?? null);
+            push(`/owner?created=${encodeURIComponent(name)}${status ? `&status=${encodeURIComponent(status)}` : ''}`);
           }}
         />
       ) : (
