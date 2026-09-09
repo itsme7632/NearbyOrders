@@ -2,6 +2,7 @@ import { getBusiness, type Business } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, CategoryPill, EmptyState, ErrorState, Loading, Money, OpenBadge, VerifiedBadge } from '../components/ui.js';
 import { StoreIcon } from '../components/icons.js';
+import { formatSlotTime } from '../time.js';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
@@ -75,7 +76,7 @@ export function BusinessDetailScreen(props: { idOrSlug: string; onBack: () => vo
               return (
                 <li key={h.id} className={h.isClosed ? 'closed' : ''}>
                   <span>{DAY_NAMES[day] ?? `Day ${day}`}</span>
-                  <span>{h.isClosed ? 'Closed' : `${h.opensAt} – ${h.closesAt}`}</span>
+                  <span>{h.isClosed ? 'Closed' : `${formatSlotTime(h.opensAt ?? '')} – ${formatSlotTime(h.closesAt ?? '')}`}</span>
                 </li>
               );
             })}

@@ -649,6 +649,80 @@ p { overflow-wrap: break-word; }
   .hours-times { margin-left: 0; width: 100%; }
   .hours-times input { flex: 1; width: auto; min-width: 0; }
 }
+.hours-row-invalid { background: rgba(239, 68, 68, 0.04); border-radius: 8px; }
+.hours-row-invalid input { border-color: var(--error); }
+.hours-error-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--error);
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 10px;
+}
+
+/* ---------------- image uploader (product-wide upload rule) ---------------- */
+.image-uploader { margin-top: 4px; }
+.image-input-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.image-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  margin-top: 6px;
+}
+.image-preview-img {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 10px;
+  flex: 0 0 auto;
+  background: var(--light);
+}
+.image-preview-fallback {
+  width: 72px;
+  height: 72px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  background: var(--light);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  font-size: 10.5px;
+  color: var(--muted);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.image-preview-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.image-preview-name { font-weight: 600; font-size: 13.5px; overflow-wrap: anywhere; }
+.image-preview-note { font-size: 12px; color: var(--muted); }
+
+/* Owner business summary card (single-business dashboard) */
+.owner-biz-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 13px 14px;
+  margin-top: 12px;
+  box-shadow: var(--shadow);
+}
+.owner-biz-name { font-weight: 700; font-size: 15px; min-width: 0; overflow-wrap: anywhere; }
 
 @media (min-width: 480px) {
   main { padding: 20px 20px 96px; }

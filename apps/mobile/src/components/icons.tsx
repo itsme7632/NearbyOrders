@@ -165,3 +165,13 @@ export function CheckIcon(props: IconProps) {
     </Icon>
   );
 }
+
+export function ImageIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="3.5" y="5" width="17" height="14" rx="2.5" />
+      <circle cx="9" cy="10" r="1.8" />
+      <path d="m6 19 5.5-5.5a1.5 1.5 0 0 1 2.2 0L19 19" />
+    </Icon>
+  );
+}

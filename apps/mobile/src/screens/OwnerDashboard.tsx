@@ -24,7 +24,8 @@ import {
   listServices,
 } from '../api.js';
 import { Button, EmptyState, ErrorState, Field, Loading, Money, Toggle } from '../components/ui.js';
-import { OrdersIcon, CheckIcon, StoreIcon } from '../components/icons.js';
+import { AlertIcon, CheckIcon, OrdersIcon, StoreIcon } from '../components/icons.js';
+import { ImageUploader, type ImageUploaderState, type PendingImage } from '../components/ImageUploader.js';
 
 type OwnerTab = 'profile' | 'services' | 'products' | 'hours';
 
@@ -77,6 +78,9 @@ export function OwnerDashboardScreen(props: {
       <button className="back-link" onClick={props.onBack}>
         ‹ Back
       </button>
+      <header className="owner-head">
+        <h1>My businesses</h1>
+      </header>
       {props.justCreatedName ? (
         <div className="created-banner" role="status">
           <CheckIcon size={16} />
@@ -88,10 +92,14 @@ export function OwnerDashboardScreen(props: {
           </span>
         </div>
       ) : null}
-      <header className="owner-head">
-        <h1>{active.name}</h1>
-        <span className={`badge ${active.status === 'APPROVED' ? 'badge-open' : 'badge-closed'}`}>{active.status}</span>
-      </header>
+      {/* One business: manage it directly. Several: the switcher above shows
+          which business the tabs below are acting on. */}
+      {businesses.data.length === 1 ? (
+        <div className="owner-biz-card" aria-label="Managed business">
+          <span className="owner-biz-name">{active.name}</span>
+          <span className={`badge ${active.status === 'APPROVED' ? 'badge-open' : 'badge-closed'}`}>{active.status}</span>
+        </div>
+      ) : null}
       {switcher}
       <div className="btn-row">
         {props.onListBusiness ? (
@@ -136,16 +144,28 @@ export function OwnerProfile(props: { business: Business; onSaved: () => void })
     address: b.address,
     city: b.city,
     locality: b.locality ?? '',
-    imageUrl: b.imageUrl ?? '',
   });
+  // Image handling follows the product-wide upload rule: no URL field. A
+  // pending device pick cannot be persisted yet (no storage provider), so it
+  // blocks saving honestly; removing the saved image IS persistable now and
+  // sends imageUrl: null on save. Omitting the key keeps the saved value.
+  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
+  const [removeSavedImage, setRemoveSavedImage] = useState(false);
   const [categoryIds, setCategoryIds] = useState<Set<string>>(new Set(b.categories.map((c) => c.id)));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const categories = useAsyncData<Category[]>(() => listCategories(), []);
 
+  const onImageStateChange = (state: ImageUploaderState) => {
+    setPendingImage(state.pending);
+    setRemoveSavedImage(state.removeSaved);
+    setSaved(false);
+  };
+
   const save = async () => {
     if (saving) return; // guard against double submission
+    if (pendingImage) return; // unreachable: the button is disabled — belt & braces
     // Server-side mirrors: required fields must be present and valid; optional
     // fields are sent as null when cleared so the server nulls the column.
     const trimmed = {
@@ -156,7 +176,6 @@ export function OwnerProfile(props: { business: Business; onSaved: () => void })
       address: form.address.trim(),
       city: form.city.trim(),
       locality: form.locality.trim(),
-      imageUrl: form.imageUrl.trim(),
     };
     const fieldErrors: string[] = [];
     if (trimmed.name.length < 2) fieldErrors.push('Business name must be at least 2 characters.');
@@ -167,7 +186,6 @@ export function OwnerProfile(props: { business: Business; onSaved: () => void })
     if (trimmed.locality.length > 100) fieldErrors.push('Area / locality must be at most 100 characters.');
     if (trimmed.phone && !/^[+\d][\d\s-]{5,19}$/.test(trimmed.phone)) fieldErrors.push('Enter a valid phone number, e.g. +92 300 1234567.');
     if (trimmed.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed.email)) fieldErrors.push('Enter a valid email address.');
-    if (trimmed.imageUrl && !/^https?:\/\/\S+$/.test(trimmed.imageUrl)) fieldErrors.push('Logo / image URL must be a valid URL.');
     if (fieldErrors.length > 0) {
       setError(fieldErrors.join(' '));
       return;
@@ -185,7 +203,9 @@ export function OwnerProfile(props: { business: Business; onSaved: () => void })
         address: trimmed.address,
         city: trimmed.city,
         locality: trimmed.locality || null,
-        imageUrl: trimmed.imageUrl || null,
+        // Image: only ever cleared here (no fake uploads). A pending pick is
+        // blocked above; the key is omitted otherwise so the saved value stays.
+        ...(removeSavedImage ? { imageUrl: null } : {}),
         categoryIds: [...categoryIds],
       });
       setSaved(true);
@@ -226,8 +246,13 @@ export function OwnerProfile(props: { business: Business; onSaved: () => void })
       <Field label="Address">
         <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
       </Field>
-      <Field label="Logo / image URL" hint="Paste a hosted image URL — uploads arrive in a later phase.">
-        <input value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} inputMode="url" />
+
+      <Field label="Business logo">
+        <ImageUploader
+          currentUrl={removeSavedImage ? null : b.imageUrl}
+          label="Business logo"
+          onChange={onImageStateChange}
+        />
       </Field>
 
       <Field label="Categories">
@@ -256,7 +281,12 @@ export function OwnerProfile(props: { business: Business; onSaved: () => void })
         )}
       </Field>
 
-      <Button full disabled={saving || !form.name || categoryIds.size === 0} onClick={save}>
+      {pendingImage ? (
+        <p className="hint" role="note">
+          Save is unavailable while a new photo is selected: image storage is not connected yet, so the photo cannot be persisted. Remove it to save your other changes.
+        </p>
+      ) : null}
+      <Button full disabled={saving || !form.name || categoryIds.size === 0 || Boolean(pendingImage)} onClick={save}>
         {saving ? 'Saving…' : 'Save profile'}
       </Button>
     </section>
@@ -492,7 +522,6 @@ function ProductRow(props: { product: Product; onSaved: () => void }) {
     name: props.product.name,
     description: props.product.description ?? '',
     price: String(props.product.priceMinor / 100),
-    imageUrl: props.product.imageUrl ?? '',
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -505,7 +534,6 @@ function ProductRow(props: { product: Product; onSaved: () => void }) {
         name: form.name,
         description: form.description || undefined,
         priceMinor: Math.round(Number(form.price) * 100),
-        imageUrl: form.imageUrl || undefined,
       });
       setEditing(false);
       props.onSaved();
@@ -549,9 +577,6 @@ function ProductRow(props: { product: Product; onSaved: () => void }) {
         <Field label="Description">
           <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
         </Field>
-        <Field label="Image URL">
-          <input value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} inputMode="url" />
-        </Field>
         <div className="btn-row">
           <Button sm onClick={save} disabled={busy || !form.name || !form.price}>
             Save
@@ -579,7 +604,7 @@ function ProductRow(props: { product: Product; onSaved: () => void }) {
 
 function ProductForm(props: { businessId: string; onCreated: () => void }) {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: '', price: '', description: '', imageUrl: '' });
+  const [form, setForm] = useState({ name: '', price: '', description: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -591,9 +616,8 @@ function ProductForm(props: { businessId: string; onCreated: () => void }) {
         name: form.name,
         priceMinor: Math.round(Number(form.price) * 100),
         description: form.description || undefined,
-        imageUrl: form.imageUrl || undefined,
       });
-      setForm({ name: '', price: '', description: '', imageUrl: '' });
+      setForm({ name: '', price: '', description: '' });
       setOpen(false);
       props.onCreated();
     } catch (e) {
@@ -623,9 +647,6 @@ function ProductForm(props: { businessId: string; onCreated: () => void }) {
       <Field label="Description">
         <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
       </Field>
-      <Field label="Image URL">
-        <input value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} inputMode="url" />
-      </Field>
       <div className="btn-row">
         <Button sm onClick={create} disabled={busy || !form.name || !form.price}>
           Create
@@ -641,6 +662,27 @@ function ProductForm(props: { businessId: string; onCreated: () => void }) {
 /* ------------------------------- Hours ------------------------------- */
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+
+/** HH:MM validity mirror of the server rule; empty string means "not set". */
+const isValidTime = (t: string): boolean => /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
+
+/**
+ * Client-side mirror of the server's opening-hours validation so obvious
+ * mistakes never reach the API. Returns per-day messages keyed by dayOfWeek.
+ * The backend stays authoritative — this only improves the UX.
+ */
+export function validateHours(days: HourInput[]): Record<number, string> {
+  const errors: Record<number, string> = {};
+  for (const d of days) {
+    if (d.isClosed) continue;
+    if (!d.opensAt || !d.closesAt || !isValidTime(d.opensAt) || !isValidTime(d.closesAt)) {
+      errors[d.dayOfWeek] = 'Set an opening and closing time for open days.';
+    } else if (d.opensAt >= d.closesAt) {
+      errors[d.dayOfWeek] = 'Closing time must be after opening time.';
+    }
+  }
+  return errors;
+}
 
 function OwnerHours(props: { businessId: string }) {
   const hours = useAsyncData<BusinessHour[]>(() => getHours(props.businessId), [props.businessId]);
@@ -663,12 +705,16 @@ function OwnerHours(props: { businessId: string }) {
         }))
       : Array.from({ length: 7 }, (_, dayOfWeek) => ({ dayOfWeek, isClosed: false, opensAt: '09:00', closesAt: '18:00' })));
 
+  const fieldErrors = validateHours(model);
+  const hasErrors = Object.keys(fieldErrors).length > 0;
+
   const update = (day: number, patch: Partial<HourInput>) => {
     setSaved(false);
     setDays(model.map((d) => (d.dayOfWeek === day ? { ...d, ...patch } : d)));
   };
 
   const save = async () => {
+    if (busy || hasErrors) return;
     setBusy(true);
     setError(null);
     try {
@@ -694,8 +740,9 @@ function OwnerHours(props: { businessId: string }) {
       <ul className="hours-editor">
         {[1, 2, 3, 4, 5, 6, 0].map((day) => {
           const d = model.find((x) => x.dayOfWeek === day)!;
+          const dayError = fieldErrors[day];
           return (
-            <li key={day} className="hours-row">
+            <li key={day} className={`hours-row${dayError ? ' hours-row-invalid' : ''}`}>
               <span className="hours-day">{DAY_LABELS[day]}</span>
               <Toggle checked={!d.isClosed} onChange={(v) => update(day, { isClosed: !v, opensAt: v ? d.opensAt ?? '09:00' : undefined, closesAt: v ? d.closesAt ?? '18:00' : undefined })} label="" />
               {d.isClosed ? (
@@ -710,7 +757,12 @@ function OwnerHours(props: { businessId: string }) {
           );
         })}
       </ul>
-      <Button full onClick={save} disabled={busy}>
+      {hasErrors ? (
+        <div className="hours-error-summary" role="alert">
+          <AlertIcon size={14} /> Fix the highlighted days before saving.
+        </div>
+      ) : null}
+      <Button full onClick={save} disabled={busy || hasErrors}>
         {busy ? 'Saving…' : 'Save hours'}
       </Button>
     </section>
