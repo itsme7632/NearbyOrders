@@ -74,40 +74,48 @@ function App() {
     content = <ProfileScreen onOwnerDashboard={() => push('/owner')} />;
   }
 
+  // Authentication is its own flow: signed-out users only see the auth screen
+  // (no app header, no primary navigation). Everything else keeps the chrome.
+  const authFlow = !session && route.name === 'tabs' && tab === 'Profile';
+
   return (
-    <main>
-      <header className="app-header">
-        <button className="logo" onClick={() => { setTab('Home'); push('/'); }} aria-label="NearbyOrders home">
-          NearbyOrders
-        </button>
-        {session?.user.role === 'BUSINESS_OWNER' ? (
-          <button className="header-link" onClick={() => push('/owner')}>
-            My business
+    <main className={authFlow ? 'auth-mode' : undefined}>
+      {!authFlow ? (
+        <header className="app-header">
+          <button className="logo" onClick={() => { setTab('Home'); push('/'); }} aria-label="NearbyOrders home">
+            NearbyOrders
           </button>
-        ) : null}
-      </header>
-      {content}
-      <nav aria-label="Primary">
-        {navigationTabs.map((t) => {
-          const active = t === tab && route.name === 'tabs';
-          const IconCmp =
-            t === 'Home' ? HomeIcon : t === 'Explore' ? ExploreIcon : t === 'Orders' ? OrdersIcon : t === 'Bookings' ? BookingsIcon : ProfileIcon;
-          return (
-            <button
-              key={t}
-              className={active ? 'nav-item active' : 'nav-item'}
-              aria-current={active ? 'page' : undefined}
-              onClick={() => {
-                setTab(t);
-                push('/');
-              }}
-            >
-              <IconCmp size={22} />
-              <span>{t}</span>
+          {session?.user.role === 'BUSINESS_OWNER' ? (
+            <button className="header-link" onClick={() => push('/owner')}>
+              My business
             </button>
-          );
+          ) : null}
+        </header>
+      ) : null}
+      {content}
+      {!authFlow ? (
+        <nav aria-label="Primary">
+          {navigationTabs.map((t) => {
+            const active = t === tab && route.name === 'tabs';
+            const IconCmp =
+              t === 'Home' ? HomeIcon : t === 'Explore' ? ExploreIcon : t === 'Orders' ? OrdersIcon : t === 'Bookings' ? BookingsIcon : ProfileIcon;
+            return (
+              <button
+                key={t}
+                className={active ? 'nav-item active' : 'nav-item'}
+                aria-current={active ? 'page' : undefined}
+                onClick={() => {
+                  setTab(t);
+                  push('/');
+                }}
+              >
+                <IconCmp size={22} />
+                <span>{t}</span>
+              </button>
+            );
         })}
-      </nav>
+        </nav>
+      ) : null}
     </main>
   );
 }

@@ -1,7 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ApiError, getSession, login, logout, onSessionChange, type Session } from '../api.js';
 import { Button, Field } from '../components/ui.js';
-import { AlertIcon, EyeIcon, EyeOffIcon, StoreIcon, UserPlusIcon } from '../components/icons.js';
+import {
+  AlertIcon,
+  CheckIcon,
+  EyeIcon,
+  EyeOffIcon,
+  LockIcon,
+  MailIcon,
+  PinIcon,
+  StoreIcon,
+  UserPlusIcon,
+} from '../components/icons.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 12;
@@ -9,29 +19,41 @@ const MIN_PASSWORD = 12;
 type Mode = 'login' | 'register';
 type Role = 'CUSTOMER' | 'BUSINESS_OWNER';
 
-function PasswordInput(props: {
-  value: string;
-  onChange: (v: string) => void;
-  autoComplete: string;
-  label: string;
-  invalid?: boolean;
-}) {
+/** Input row with a leading icon and floating label, per the auth design reference. */
+function AuthInput(props: { label: string; icon: ReactNode; invalid?: boolean; children: ReactNode }) {
+  return (
+    <div className={`auth-input${props.invalid ? ' input-invalid' : ''}`}>
+      <span className="auth-input-icon" aria-hidden>
+        {props.icon}
+      </span>
+      <span className="auth-input-field">
+        <span className="auth-input-label" aria-hidden>
+          {props.label}
+        </span>
+        {props.children}
+      </span>
+    </div>
+  );
+}
+
+function PasswordInput(props: { value: string; onChange: (v: string) => void; autoComplete: string; invalid?: boolean }) {
   const [visible, setVisible] = useState(false);
   return (
-    <div className={`password-wrap${props.invalid ? ' input-invalid' : ''}`}>
+    <div className="password-slot">
       <input
         type={visible ? 'text' : 'password'}
         value={props.value}
         onChange={(e) => props.onChange(e.target.value)}
         autoComplete={props.autoComplete}
-        aria-label={props.label}
+        aria-label="Password"
+        aria-invalid={props.invalid || undefined}
         enterKeyHint="done"
       />
       <button
         type="button"
         className="password-toggle"
         onClick={() => setVisible((v) => !v)}
-        aria-label={visible ? `Hide ${props.label}` : `Show ${props.label}`}
+        aria-label={visible ? 'Hide password' : 'Show password'}
         aria-pressed={visible}
       >
         {visible ? <EyeOffIcon size={19} /> : <EyeIcon size={19} />}
@@ -55,6 +77,7 @@ export function ProfileScreen(props: { onOwnerDashboard: () => void }) {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [role, setRole] = useState<Role>('CUSTOMER');
+  const [agree, setAgree] = useState(false);
   const [touched, setTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -87,7 +110,7 @@ export function ProfileScreen(props: { onOwnerDashboard: () => void }) {
   const emailValid = EMAIL_RE.test(email.trim());
   const passwordValid = password.length >= MIN_PASSWORD;
   const confirmValid = password === confirm;
-  const canSubmit = emailValid && passwordValid && (!registering || confirmValid) && !busy;
+  const canSubmit = emailValid && passwordValid && (!registering || (confirmValid && agree)) && !busy;
 
   let emailMessage: string | null = null;
   if (touched && email.length > 0 && !emailValid) emailMessage = 'Enter a valid email address, e.g. you@example.com';
@@ -129,16 +152,21 @@ export function ProfileScreen(props: { onOwnerDashboard: () => void }) {
   };
 
   return (
-    <div className="screen">
-      <div className="card profile-card auth-card">
-        <div className="auth-brand" aria-hidden>
-          <span className="auth-brand-mark">N</span>
-        </div>
+    <div className="screen auth-screen">
+      <header className="auth-brand">
+        <span className="auth-brand-mark" aria-hidden>
+          <PinIcon size={26} />
+        </span>
+        <span className="auth-brand-name">
+          Nearby<b>Orders</b>
+        </span>
+        <span className="auth-brand-tag">Find nearby. Book or order.</span>
+      </header>
+
+      <section className="auth-card" aria-label={registering ? 'Create account' : 'Sign in'}>
         <h1>{registering ? 'Create your account' : 'Welcome back'}</h1>
-        <p className="auth-lede muted">
-          {registering
-            ? 'Join as a customer or list your business.'
-            : 'Sign in to book services and order from local businesses.'}
+        <p className="auth-lede">
+          {registering ? 'Join as a customer or list your business.' : 'Sign in to book services and order from local businesses.'}
         </p>
 
         <form
@@ -149,40 +177,46 @@ export function ProfileScreen(props: { onOwnerDashboard: () => void }) {
           noValidate
         >
           <Field label="Email" hint={emailMessage ?? undefined}>
-            <input
-              type="email"
-              inputMode="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onBlur={() => setTouched(true)}
-              autoComplete="email"
-              placeholder="you@example.com"
-              enterKeyHint="next"
-              aria-invalid={Boolean(emailMessage)}
-            />
+            <AuthInput label="Email" icon={<MailIcon size={18} />} invalid={Boolean(emailMessage)}>
+              <input
+                type="email"
+                inputMode="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onBlur={() => setTouched(true)}
+                autoComplete="email"
+                placeholder="you@example.com"
+                enterKeyHint="next"
+                aria-label="Email"
+                aria-invalid={Boolean(emailMessage)}
+              />
+            </AuthInput>
           </Field>
 
           <Field label="Password" hint={passwordMessage ?? undefined}>
-            <PasswordInput
-              label="password"
-              value={password}
-              onChange={setPassword}
-              autoComplete={registering ? 'new-password' : 'current-password'}
-              invalid={Boolean(passwordMessage)}
-            />
+            <AuthInput label="Password" icon={<LockIcon size={18} />} invalid={Boolean(passwordMessage)}>
+              <PasswordInput
+                value={password}
+                onChange={setPassword}
+                autoComplete={registering ? 'new-password' : 'current-password'}
+                invalid={Boolean(passwordMessage)}
+              />
+            </AuthInput>
           </Field>
 
           {registering ? (
             <>
               <Field label="Confirm password" hint={confirmMessage ?? undefined}>
-                <PasswordInput
-                  label="confirm password"
-                  value={confirm}
-                  onChange={setConfirm}
-                  autoComplete="new-password"
-                  invalid={Boolean(confirmMessage)}
-                />
+                <AuthInput label="Confirm password" icon={<LockIcon size={18} />} invalid={Boolean(confirmMessage)}>
+                  <PasswordInput
+                    value={confirm}
+                    onChange={setConfirm}
+                    autoComplete="new-password"
+                    invalid={Boolean(confirmMessage)}
+                  />
+                </AuthInput>
               </Field>
+
               <fieldset className="role-picker-field">
                 <legend className="label">I am joining as</legend>
                 <div className="role-picker" role="radiogroup" aria-label="I am joining as">
@@ -193,7 +227,12 @@ export function ProfileScreen(props: { onOwnerDashboard: () => void }) {
                     className={`role-option${role === 'CUSTOMER' ? ' role-option-active' : ''}`}
                     onClick={() => setRole('CUSTOMER')}
                   >
-                    <UserPlusIcon size={20} />
+                    {role === 'CUSTOMER' ? (
+                      <span className="role-check" aria-hidden>
+                        <CheckIcon size={12} />
+                      </span>
+                    ) : null}
+                    <UserPlusIcon size={22} />
                     <span className="role-option-name">Customer</span>
                     <span className="role-option-desc">Find &amp; book nearby businesses</span>
                   </button>
@@ -204,7 +243,12 @@ export function ProfileScreen(props: { onOwnerDashboard: () => void }) {
                     className={`role-option${role === 'BUSINESS_OWNER' ? ' role-option-active' : ''}`}
                     onClick={() => setRole('BUSINESS_OWNER')}
                   >
-                    <StoreIcon size={20} />
+                    {role === 'BUSINESS_OWNER' ? (
+                      <span className="role-check" aria-hidden>
+                        <CheckIcon size={12} />
+                      </span>
+                    ) : null}
+                    <StoreIcon size={22} />
                     <span className="role-option-name">Business owner</span>
                     <span className="role-option-desc">List &amp; manage your business</span>
                   </button>
@@ -212,7 +256,15 @@ export function ProfileScreen(props: { onOwnerDashboard: () => void }) {
                 <p className="hint">{roleCopy(role)}</p>
               </fieldset>
             </>
-          ) : null}
+          ) : (
+            <div className="auth-row">
+              {/* Password recovery is not implemented in the API yet; the link is
+                  shown disabled rather than pretending to work. */}
+              <button type="button" className="forgot-link" disabled title="Password reset is coming soon">
+                Forgot password?
+              </button>
+            </div>
+          )}
 
           {error ? (
             <div className="auth-error" role="alert">
@@ -224,16 +276,24 @@ export function ProfileScreen(props: { onOwnerDashboard: () => void }) {
           <Button full type="submit" disabled={!canSubmit}>
             {busy ? 'Please wait…' : registering ? 'Create account' : 'Sign in'}
           </Button>
+
+          {registering ? (
+            <label className="agree-row">
+              <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
+              <span>
+                I agree to the <b>Terms of Service</b> and <b>Privacy Policy</b>
+              </span>
+            </label>
+          ) : null}
         </form>
 
-        {registering ? (
-          <p className="auth-legal muted">Passwords must be at least {MIN_PASSWORD} characters.</p>
-        ) : null}
-
-        <button className="link-btn" onClick={() => switchMode(registering ? 'login' : 'register')}>
-          {registering ? 'Already have an account? Sign in' : 'New here? Create an account'}
-        </button>
-      </div>
+        <p className="auth-switch">
+          {registering ? 'Already have an account? ' : 'New here? '}
+          <button type="button" className="link-inline" onClick={() => switchMode(registering ? 'login' : 'register')}>
+            {registering ? 'Sign in' : 'Create an account'}
+          </button>
+        </p>
+      </section>
     </div>
   );
 }
