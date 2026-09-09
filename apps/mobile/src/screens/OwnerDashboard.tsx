@@ -18,7 +18,13 @@ import {
   type Service,
 } from '../api.js';
 import { useAsyncData } from '../hooks.js';
+import {
+  getHours,
+  listProducts,
+  listServices,
+} from '../api.js';
 import { Button, EmptyState, ErrorState, Field, Loading, Money, Toggle } from '../components/ui.js';
+import { OrdersIcon, StoreIcon } from '../components/icons.js';
 
 type OwnerTab = 'profile' | 'services' | 'products' | 'hours';
 
@@ -36,7 +42,7 @@ export function OwnerDashboardScreen(props: { onBack: () => void }) {
           ‹ Back
         </button>
         <EmptyState
-          icon="🏬"
+          icon={<StoreIcon size={30} />}
           title="No business yet"
           body="Business creation on web is coming soon. An administrator can onboard your business in the meantime."
         />
@@ -203,7 +209,7 @@ function OwnerProfile(props: { business: Business; onSaved: () => void }) {
 /* ------------------------------ Services ------------------------------ */
 
 function OwnerServices(props: { businessId: string }) {
-  const services = useAsyncData<Service[]>(() => import('../api.js').then((m) => m.listServices(props.businessId)), [props.businessId]);
+  const services = useAsyncData<Service[]>(() => listServices(props.businessId), [props.businessId]);
 
   return (
     <section className="card">
@@ -213,7 +219,7 @@ function OwnerServices(props: { businessId: string }) {
       ) : services.error ? (
         <ErrorState message={services.error} onRetry={services.reload} />
       ) : !services.data?.length ? (
-        <EmptyState icon="✂️" title="No services yet" body="Add your first service below so customers can book it later." />
+        <EmptyState icon={<StoreIcon size={30} />} title="No services yet" body="Add your first service below so customers can book it later." />
       ) : (
         <ul className="manage-list">
           {services.data.map((s) => (
@@ -393,7 +399,7 @@ function ServiceForm(props: { businessId: string; onCreated: () => void }) {
 /* ------------------------------ Products ------------------------------ */
 
 function OwnerProducts(props: { businessId: string }) {
-  const products = useAsyncData<Product[]>(() => import('../api.js').then((m) => m.listProducts(props.businessId)), [props.businessId]);
+  const products = useAsyncData<Product[]>(() => listProducts(props.businessId), [props.businessId]);
 
   return (
     <section className="card">
@@ -403,7 +409,7 @@ function OwnerProducts(props: { businessId: string }) {
       ) : products.error ? (
         <ErrorState message={products.error} onRetry={products.reload} />
       ) : !products.data?.length ? (
-        <EmptyState icon="🧾" title="No products yet" body="Add menu items or products below so customers can order them later." />
+        <EmptyState icon={<OrdersIcon size={30} />} title="No products yet" body="Add menu items or products below so customers can order them later." />
       ) : (
         <ul className="manage-list">
           {products.data.map((p) => (
@@ -580,7 +586,7 @@ function ProductForm(props: { businessId: string; onCreated: () => void }) {
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
 function OwnerHours(props: { businessId: string }) {
-  const hours = useAsyncData<BusinessHour[]>(() => import('../api.js').then((m) => m.getHours(props.businessId)), [props.businessId]);
+  const hours = useAsyncData<BusinessHour[]>(() => getHours(props.businessId), [props.businessId]);
   const [days, setDays] = useState<HourInput[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

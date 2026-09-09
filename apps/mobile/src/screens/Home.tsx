@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { listBusinesses, listCategories, type Business, type Category } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { BusinessCard, EmptyState, ErrorState, Loading } from '../components/ui.js';
+import { StoreIcon } from '../components/icons.js';
 
 export function HomeScreen(props: {
   onSearch: (q: string) => void;
@@ -60,7 +61,7 @@ export function HomeScreen(props: {
           <ErrorState message={businesses.error} onRetry={businesses.reload} />
         ) : !businesses.data?.length ? (
           <EmptyState
-            icon="🏪"
+            icon={<StoreIcon size={30} />}
             title="No businesses yet"
             body="Approved nearby businesses will appear here as they join NearbyOrders."
           />

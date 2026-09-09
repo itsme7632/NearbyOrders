@@ -1,6 +1,7 @@
 import { getBusiness, type Business } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, CategoryPill, EmptyState, ErrorState, Loading, Money, OpenBadge, VerifiedBadge } from '../components/ui.js';
+import { StoreIcon } from '../components/icons.js';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
@@ -9,7 +10,8 @@ export function BusinessDetailScreen(props: { idOrSlug: string; onBack: () => vo
 
   if (business.loading) return <Loading label="Loading business…" />;
   if (business.error) return <ErrorState message={business.error} onRetry={business.reload} />;
-  if (!business.data) return <EmptyState icon="🏪" title="Business not found" body="It may have been removed or is not approved yet." />;
+  if (!business.data)
+    return <EmptyState icon={<StoreIcon size={30} />} title="Business not found" body="It may have been removed or is not approved yet." />;
 
   const b = business.data;
   const place = [b.locality, b.city].filter(Boolean).join(', ');

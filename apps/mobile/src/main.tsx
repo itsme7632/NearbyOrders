@@ -4,6 +4,8 @@ import './styles.css';
 import { navigationTabs, type Tab } from './navigation.js';
 import { getSession, onSessionChange, type Session } from './api.js';
 import { useRoute } from './hooks.js';
+import { BookingsIcon, ExploreIcon, HomeIcon, OrdersIcon, ProfileIcon } from './components/icons.js';
+import { EmptyState } from './components/ui.js';
 import { HomeScreen } from './screens/Home.js';
 import { ExploreScreen } from './screens/Explore.js';
 import { BusinessDetailScreen } from './screens/BusinessDetail.js';
@@ -43,21 +45,29 @@ function App() {
   } else if (tab === 'Orders') {
     content = (
       <div className="screen">
-        <div className="empty-state">
-          <div className="empty-icon" aria-hidden>🧾</div>
-          <h3>Orders</h3>
-          <p>{session ? 'Your orders will appear here once ordering launches.' : 'Sign in to see your orders.'}</p>
-        </div>
+        <EmptyState
+          icon={<OrdersIcon size={30} />}
+          title="No orders yet"
+          body={
+            session
+              ? 'Your orders will appear here once ordering launches.'
+              : 'Sign in to see your orders once ordering launches.'
+          }
+        />
       </div>
     );
   } else if (tab === 'Bookings') {
     content = (
       <div className="screen">
-        <div className="empty-state">
-          <div className="empty-icon" aria-hidden>📅</div>
-          <h3>Bookings</h3>
-          <p>{session ? 'Your bookings will appear here once scheduling launches.' : 'Sign in to see your bookings.'}</p>
-        </div>
+        <EmptyState
+          icon={<BookingsIcon size={30} />}
+          title="No bookings yet"
+          body={
+            session
+              ? 'Your upcoming bookings will appear here once scheduling launches.'
+              : 'Sign in to see your bookings once scheduling launches.'
+          }
+        />
       </div>
     );
   } else {
@@ -78,18 +88,25 @@ function App() {
       </header>
       {content}
       <nav aria-label="Primary">
-        {navigationTabs.map((t) => (
-          <button
-            key={t}
-            className={t === tab && route.name === 'tabs' ? 'active' : ''}
-            onClick={() => {
-              setTab(t);
-              push('/');
-            }}
-          >
-            {t}
-          </button>
-        ))}
+        {navigationTabs.map((t) => {
+          const active = t === tab && route.name === 'tabs';
+          const IconCmp =
+            t === 'Home' ? HomeIcon : t === 'Explore' ? ExploreIcon : t === 'Orders' ? OrdersIcon : t === 'Bookings' ? BookingsIcon : ProfileIcon;
+          return (
+            <button
+              key={t}
+              className={active ? 'nav-item active' : 'nav-item'}
+              aria-current={active ? 'page' : undefined}
+              onClick={() => {
+                setTab(t);
+                push('/');
+              }}
+            >
+              <IconCmp size={22} />
+              <span>{t}</span>
+            </button>
+          );
+        })}
       </nav>
     </main>
   );

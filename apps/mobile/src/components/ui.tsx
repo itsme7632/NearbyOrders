@@ -52,7 +52,7 @@ export function Field(props: { label: string; children: ReactNode; hint?: string
   );
 }
 
-export function EmptyState(props: { icon: string; title: string; body: string; action?: ReactNode }) {
+export function EmptyState(props: { icon: ReactNode; title: string; body: string; action?: ReactNode }) {
   return (
     <div className="empty-state">
       <div className="empty-icon" aria-hidden>

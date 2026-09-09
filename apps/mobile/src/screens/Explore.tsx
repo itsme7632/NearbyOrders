@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { listBusinesses, listCategories, type Business, type Category } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { BusinessCard, EmptyState, ErrorState, Loading } from '../components/ui.js';
+import { ExploreIcon } from '../components/icons.js';
 
 export function ExploreScreen(props: {
   initialCategory?: string;
@@ -66,7 +67,7 @@ export function ExploreScreen(props: {
         ) : businesses.error ? (
           <ErrorState message={businesses.error} onRetry={businesses.reload} />
         ) : !businesses.data?.length ? (
-          <EmptyState icon="🔍" title="Nothing found" body="Try a different search term or category filter." />
+          <EmptyState icon={<ExploreIcon size={30} />} title="Nothing found" body="Try a different search term or category filter." />
         ) : (
           <div className="business-list">
             {businesses.data.map((b) => (
