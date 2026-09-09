@@ -122,7 +122,9 @@ export const businessUpdateSchema = z
 const priceMinor = z.number().int().nonnegative().max(99_999_999);
 
 export const serviceSchema = z.object({
-  name: z.string().min(2).max(120),
+  // Trim so padded input ("  X  ") never stores display-breaking whitespace;
+  // the mobile client trims too, this is the authoritative backstop.
+  name: z.string().trim().min(2).max(120),
   description: z.string().max(1000).optional(),
   priceMinor,
   durationMinutes: z.number().int().positive().max(1440).optional(),

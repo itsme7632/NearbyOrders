@@ -422,6 +422,38 @@ p { overflow-wrap: break-word; }
 .manage-item-off .item-name { color: var(--muted); text-decoration: line-through; }
 .edit-block { margin-top: 12px; background: var(--bg); border: 1px dashed var(--border); border-radius: 12px; padding: 12px; }
 .save-ok { color: var(--success); font-weight: 700; margin: 8px 0; }
+
+/* Product management rows (owner Products tab + product forms). */
+.product-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.product-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex: none;
+  background: var(--light);
+}
+.product-thumb-empty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+}
+.product-availability {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.product-available { background: rgba(16, 132, 82, 0.12); color: var(--success); }
+.product-unavailable { background: rgba(107, 114, 128, 0.14); color: var(--muted); }
+.confirm-delete-text { font-size: 13px; font-weight: 700; color: var(--error); align-self: center; }
+@media (max-width: 359px) {
+  .product-thumb { width: 34px; height: 34px; }
+}
 /* ---------------- auth (sign in / create account) ---------------- */
 /* Signed-out auth flow: the app hides header/nav; give the card room. */
 .auth-screen { padding-top: 24px; }

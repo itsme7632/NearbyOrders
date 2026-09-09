@@ -124,7 +124,7 @@ export function BusinessDetailScreen(props: { idOrSlug: string; onBack: () => vo
 
       {b.products?.length ? (
         <section className="card" aria-label="Products">
-          <h2>Menu / Products</h2>
+          <h2>Products</h2>
           <ul className="item-list">
             {b.products.map((p) => (
               <li key={p.id}>

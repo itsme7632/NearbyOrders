@@ -19,6 +19,7 @@ import {
 } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import {
+  ApiError,
   getHours,
   listProducts,
   listServices,
@@ -485,27 +486,80 @@ function ServiceForm(props: { businessId: string; onCreated: () => void }) {
 
 /* ------------------------------ Products ------------------------------ */
 
-function OwnerProducts(props: { businessId: string }) {
+/**
+ * Parses a major-unit price string ("450", "450.50") into integer minor units
+ * per the project's `priceMinor` convention. Returns null instead of rounding
+ * silently: more than 2 decimal places, non-numeric, zero/negative, NaN,
+ * Infinity and over-max inputs are all rejected — the caller shows a message.
+ */
+export function parsePriceToMinor(input: string): number | null {
+  const trimmed = input.trim().replace(/,/g, '');
+  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return null;
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const minor = Math.round(value * 100);
+  return minor > 99_999_999 ? null : minor; // server caps priceMinor at 99_999_999
+}
+
+/**
+ * Client-side mirror of the server product rules. Returns per-field messages;
+ * the backend stays authoritative. Exported for tests.
+ */
+export function validateProductForm(form: { name: string; price: string; description: string }): {
+  name?: string;
+  price?: string;
+  description?: string;
+} {
+  const errors: { name?: string; price?: string; description?: string } = {};
+  const name = form.name.trim();
+  if (!name) errors.name = 'Product name is required.';
+  else if (name.length < 2) errors.name = 'Product name must be at least 2 characters.';
+  else if (name.length > 120) errors.name = 'Product name must be at most 120 characters.';
+  if (parsePriceToMinor(form.price) === null)
+    errors.price = 'Enter a valid price in rupees, e.g. 450 or 450.50.';
+  if (form.description.trim().length > 1000) errors.description = 'Description must be at most 1000 characters.';
+  return errors;
+}
+
+/** Small product thumbnail: the saved image, or a neutral placeholder. */
+function ProductThumb(props: { imageUrl: string | null; name: string }) {
+  return props.imageUrl ? (
+    <img src={props.imageUrl} alt={props.name} className="product-thumb" loading="lazy" />
+  ) : (
+    <span className="product-thumb product-thumb-empty" aria-hidden>
+      <OrdersIcon size={18} />
+    </span>
+  );
+}
+
+/** Exported for tests. */
+export function OwnerProducts(props: { businessId: string }) {
   const products = useAsyncData<Product[]>(() => listProducts(props.businessId), [props.businessId]);
 
   return (
     <section className="card">
-      <h2>Products / Menu</h2>
+      <h2>Products</h2>
       {products.loading ? (
         <Loading />
       ) : products.error ? (
         <ErrorState message={products.error} onRetry={products.reload} />
       ) : !products.data?.length ? (
-        <EmptyState icon={<OrdersIcon size={30} />} title="No products yet" body="Add menu items or products below so customers can order them later." />
+        <EmptyState icon={<OrdersIcon size={30} />} title="No products yet" body="Add your first product to start building your menu." />
       ) : (
         <ul className="manage-list">
           {products.data.map((p) => (
-            <li key={p.id} className={`manage-item${p.isActive ? '' : ' manage-item-off'}`}>
+            <li key={p.id} className={`manage-item manage-item-product${p.isActive ? '' : ' manage-item-off'}`}>
               <div className="item-row">
-                <span className="item-name">{p.name}</span>
+                <span className="product-title">
+                  <ProductThumb imageUrl={p.imageUrl} name={p.name} />
+                  <span className="item-name">{p.name}</span>
+                </span>
                 <Money minor={p.priceMinor} currency={p.currency} />
               </div>
               {p.description ? <p className="item-desc">{p.description}</p> : null}
+              <span className={`product-availability ${p.isActive ? 'product-available' : 'product-unavailable'}`}>
+                {p.isActive ? 'Available' : 'Unavailable'}
+              </span>
               <ProductRow product={p} onSaved={products.reload} />
             </li>
           ))}
@@ -523,17 +577,36 @@ function ProductRow(props: { product: Product; onSaved: () => void }) {
     description: props.product.description ?? '',
     price: String(props.product.priceMinor / 100),
   });
+  // Image handling follows the product-wide upload rule: no URL field. A
+  // pending device pick cannot be persisted yet (no storage provider), so it
+  // blocks saving honestly; removing the saved image persists imageUrl: null.
+  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
+  const [removeImage, setRemoveImage] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<ReturnType<typeof validateProductForm>>({});
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  const onImageStateChange = (state: ImageUploaderState) => {
+    setPendingImage(state.pending);
+    setRemoveImage(state.removeSaved);
+  };
 
   const save = async () => {
+    if (busy) return;
+    const validation = validateProductForm(form);
+    if (Object.values(validation).some(Boolean)) {
+      setFieldErrors(validation);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       await updateProduct(props.product.id, {
-        name: form.name,
-        description: form.description || undefined,
-        priceMinor: Math.round(Number(form.price) * 100),
+        name: form.name.trim(),
+        description: form.description.trim() || undefined,
+        priceMinor: parsePriceToMinor(form.price) ?? 0,
+        ...(removeImage ? { imageUrl: null } : {}),
       });
       setEditing(false);
       props.onSaved();
@@ -545,10 +618,14 @@ function ProductRow(props: { product: Product; onSaved: () => void }) {
   };
 
   const toggle = async (isActive: boolean) => {
+    if (busy) return;
     setBusy(true);
+    setError(null);
     try {
       await updateProduct(props.product.id, { isActive });
       props.onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update availability');
     } finally {
       setBusy(false);
     }
@@ -556,9 +633,19 @@ function ProductRow(props: { product: Product; onSaved: () => void }) {
 
   const remove = async () => {
     setBusy(true);
+    setError(null);
     try {
       await deleteProduct(props.product.id);
       props.onSaved();
+    } catch (e) {
+      // Server refuses deleting products that appear in an order — suggest
+      // the non-destructive path instead of an opaque failure.
+      setError(e instanceof ApiError && e.code === 'PRODUCT_IN_USE'
+        ? 'This product is part of an order, so it cannot be deleted. Disable it instead.'
+        : e instanceof Error
+          ? e.message
+          : 'Delete failed');
+      setConfirmingDelete(false);
     } finally {
       setBusy(false);
     }
@@ -568,20 +655,54 @@ function ProductRow(props: { product: Product; onSaved: () => void }) {
     return (
       <div className="edit-block">
         {error ? <ErrorState message={error} /> : null}
-        <Field label="Name">
-          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        <Field label="Product image">
+          <ImageUploader
+            currentUrl={removeImage ? null : props.product.imageUrl}
+            label="Product image"
+            onChange={onImageStateChange}
+          />
         </Field>
-        <Field label="Price (PKR)">
-          <input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} inputMode="decimal" />
+        <Field label="Product name">
+          <input
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            placeholder="e.g. Chicken Biryani"
+            maxLength={120}
+          />
         </Field>
+        {fieldErrors.name ? <p className="auth-error" role="alert"><AlertIcon size={14} /> {fieldErrors.name}</p> : null}
         <Field label="Description">
-          <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+          <textarea
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            rows={2}
+            maxLength={1000}
+            placeholder="Short description (optional)"
+          />
         </Field>
+        {fieldErrors.description ? <p className="auth-error" role="alert"><AlertIcon size={14} /> {fieldErrors.description}</p> : null}
+        <Field label="Price (PKR)">
+          <input
+            value={form.price}
+            onChange={(e) => setForm({ ...form, price: e.target.value })}
+            inputMode="decimal"
+            placeholder="e.g. 450"
+          />
+        </Field>
+        {fieldErrors.price ? <p className="auth-error" role="alert"><AlertIcon size={14} /> {fieldErrors.price}</p> : null}
+        <Field label="Availability">
+          <Toggle checked={props.product.isActive} onChange={(v) => void toggle(v)} label={props.product.isActive ? 'Available' : 'Unavailable'} />
+        </Field>
+        {pendingImage ? (
+          <p className="hint" role="note">
+            Save is unavailable while a new photo is selected: image storage is not connected yet, so the photo cannot be persisted. Remove it to save your other changes.
+          </p>
+        ) : null}
         <div className="btn-row">
-          <Button sm onClick={save} disabled={busy || !form.name || !form.price}>
-            Save
+          <Button sm onClick={save} disabled={busy || Boolean(pendingImage)}>
+            {busy ? 'Saving…' : 'Save'}
           </Button>
-          <Button sm variant="ghost" onClick={() => setEditing(false)}>
+          <Button sm variant="ghost" onClick={() => setEditing(false)} disabled={busy}>
             Cancel
           </Button>
         </div>
@@ -591,13 +712,26 @@ function ProductRow(props: { product: Product; onSaved: () => void }) {
 
   return (
     <div className="btn-row">
-      <Toggle checked={props.product.isActive} onChange={(v) => toggle(v)} label={props.product.isActive ? 'Active' : 'Inactive'} />
+      <Toggle checked={props.product.isActive} onChange={(v) => void toggle(v)} label={props.product.isActive ? 'Available' : 'Unavailable'} />
       <Button sm variant="secondary" onClick={() => setEditing(true)}>
         Edit
       </Button>
-      <Button sm variant="danger" onClick={remove} disabled={busy}>
-        Delete
-      </Button>
+      {error && !editing ? <p className="auth-error" role="alert"><AlertIcon size={14} /> {error}</p> : null}
+      {confirmingDelete ? (
+        <>
+          <span className="confirm-delete-text" role="alert">Delete this product?</span>
+          <Button sm variant="danger" onClick={() => void remove()} disabled={busy}>
+            {busy ? 'Deleting…' : 'Yes, delete'}
+          </Button>
+          <Button sm variant="ghost" onClick={() => setConfirmingDelete(false)} disabled={busy}>
+            Keep
+          </Button>
+        </>
+      ) : (
+        <Button sm variant="danger" onClick={() => setConfirmingDelete(true)} disabled={busy}>
+          Delete
+        </Button>
+      )}
     </div>
   );
 }
@@ -605,19 +739,35 @@ function ProductRow(props: { product: Product; onSaved: () => void }) {
 function ProductForm(props: { businessId: string; onCreated: () => void }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: '', price: '', description: '' });
+  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
+  const [removeImage, setRemoveImage] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<ReturnType<typeof validateProductForm>>({});
+
+  const onImageStateChange = (state: ImageUploaderState) => {
+    setPendingImage(state.pending);
+    setRemoveImage(state.removeSaved);
+  };
 
   const create = async () => {
+    if (busy) return;
+    const validation = validateProductForm(form);
+    if (Object.values(validation).some(Boolean)) {
+      setFieldErrors(validation);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       await createProduct(props.businessId, {
-        name: form.name,
-        priceMinor: Math.round(Number(form.price) * 100),
-        description: form.description || undefined,
+        name: form.name.trim(),
+        priceMinor: parsePriceToMinor(form.price) ?? 0,
+        description: form.description.trim() || undefined,
       });
       setForm({ name: '', price: '', description: '' });
+      setPendingImage(null);
+      setRemoveImage(false);
       setOpen(false);
       props.onCreated();
     } catch (e) {
@@ -638,20 +788,48 @@ function ProductForm(props: { businessId: string; onCreated: () => void }) {
     <div className="edit-block">
       <h3>New product</h3>
       {error ? <ErrorState message={error} /> : null}
-      <Field label="Name">
-        <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+      <Field label="Product image">
+        <ImageUploader currentUrl={null} label="Product image" onChange={onImageStateChange} />
       </Field>
-      <Field label="Price (PKR)">
-        <input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} inputMode="decimal" />
+      <Field label="Product name">
+        <input
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          placeholder="e.g. Chicken Biryani"
+          maxLength={120}
+        />
       </Field>
+      {fieldErrors.name ? <p className="auth-error" role="alert"><AlertIcon size={14} /> {fieldErrors.name}</p> : null}
       <Field label="Description">
-        <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+        <textarea
+          value={form.description}
+          onChange={(e) => setForm({ ...form, description: e.target.value })}
+          rows={2}
+          maxLength={1000}
+          placeholder="Short description (optional)"
+        />
       </Field>
+      {fieldErrors.description ? <p className="auth-error" role="alert"><AlertIcon size={14} /> {fieldErrors.description}</p> : null}
+      <Field label="Price (PKR)">
+        <input
+          value={form.price}
+          onChange={(e) => setForm({ ...form, price: e.target.value })}
+          inputMode="decimal"
+          placeholder="e.g. 450"
+        />
+      </Field>
+      {fieldErrors.price ? <p className="auth-error" role="alert"><AlertIcon size={14} /> {fieldErrors.price}</p> : null}
+      <p className="hint">New products start as Available; toggle availability after creating.</p>
+      {pendingImage ? (
+        <p className="hint" role="note">
+          Save is unavailable while a new photo is selected: image storage is not connected yet, so the photo cannot be persisted. Remove it to save your other changes.
+        </p>
+      ) : null}
       <div className="btn-row">
-        <Button sm onClick={create} disabled={busy || !form.name || !form.price}>
-          Create
+        <Button sm onClick={create} disabled={busy || Boolean(pendingImage)}>
+          {busy ? 'Creating…' : 'Create product'}
         </Button>
-        <Button sm variant="ghost" onClick={() => setOpen(false)}>
+        <Button sm variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
           Cancel
         </Button>
       </div>

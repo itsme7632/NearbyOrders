@@ -453,6 +453,18 @@ export async function buildApp(): Promise<FastifyInstance> {
     const product = await prisma.product.findUnique({ where: { id } });
     if (!product) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Product not found' } });
     await ownedBusiness(q, product.businessId);
+    // Historical integrity (Phase 4 ordering): OrderItem.productId is
+    // ON DELETE RESTRICT, so a product referenced by an order can never be
+    // hard-deleted. Instead of letting that surface as a 500, refuse it
+    // explicitly and direct the owner to the non-destructive alternative.
+    const referenced = await prisma.orderItem.findFirst({ where: { productId: product.id }, select: { id: true } });
+    if (referenced)
+      return r.status(409).send({
+        error: {
+          code: 'PRODUCT_IN_USE',
+          message: 'This product is part of an order and cannot be deleted. Disable it instead.',
+        },
+      });
     await prisma.product.delete({ where: { id: product.id } });
     return r.status(204).send();
   });
