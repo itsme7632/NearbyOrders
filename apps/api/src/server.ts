@@ -19,7 +19,9 @@ import {
   productSchema,
   productUpdateSchema,
   businessHoursSchema,
-  bookingSchema,
+  bookingCreateSchema,
+  bookingListQuerySchema,
+  availabilityQuerySchema,
   orderSchema,
   businessStatusSchema,
   bookingStatusSchema,
@@ -28,6 +30,16 @@ import {
   allowedTransitions,
   isOpenNow,
   distanceKm,
+  BLOCKING_BOOKING_STATUSES,
+  overlaps,
+  generateSlots,
+  minutesOfDay,
+  formatMinutes,
+  pktDateOf,
+  pktDayOfWeek,
+  pktMinutesOf,
+  pktToUtc,
+  pktDayWindowUtc,
 } from './lib.js';
 import type { AuthUser } from './lib.js';
 
@@ -67,9 +79,15 @@ export async function buildApp(): Promise<FastifyInstance> {
       return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid request', details: e.flatten() } });
     if ((e as { code?: string }).code === 'P2002')
       return r.status(409).send({ error: { code: 'CONFLICT', message: 'A record with that value already exists' } });
+    // Errors raised with an explicit statusCode + publicMessage carry a
+    // client-safe message (e.g. slot conflicts); everything else stays opaque.
+    const status = (e as { statusCode?: number }).statusCode;
+    const publicMessage = (e as { publicMessage?: string }).publicMessage;
+    if (status !== undefined && publicMessage)
+      return r.status(status).send({ error: { code: (e as { code?: string }).code ?? 'CONFLICT', message: publicMessage } });
     app.log.error(e);
     return r
-      .status((e as { statusCode?: number }).statusCode ?? 500)
+      .status(status ?? 500)
       .send({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' } });
   });
 
@@ -190,7 +208,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     // Nearby filtering happens after the fetch, so when active we scan a wider
     // page before applying the radius + sort, then slice to the requested limit.
     const fetchTake = s.nearLat !== undefined && s.nearLng !== undefined ? 100 : limit;
-    const businesses = await prisma.business.findMany({ where, include: PUBLIC_BUSINESS_INCLUDE, take: fetchTake });
+    // Newest-first so the first page is deterministic once more businesses exist
+    // than a single page can hold.
+    const businesses = await prisma.business.findMany({ where, include: PUBLIC_BUSINESS_INCLUDE, take: fetchTake, orderBy: { createdAt: 'desc' } });
     const mapped = businesses.map((b) => ({
       id: b.id,
       name: b.name,
@@ -403,37 +423,246 @@ export async function buildApp(): Promise<FastifyInstance> {
     return { data: await prisma.businessHour.findMany({ where: { businessId: id }, orderBy: { dayOfWeek: 'asc' } }) };
   });
 
-  /* -------------------- Bookings / Orders (Phase 1) ------------------- */
+  /* -------------------- Bookings (Phase 3A) --------------------------- */
+
+  /**
+   * Business error with a client-safe message. Used for booking conflicts so
+   * the error handler can expose a useful reason without leaking internals.
+   */
+  const bookingError = (statusCode: number, code: string, message: string): Error =>
+    Object.assign(new Error(message), { statusCode, code, publicMessage: message });
+
+  /** Loads one booking visible to the current user (own, owned business, or admin); else 404. */
+  const loadVisibleBooking = async (q: FastifyRequest, id: string) => {
+    const u = currentUser(q);
+    const booking = await prisma.booking.findUnique({ where: { id }, include: { business: true, service: true } });
+    if (!booking) throw bookingError(404, 'NOT_FOUND', 'Booking not found');
+    const ownsBusiness = (u.role === 'BUSINESS_OWNER' || u.role === 'ADMIN') && booking.business.ownerId === u.id;
+    if (booking.customerId !== u.id && !ownsBusiness) throw bookingError(404, 'NOT_FOUND', 'Booking not found');
+    return booking;
+  };
+
+  /** Booking fields safe to return to any client (never credentials or internal ids). */
+  const publicBooking = (booking: {
+    id: string;
+    bookingDate: Date;
+    startAt: Date;
+    endAt: Date;
+    status: string;
+    notes: string | null;
+    customerId: string;
+    createdAt: Date;
+    business: { id: string; name: string; slug: string; ownerId: string };
+    service: { id: string; name: string; durationMinutes: number | null; priceMinor: number; currency: string } | null | undefined;
+  }) => ({
+    id: booking.id,
+    businessId: booking.business.id,
+    businessName: booking.business.name,
+    businessSlug: booking.business.slug,
+    serviceId: booking.service?.id ?? null,
+    serviceName: booking.service?.name ?? null,
+    priceMinor: booking.service?.priceMinor ?? null,
+    currency: booking.service?.currency ?? 'PKR',
+    bookingDate: pktDateOf(booking.startAt),
+    startTime: formatMinutes(pktMinutesOf(booking.startAt)),
+    endTime: formatMinutes(pktMinutesOf(booking.endAt)),
+    status: booking.status,
+    notes: booking.notes,
+    customerId: booking.customerId,
+    createdAt: booking.createdAt,
+  });
+
+  /** Shared booking-list include with only public customer fields. */
+  const BOOKING_INCLUDE = {
+    business: { select: { id: true, name: true, slug: true, ownerId: true } },
+    service: { select: { id: true, name: true, durationMinutes: true, priceMinor: true, currency: true } },
+  } as const;
+
+  app.get('/api/v1/businesses/:businessId/services/:serviceId/availability', async (q, r) => {
+    const { businessId, serviceId } = q.params as { businessId: string; serviceId: string };
+    const { date } = availabilityQuerySchema.parse(q.query);
+
+    const business = await prisma.business.findFirst({
+      where: { OR: [{ id: businessId }, { slug: businessId }], status: 'APPROVED', archivedAt: null },
+      include: { hours: true },
+    });
+    if (!business) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Business not found' } });
+
+    const service = await prisma.service.findFirst({ where: { id: serviceId, businessId: business.id } });
+    if (!service || !service.isActive || service.durationMinutes === null)
+      return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Service not found or not bookable' } });
+    const duration = service.durationMinutes;
+
+    const day = pktDayOfWeek(new Date(Date.parse(`${date}T12:00:00Z`)));
+    const todayHours = business.hours.find((h) => h.dayOfWeek === day);
+    if (!todayHours || todayHours.isClosed || !todayHours.opensAt || !todayHours.closesAt) {
+      return {
+        data: { date, serviceDurationMinutes: duration, businessHours: null, closed: true, slots: [] },
+      };
+    }
+
+    // Blocking bookings for this business on this local date.
+    const window = pktDayWindowUtc(date);
+    const busy = await prisma.booking.findMany({
+      where: {
+        businessId: business.id,
+        status: { in: [...BLOCKING_BOOKING_STATUSES] },
+        startAt: { lt: window.to },
+        endAt: { gt: window.from },
+      },
+      select: { startAt: true, endAt: true },
+    });
+
+    const slots = generateSlots({ opensAt: todayHours.opensAt, closesAt: todayHours.closesAt }, duration).map((s) => {
+      const start = pktToUtc(date, s.startMinutes);
+      const end = pktToUtc(date, s.endMinutes);
+      const startMinutesLocal = s.startMinutes;
+      const isInPast = start.getTime() <= Date.now();
+      const isTaken = busy.some((b) => overlaps(start, end, b.startAt, b.endAt));
+      return {
+        start: formatMinutes(startMinutesLocal),
+        end: formatMinutes(s.endMinutes),
+        available: !isInPast && !isTaken,
+      };
+    });
+
+    return {
+      data: {
+        date,
+        serviceDurationMinutes: duration,
+        businessHours: { open: todayHours.opensAt, close: todayHours.closesAt },
+        closed: false,
+        slots,
+      },
+    };
+  });
+
   app.post('/api/v1/bookings', { preHandler: roles('CUSTOMER') }, async (q, r) => {
-    const d = bookingSchema.parse(q.body);
-    const b = await prisma.business.findFirst({ where: { id: d.businessId, status: 'APPROVED' } });
-    if (!b) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Business not found' } });
-    if (d.serviceId && !(await prisma.service.findFirst({ where: { id: d.serviceId, businessId: b.id, isActive: true } })))
+    const d = bookingCreateSchema.parse(q.body);
+
+    const business = await prisma.business.findFirst({
+      where: { id: d.businessId, status: 'APPROVED', archivedAt: null },
+      include: { hours: true },
+    });
+    if (!business) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Business not found' } });
+
+    const service = await prisma.service.findFirst({ where: { id: d.serviceId, businessId: business.id } });
+    if (!service || !service.isActive || service.durationMinutes === null)
       return r.status(400).send({ error: { code: 'INVALID_SERVICE', message: 'Service is unavailable' } });
-    return r.status(201).send({ data: await prisma.booking.create({ data: { ...d, customerId: currentUser(q).id } }) });
+    const duration = service.durationMinutes;
+
+    const startMinutes = minutesOfDay(d.startTime);
+    const endMinutes = startMinutes + duration;
+    const startAt = pktToUtc(d.date, startMinutes);
+    const endAt = pktToUtc(d.date, endMinutes);
+
+    // Business-hours + past validation (customer-selected wall clock).
+    const day = pktDayOfWeek(startAt);
+    const todayHours = business.hours.find((h) => h.dayOfWeek === day);
+    if (!todayHours || todayHours.isClosed || !todayHours.opensAt || !todayHours.closesAt)
+      return r.status(400).send({ error: { code: 'CLOSED_DAY', message: 'The business is closed on the selected day' } });
+    if (startMinutes < minutesOfDay(todayHours.opensAt) || endMinutes > minutesOfDay(todayHours.closesAt))
+      return r.status(400).send({ error: { code: 'OUTSIDE_HOURS', message: 'The selected time is outside business hours' } });
+    if (startAt.getTime() <= Date.now())
+      return r.status(400).send({ error: { code: 'IN_PAST', message: 'The selected time has already passed' } });
+
+    // Double-booking protection: serialize concurrent booking attempts for the
+    // same business with a transaction-scoped advisory lock, then re-check
+    // overlap inside the transaction and insert. Two overlapping requests can
+    // never both pass the check because the second waits for the first to commit.
+    const booking = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${business.id}))`;
+      const conflicting = await tx.booking.findFirst({
+        where: {
+          businessId: business.id,
+          status: { in: [...BLOCKING_BOOKING_STATUSES] },
+          startAt: { lt: endAt },
+          endAt: { gt: startAt },
+        },
+        select: { id: true },
+      });
+      if (conflicting) throw bookingError(409, 'SLOT_TAKEN', 'That time slot was just booked. Please choose another.');
+      return tx.booking.create({
+        data: {
+          customerId: currentUser(q).id,
+          businessId: business.id,
+          serviceId: service.id,
+          bookingDate: new Date(Date.parse(`${d.date}T00:00:00Z`)),
+          startAt,
+          endAt,
+          notes: d.notes,
+        },
+      });
+    });
+
+    return r.status(201).send({ data: publicBooking({ ...booking, business, service }) });
   });
 
   app.get('/api/v1/bookings', { preHandler: auth }, async (q) => {
     const u = currentUser(q);
-    return {
-      data:
-        u.role === 'BUSINESS_OWNER'
-          ? await prisma.booking.findMany({ where: { business: { ownerId: u.id } }, include: { customer: true, service: true } })
-          : await prisma.booking.findMany({ where: { customerId: u.id }, include: { business: true, service: true } }),
-    };
+    const filters = bookingListQuerySchema.parse(q.query ?? {});
+    const dateFilter: Record<string, unknown> = {};
+    if (filters.from) dateFilter.gte = Date.parse(`${filters.from}T00:00:00Z`);
+    if (filters.to) dateFilter.lte = Date.parse(`${filters.to}T00:00:00Z`);
+    const where: Record<string, unknown> = {};
+    if (Object.keys(dateFilter).length > 0) where.bookingDate = dateFilter;
+    if (filters.status) where.status = filters.status;
+
+    if (u.role === 'BUSINESS_OWNER') {
+      where.business = { ownerId: u.id };
+    } else if (u.role === 'CUSTOMER') {
+      where.customerId = u.id;
+    }
+    const bookings = await prisma.booking.findMany({
+      where,
+      include: { ...BOOKING_INCLUDE, customer: { select: { id: true, email: true, firstName: true, lastName: true } } },
+      orderBy: [{ bookingDate: 'desc' }, { startAt: 'desc' }],
+      take: 200,
+    });
+    return { data: bookings.map((b) => ({ ...publicBooking(b), customer: b.customer })) };
   });
 
-  app.patch('/api/v1/bookings/:id/status', { preHandler: auth }, async (q, r) => {
+  app.get('/api/v1/bookings/:id', { preHandler: auth }, async (q) => {
+    const booking = await loadVisibleBooking(q, (q.params as { id: string }).id);
+    return { data: publicBooking(booking) };
+  });
+
+  app.get('/api/v1/businesses/:id/bookings', { preHandler: roles('BUSINESS_OWNER') }, async (q) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    const filters = bookingListQuerySchema.parse(q.query ?? {});
+    const where: Record<string, unknown> = { businessId: id };
+    if (filters.status) where.status = filters.status;
+    const dateFilter: Record<string, unknown> = {};
+    if (filters.from) dateFilter.gte = Date.parse(`${filters.from}T00:00:00Z`);
+    if (filters.to) dateFilter.lte = Date.parse(`${filters.to}T00:00:00Z`);
+    if (Object.keys(dateFilter).length > 0) where.bookingDate = dateFilter;
+    const bookings = await prisma.booking.findMany({
+      where,
+      include: { ...BOOKING_INCLUDE, customer: { select: { id: true, email: true, firstName: true, lastName: true } } },
+      orderBy: [{ bookingDate: 'desc' }, { startAt: 'desc' }],
+      take: 200,
+    });
+    return { data: bookings.map((b) => ({ ...publicBooking(b), customer: b.customer })) };
+  });
+
+  app.post('/api/v1/bookings/:id/cancel', { preHandler: roles('CUSTOMER') }, async (q, r) => {
+    const booking = await loadVisibleBooking(q, (q.params as { id: string }).id);
+    if (booking.customerId !== currentUser(q).id)
+      return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Booking not found' } });
+    if (!allowedTransitions.booking[booking.status].includes('CANCELLED'))
+      return r.status(409).send({ error: { code: 'INVALID_TRANSITION', message: `A ${booking.status.toLowerCase()} booking cannot be cancelled` } });
+    return { data: publicBooking(await prisma.booking.update({ where: { id: booking.id }, data: { status: 'CANCELLED' }, include: BOOKING_INCLUDE })) };
+  });
+
+  app.patch('/api/v1/bookings/:id/status', { preHandler: roles('BUSINESS_OWNER', 'ADMIN') }, async (q, r) => {
     const status = bookingStatusSchema.parse((q.body as { status: string }).status);
-    const b = await prisma.booking.findUnique({ where: { id: (q.params as { id: string }).id } });
-    if (!b) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Booking not found' } });
-    const u = currentUser(q);
-    const businessOwner = await prisma.business.findFirst({ where: { id: b.businessId, ownerId: u.id } });
-    const allowed: readonly string[] =
-      u.role === 'CUSTOMER' && b.customerId === u.id ? ['CANCELLED'] : businessOwner ? allowedTransitions.booking[b.status] : [];
-    if (!allowed.includes(status))
-      return r.status(409).send({ error: { code: 'INVALID_TRANSITION', message: 'Status transition is not allowed' } });
-    return { data: await prisma.booking.update({ where: { id: b.id }, data: { status } }) };
+    const booking = await loadVisibleBooking(q, (q.params as { id: string }).id);
+    if (currentUser(q).role === 'BUSINESS_OWNER' && booking.business.ownerId !== currentUser(q).id)
+      return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Booking not found' } });
+    if (!allowedTransitions.booking[booking.status].includes(status))
+      return r.status(409).send({ error: { code: 'INVALID_TRANSITION', message: `Cannot change a ${booking.status.toLowerCase()} booking to ${status.toLowerCase()}` } });
+    return { data: publicBooking(await prisma.booking.update({ where: { id: booking.id }, data: { status }, include: BOOKING_INCLUDE })) };
   });
 
   app.post('/api/v1/orders', { preHandler: roles('CUSTOMER') }, async (q, r) => {

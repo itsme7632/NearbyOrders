@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 enum Role {
@@ -12,6 +12,7 @@ enum Role {
   BUSINESS_OWNER
   ADMIN
 }
+
 enum BusinessStatus {
   PENDING
   APPROVED
@@ -19,6 +20,7 @@ enum BusinessStatus {
   SUSPENDED
   ARCHIVED
 }
+
 enum BookingStatus {
   PENDING
   CONFIRMED
@@ -26,6 +28,7 @@ enum BookingStatus {
   CANCELLED
   COMPLETED
 }
+
 enum OrderStatus {
   PENDING
   ACCEPTED
@@ -37,173 +40,198 @@ enum OrderStatus {
 }
 
 model User {
-  id String @id @default(uuid())
-  email String @unique
+  id           String         @id @default(uuid())
+  email        String         @unique
   passwordHash String
-  role Role @default(CUSTOMER)
-  firstName String?
-  lastName String?
-  phone String?
-  isSuspended Boolean @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  businesses Business[] @relation("BusinessOwner")
-  bookings Booking[]
-  orders Order[]
-  sessions RefreshToken[]
-  auditActions AuditLog[] @relation("AuditActor")
+  role         Role           @default(CUSTOMER)
+  firstName    String?
+  lastName     String?
+  phone        String?
+  isSuspended  Boolean        @default(false)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  businesses   Business[]     @relation("BusinessOwner")
+  bookings     Booking[]
+  orders       Order[]
+  sessions     RefreshToken[]
+  auditActions AuditLog[]     @relation("AuditActor")
+
   @@index([role, isSuspended])
 }
+
 model Category {
-  id String @id @default(uuid())
-  name String @unique
-  slug String @unique
-  isActive Boolean @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String             @id @default(uuid())
+  name       String             @unique
+  slug       String             @unique
+  isActive   Boolean            @default(true)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
   businesses BusinessCategory[]
 }
+
 model Business {
-  id String @id @default(uuid())
-  ownerId String
-  name String
-  slug String @unique
+  id          String             @id @default(uuid())
+  ownerId     String
+  name        String
+  slug        String             @unique
   description String?
-  phone String?
-  email String?
-  imageUrl String?
-  isVerified Boolean @default(false)
-  status BusinessStatus @default(PENDING)
-  address String
-  city String
-  locality String?
-  latitude Decimal @db.Decimal(10, 7)
-  longitude Decimal @db.Decimal(10, 7)
-  currency String @default("PKR")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  archivedAt DateTime?
-  owner User @relation("BusinessOwner", fields: [ownerId], references: [id])
-  categories BusinessCategory[]
-  hours BusinessHour[]
-  services Service[]
-  products Product[]
-  bookings Booking[]
-  orders Order[]
+  phone       String?
+  email       String?
+  imageUrl    String?
+  isVerified  Boolean            @default(false)
+  status      BusinessStatus     @default(PENDING)
+  address     String
+  city        String
+  locality    String?
+  latitude    Decimal            @db.Decimal(10, 7)
+  longitude   Decimal            @db.Decimal(10, 7)
+  currency    String             @default("PKR")
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  archivedAt  DateTime?
+  owner       User               @relation("BusinessOwner", fields: [ownerId], references: [id])
+  categories  BusinessCategory[]
+  hours       BusinessHour[]
+  services    Service[]
+  products    Product[]
+  bookings    Booking[]
+  orders      Order[]
+
   @@index([ownerId])
   @@index([status, city])
   @@index([latitude, longitude])
 }
+
 model BusinessCategory {
   businessId String
   categoryId String
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  category Category @relation(fields: [categoryId], references: [id])
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [categoryId], references: [id])
+
   @@id([businessId, categoryId])
   @@index([categoryId])
 }
+
 model BusinessHour {
-  id String @id @default(uuid())
+  id         String   @id @default(uuid())
   businessId String
-  dayOfWeek Int
-  opensAt String?
-  closesAt String?
-  isClosed Boolean @default(false)
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  dayOfWeek  Int
+  opensAt    String?
+  closesAt   String?
+  isClosed   Boolean  @default(false)
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
   @@unique([businessId, dayOfWeek])
 }
+
 model Service {
-  id String @id @default(uuid())
-  businessId String
-  name String
-  description String?
-  priceMinor Int
-  currency String @default("PKR")
+  id              String    @id @default(uuid())
+  businessId      String
+  name            String
+  description     String?
+  priceMinor      Int
+  currency        String    @default("PKR")
   durationMinutes Int?
-  isActive Boolean @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  bookings Booking[]
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  business        Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  bookings        Booking[]
+
   @@index([businessId, isActive])
 }
+
 model Product {
-  id String @id @default(uuid())
-  businessId String
-  name String
+  id          String      @id @default(uuid())
+  businessId  String
+  name        String
   description String?
-  priceMinor Int
-  currency String @default("PKR")
-  imageUrl String?
-  isActive Boolean @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  items OrderItem[]
+  priceMinor  Int
+  currency    String      @default("PKR")
+  imageUrl    String?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  business    Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  items       OrderItem[]
+
   @@index([businessId, isActive])
 }
+
 model Booking {
-  id String @id @default(uuid())
-  customerId String
-  businessId String
-  serviceId String?
-  scheduledAt DateTime
-  status BookingStatus @default(PENDING)
-  notes String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  customer User @relation(fields: [customerId], references: [id])
-  business Business @relation(fields: [businessId], references: [id])
-  service Service? @relation(fields: [serviceId], references: [id])
+  id          String        @id @default(uuid())
+  customerId  String
+  businessId  String
+  serviceId   String?
+  bookingDate DateTime      @db.Date
+  startAt     DateTime
+  endAt       DateTime
+  status      BookingStatus @default(PENDING)
+  notes       String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  customer    User          @relation(fields: [customerId], references: [id])
+  business    Business      @relation(fields: [businessId], references: [id])
+  service     Service?      @relation(fields: [serviceId], references: [id])
+
   @@index([businessId, status])
   @@index([customerId, status])
+  @@index([businessId, bookingDate])
 }
+
 model Order {
-  id String @id @default(uuid())
-  customerId String
-  businessId String
-  status OrderStatus @default(PENDING)
-  subtotalMinor Int
-  currency String @default("PKR")
-  fulfillmentType String @default("PICKUP")
-  notes String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  customer User @relation(fields: [customerId], references: [id])
-  business Business @relation(fields: [businessId], references: [id])
-  items OrderItem[]
+  id              String      @id @default(uuid())
+  customerId      String
+  businessId      String
+  status          OrderStatus @default(PENDING)
+  subtotalMinor   Int
+  currency        String      @default("PKR")
+  fulfillmentType String      @default("PICKUP")
+  notes           String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  customer        User        @relation(fields: [customerId], references: [id])
+  business        Business    @relation(fields: [businessId], references: [id])
+  items           OrderItem[]
+
   @@index([businessId, status])
   @@index([customerId, status])
 }
+
 model OrderItem {
-  id String @id @default(uuid())
-  orderId String
-  productId String
-  name String
+  id             String  @id @default(uuid())
+  orderId        String
+  productId      String
+  name           String
   unitPriceMinor Int
-  quantity Int
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id])
+  quantity       Int
+  order          Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product        Product @relation(fields: [productId], references: [id])
+
   @@index([orderId])
 }
+
 model RefreshToken {
-  id String @id @default(uuid())
-  userId String
-  tokenHash String @unique
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
   expiresAt DateTime
   revokedAt DateTime?
-  createdAt DateTime @default(now())
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId, expiresAt])
 }
+
 model AuditLog {
-  id String @id @default(uuid())
-  actorId String?
-  action String
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
   entityType String
-  entityId String
-  metadata Json?
-  createdAt DateTime @default(now())
-  actor User? @relation("AuditActor", fields: [actorId], references: [id])
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id])
+
   @@index([entityType, entityId])
 }

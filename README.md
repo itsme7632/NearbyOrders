@@ -5,9 +5,10 @@ Mobile-first local discovery, booking, and ordering platform for Pakistan. V1 is
 ## What works today
 
 - Category browsing, business discovery (search, category filter, nearby radius), and rich business profiles with hours, services, and products
+- Real booking backend (Phase 3A): server-derived end times from service duration, business-hours validation, per-date availability slots, double-booking protection, and a customer/owner booking lifecycle (see [docs/bookings.md](docs/bookings.md))
 - Business-owner management screens: profile, services, products, and opening hours (create/edit/activate/deactivate, ownership enforced server-side)
 - Admin category management and business approval endpoints
-- Auth (register/login), customer bookings/orders foundations from Phase 1
+- Auth (register/login), customer orders foundation from Phase 1
 
 ## Start locally
 
@@ -58,9 +59,9 @@ Then open `apps/mobile/android/` in Android Studio (SDK 35, JDK 21) and build a 
 
 ## API
 
-Versioned at `/api/v1`; `/health` is unprotected. Implemented: auth (register/login/me), categories (public list, admin CRUD), approved-business discovery (search `q`, `category`, `city`, nearby `nearLat`/`nearLng`/`radiusKm` with distance sorting), business detail by id or slug (hours + services + products), owner business profile update, owner services/products CRUD with activate/deactivate, owner opening-hours replacement, customer bookings/orders, and admin dashboard/business status. Backend authorization and ownership checks are the security boundary. See [architecture](docs/architecture.md).
+Versioned at `/api/v1`; `/health` is unprotected. Implemented: auth (register/login/me), categories (public list, admin CRUD), approved-business discovery (search `q`, `category`, `city`, nearby `nearLat`/`nearLng`/`radiusKm` with distance sorting), business detail by id or slug (hours + services + products), owner business profile update, owner services/products CRUD with activate/deactivate, owner opening-hours replacement, service availability and booking lifecycle (create/cancel, owner status changes), customer orders, and admin dashboard/business status. Backend authorization and ownership checks are the security boundary. See [architecture](docs/architecture.md) and [bookings](docs/bookings.md).
 
-Planned next: booking/order flows on top of these resources, admin UI, image hosting. This foundation intentionally does not include payments, reviews, delivery, promotions, subscriptions, or fake production data.
+Planned next: booking/order flows in the mobile UI (Phase 3B), admin UI, image hosting. This foundation intentionally does not include payments, reviews, delivery, promotions, subscriptions, or fake production data.
 
 ## Deployment
 

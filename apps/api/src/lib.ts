@@ -1,4 +1,4 @@
-import { PrismaClient, Role } from '@prisma/client';
+import { PrismaClient, Role, type BookingStatus } from '@prisma/client';
 import { z } from 'zod';
 
 export const prisma = new PrismaClient();
@@ -144,15 +144,91 @@ export const businessHoursSchema = z
   );
 
 /* ------------------------------------------------------------------ */
-/* Bookings / Orders (Phase 1)                                         */
+/* Bookings (Phase 3A)                                                 */
 /* ------------------------------------------------------------------ */
 
-export const bookingSchema = z.object({
+/**
+ * Time-storage strategy (detailed in docs/bookings.md):
+ * - `Booking.startAt` / `Booking.endAt` store absolute UTC instants.
+ * - `Booking.bookingDate` stores the business-local (Asia/Karachi) calendar
+ *   date, so availability queries filter by the customer's local day.
+ * - Pakistan has no DST, so local wall-clock time is a fixed UTC+05:00
+ *   offset. Conversions below are exact and never depend on server TZ.
+ */
+export const BUSINESS_TZ_OFFSET_MINUTES = 300; // UTC+05:00 (Asia/Karachi, no DST)
+
+/** Formats minutes-since-midnight as HH:MM. */
+export const formatMinutes = (minutes: number): string =>
+  `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+
+/** Calendar date (YYYY-MM-DD) of a UTC instant, in business-local time. */
+export const pktDateOf = (instant: Date): string =>
+  new Date(instant.getTime() + BUSINESS_TZ_OFFSET_MINUTES * 60_000).toISOString().slice(0, 10);
+
+/** Minutes-since-midnight (0–1439) of a UTC instant, in business-local time. */
+export const pktMinutesOf = (instant: Date): number => {
+  const shifted = new Date(instant.getTime() + BUSINESS_TZ_OFFSET_MINUTES * 60_000);
+  return shifted.getUTCHours() * 60 + shifted.getUTCMinutes();
+};
+
+/** Day of week (0=Sunday) of a UTC instant, in business-local time. */
+export const pktDayOfWeek = (instant: Date): number =>
+  new Date(Date.parse(`${pktDateOf(instant)}T00:00:00Z`)).getUTCDay();
+
+/** Converts a business-local wall clock (date + minutes) to a UTC instant. */
+export const pktToUtc = (date: string, minutes: number): Date =>
+  new Date(Date.parse(`${date}T00:00:00Z`) + (minutes - BUSINESS_TZ_OFFSET_MINUTES) * 60_000);
+
+/** Inclusive [from, to) UTC instants covering one business-local calendar date. */
+export const pktDayWindowUtc = (date: string): { from: Date; to: Date } => ({
+  from: pktToUtc(date, 0),
+  to: pktToUtc(date, 24 * 60),
+});
+
+/** Round-trip-validated calendar date; rejects impossible dates like 02-30. */
+export const calendarDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD')
+  .refine((d) => {
+    const parsed = Date.parse(`${d}T00:00:00Z`);
+    return Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 10) === d;
+  }, { message: 'Must be a real calendar date' });
+
+/** Customer-visible booking creation: the server derives everything else. */
+export const bookingCreateSchema = z.object({
   businessId: z.string().uuid(),
-  serviceId: z.string().uuid().optional(),
-  scheduledAt: z.coerce.date().refine((d) => d > new Date(), 'Must be in the future'),
+  serviceId: z.string().uuid(),
+  date: calendarDate,
+  startTime: timeOfDay,
   notes: z.string().max(1000).optional(),
 });
+
+export const availabilityQuerySchema = z.object({ date: calendarDate });
+
+/** Booking statuses that occupy a time slot; REJECTED/CANCELLED never block. */
+export const BLOCKING_BOOKING_STATUSES: readonly BookingStatus[] = ['PENDING', 'CONFIRMED'];
+
+/** True when the half-open intervals [aStart,aEnd) and [bStart,bEnd) overlap. */
+export const overlaps = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): boolean =>
+  aStart < bEnd && bStart < aEnd;
+
+/**
+ * Generates duration-aligned candidate slots for one open business day:
+ * slots step by `durationMinutes` from opening time and must fit entirely
+ * inside [opensAt, closesAt). Pure; overlap filtering happens separately.
+ */
+export const generateSlots = (
+  hours: { opensAt: string; closesAt: string },
+  durationMinutes: number,
+): { startMinutes: number; endMinutes: number }[] => {
+  const open = minutesOfDay(hours.opensAt);
+  const close = minutesOfDay(hours.closesAt);
+  const slots: { startMinutes: number; endMinutes: number }[] = [];
+  for (let start = open; start + durationMinutes <= close; start += durationMinutes) {
+    slots.push({ startMinutes: start, endMinutes: start + durationMinutes });
+  }
+  return slots;
+};
 
 export const orderSchema = z.object({
   businessId: z.string().uuid(),
@@ -197,23 +273,32 @@ export const businessStatusSchema = z.enum(['PENDING', 'APPROVED', 'REJECTED', '
 export const bookingStatusSchema = z.enum(['PENDING', 'CONFIRMED', 'REJECTED', 'CANCELLED', 'COMPLETED']);
 export const orderStatusSchema = z.enum(['PENDING', 'ACCEPTED', 'REJECTED', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED']);
 
+/** Booking list filters (customer and owner endpoints). */
+export const bookingListQuerySchema = z
+  .object({
+    status: bookingStatusSchema.optional(),
+    from: calendarDate.optional(),
+    to: calendarDate.optional(),
+  });
+
 /* ------------------------------------------------------------------ */
-/* Opening-hours helper (server-local timezone approximation)          */
+/* Opening-hours helper (business-local time, Asia/Karachi)            */
 /* ------------------------------------------------------------------ */
 
-const minutesOfDay = (hhmm: string): number => {
+/** Parses HH:MM into minutes-since-midnight. */
+export const minutesOfDay = (hhmm: string): number => {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + m;
 };
 
-/** True when `now` falls inside the provided opening-hours rows. */
+/** True when `now` falls inside the provided opening-hours rows (PKT wall clock). */
 export const isOpenNow = (
   hours: readonly { dayOfWeek: number; isClosed: boolean; opensAt: string | null; closesAt: string | null }[],
   now: Date = new Date(),
 ): boolean => {
-  const today = hours.find((h) => h.dayOfWeek === now.getDay());
+  const today = hours.find((h) => h.dayOfWeek === pktDayOfWeek(now));
   if (!today || today.isClosed || !today.opensAt || !today.closesAt) return false;
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const nowMinutes = pktMinutesOf(now);
   return minutesOfDay(today.opensAt) <= nowMinutes && nowMinutes < minutesOfDay(today.closesAt);
 };
 
