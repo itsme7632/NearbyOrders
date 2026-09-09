@@ -164,6 +164,16 @@ export const getBusiness = (idOrSlug: string) => request<Business>(`/businesses/
 
 export const getMyBusinesses = () => request<Business[]>('/businesses/mine', { auth: true });
 
+/** Self-service business creation; the server assigns ownership from the session. */
+export const createBusiness = (input: {
+  name: string;
+  categoryIds: string[];
+  description?: string;
+  phone?: string;
+  address: string;
+  city: string;
+}) => request<Business>('/businesses', { method: 'POST', body: input, auth: true });
+
 export const updateBusiness = (
   id: string,
   patch: Partial<{ name: string; description: string; phone: string; email: string; address: string; city: string; locality: string; imageUrl: string; categoryIds: string[] }>,

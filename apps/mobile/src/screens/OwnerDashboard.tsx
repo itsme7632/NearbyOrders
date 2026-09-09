@@ -24,11 +24,11 @@ import {
   listServices,
 } from '../api.js';
 import { Button, EmptyState, ErrorState, Field, Loading, Money, Toggle } from '../components/ui.js';
-import { OrdersIcon, StoreIcon } from '../components/icons.js';
+import { OrdersIcon, CheckIcon, StoreIcon } from '../components/icons.js';
 
 type OwnerTab = 'profile' | 'services' | 'products' | 'hours';
 
-export function OwnerDashboardScreen(props: { onBack: () => void }) {
+export function OwnerDashboardScreen(props: { onBack: () => void; onListBusiness?: () => void; justCreatedName?: string | null }) {
   const businesses = useAsyncData<Business[]>(() => getMyBusinesses(), []);
   const [businessId, setBusinessId] = useState<string | undefined>(undefined);
   const [tab, setTab] = useState<OwnerTab>('profile');
@@ -43,8 +43,13 @@ export function OwnerDashboardScreen(props: { onBack: () => void }) {
         </button>
         <EmptyState
           icon={<StoreIcon size={30} />}
-          title="No business yet"
-          body="Business creation on web is coming soon. An administrator can onboard your business in the meantime."
+          title="Your business"
+          body="You haven't listed a business yet. Create your business profile and start accepting bookings."
+          action={
+            props.onListBusiness ? (
+              <Button onClick={props.onListBusiness}>List my business</Button>
+            ) : null
+          }
         />
       </div>
     );
@@ -67,11 +72,27 @@ export function OwnerDashboardScreen(props: { onBack: () => void }) {
       <button className="back-link" onClick={props.onBack}>
         ‹ Back
       </button>
+      {props.justCreatedName ? (
+        <div className="created-banner" role="status">
+          <CheckIcon size={16} />
+          <span>
+            <strong>{props.justCreatedName}</strong> has been created. Add your services and opening hours below; it appears in customer
+            search once approved.
+          </span>
+        </div>
+      ) : null}
       <header className="owner-head">
         <h1>{active.name}</h1>
         <span className={`badge ${active.status === 'APPROVED' ? 'badge-open' : 'badge-closed'}`}>{active.status}</span>
       </header>
       {switcher}
+      <div className="btn-row">
+        {props.onListBusiness ? (
+          <Button variant="ghost" sm onClick={props.onListBusiness}>
+            List another business
+          </Button>
+        ) : null}
+      </div>
       <nav className="owner-tabs" aria-label="Management sections">
         {(
           [

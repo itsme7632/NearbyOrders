@@ -61,8 +61,10 @@ const businessCore = {
   address: z.string().min(5),
   city: z.string().min(2),
   locality: z.string().max(100).optional(),
-  latitude: z.number().gte(-90).lte(90),
-  longitude: z.number().gte(-180).lte(180),
+  // Optional for self-service onboarding; the create handler applies a
+  // city-centre fallback so the not-null schema contract stays intact.
+  latitude: z.number().gte(-90).lte(90).optional(),
+  longitude: z.number().gte(-180).lte(180).optional(),
   phone: phone.optional(),
   email: z.string().email().max(120).optional(),
   imageUrl: optionalUrl,

@@ -7,11 +7,14 @@ export type Route =
   | { name: 'business'; idOrSlug: string }
   | { name: 'book'; businessId: string; serviceId?: string }
   | { name: 'booking'; bookingId: string }
-  | { name: 'owner-dashboard'; businessId?: string };
+  | { name: 'owner-dashboard'; justCreated?: boolean; justCreatedName?: string }
+  | { name: 'create-business' };
 
-/** Parses `#/business/<idOrSlug>`, `#/book/...`, `#/booking/<id>` and `#/owner` style hash routes. */
+/** Parses `#/business/<idOrSlug>`, `#/book/...`, `#/booking/<id>`, `#/owner`, `#/create-business` style hash routes. */
 export function parseHash(hash: string): Route {
-  const clean = hash.replace(/^#\/?/, '').split('?')[0];
+  const raw = hash.replace(/^#\/?/, '');
+  const [pathPart, queryPart] = raw.split('?');
+  const clean = pathPart;
   if (clean.startsWith('business/')) {
     const idOrSlug = clean.slice('business/'.length);
     if (idOrSlug) return { name: 'business', idOrSlug };
@@ -25,6 +28,12 @@ export function parseHash(hash: string): Route {
     const bookingId = clean.slice('booking/'.length);
     if (bookingId) return { name: 'booking', bookingId };
   }
-  if (clean === 'owner') return { name: 'owner-dashboard' };
+  if (clean === 'create-business') return { name: 'create-business' };
+  if (clean === 'owner') {
+    const created = new URLSearchParams(queryPart ?? '').get('created');
+    return created
+      ? { name: 'owner-dashboard', justCreated: true, justCreatedName: created }
+      : { name: 'owner-dashboard' };
+  }
   return { name: 'tabs' };
 }

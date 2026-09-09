@@ -1,0 +1,168 @@
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { CreateBusinessScreen, validateBusinessForm } from './CreateBusiness.js';
+import * as api from '../api.js';
+import type { Category } from '../api.js';
+
+afterEach(cleanup);
+
+const categories: Category[] = [
+  { id: 'cat-1', name: 'Beauty & Spa', slug: 'beauty-spa', isActive: true },
+  { id: 'cat-2', name: 'Food & Dining', slug: 'food-dining', isActive: true },
+  { id: 'cat-3', name: 'Hidden', slug: 'hidden', isActive: false },
+];
+
+beforeEach(() => {
+  vi.spyOn(api, 'listCategories').mockResolvedValue(categories);
+  vi.spyOn(api, 'createBusiness').mockResolvedValue({
+    id: 'biz-default',
+    name: 'Default Business',
+    slug: 'default-business',
+    description: null,
+    imageUrl: null,
+    isVerified: false,
+    address: '12 Food Street',
+    city: 'Karachi',
+    locality: null,
+    phone: null,
+    email: null,
+    currency: 'PKR',
+    categories: [],
+  });
+});
+
+const fillValidForm = () => {
+  fireEvent.change(screen.getByPlaceholderText('e.g. DHA Glow Salon'), { target: { value: 'Gulberg Grill' } });
+  fireEvent.change(screen.getByDisplayValue('Choose a category…'), { target: { value: 'cat-1' } });
+  fireEvent.change(screen.getByPlaceholderText('Street and building'), { target: { value: '12 Food Street' } });
+  fireEvent.change(screen.getByPlaceholderText('e.g. Karachi'), { target: { value: 'Karachi' } });
+};
+
+describe('CreateBusinessScreen', () => {
+  it('renders all fields with categories loaded', async () => {
+    render(<CreateBusinessScreen onBack={() => {}} onCreated={() => {}} />);
+
+    expect(await screen.findByText('Business name')).toBeTruthy();
+    expect(screen.getByText('Category')).toBeTruthy();
+    expect(screen.getByText('Phone')).toBeTruthy();
+    expect(screen.getByText('Address')).toBeTruthy();
+    expect(screen.getByText('City')).toBeTruthy();
+    // Inactive categories are not offered at all.
+    expect(screen.queryByRole('option', { name: 'Hidden' })).toBeNull();
+  });
+
+  it('blocks submission and shows validation errors for invalid input', async () => {
+    render(<CreateBusinessScreen onBack={() => {}} onCreated={() => {}} />);
+
+    fireEvent.click(await screen.findByText('Create business'));
+    expect(await screen.findByText('Business name must be at least 2 characters.')).toBeTruthy();
+    expect(screen.getByText('Choose the category that fits your business.')).toBeTruthy();
+    expect(api.createBusiness).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid phone format but accepts Pakistani +92 numbers', async () => {
+    render(<CreateBusinessScreen onBack={() => {}} onCreated={() => {}} />);
+    await screen.findByText('Business name');
+
+    fillValidForm();
+    fireEvent.change(screen.getByPlaceholderText('+92 300 1234567'), { target: { value: 'not-a-phone' } });
+    fireEvent.click(screen.getByText('Create business'));
+    expect(await screen.findByText('Enter a valid phone number, e.g. +92 300 1234567.')).toBeTruthy();
+    expect(api.createBusiness).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByPlaceholderText('+92 300 1234567'), { target: { value: '+92 300 1234567' } });
+    fireEvent.click(screen.getByText('Create business'));
+    await waitFor(() => expect(api.createBusiness).toHaveBeenCalled());
+  });
+
+  it('submits a valid form and calls onCreated with the new business', async () => {
+    vi.spyOn(api, 'createBusiness').mockResolvedValue({
+      id: 'biz-new',
+      name: 'Gulberg Grill',
+      slug: 'gulberg-grill',
+      description: null,
+      imageUrl: null,
+      isVerified: false,
+      address: '12 Food Street',
+      city: 'Karachi',
+      locality: null,
+      phone: null,
+      email: null,
+      currency: 'PKR',
+      categories: [categories[0]!],
+    } as api.Business);
+    const onCreated = vi.fn();
+    render(<CreateBusinessScreen onBack={() => {}} onCreated={onCreated} />);
+
+    await screen.findByText('Business name');
+    fillValidForm();
+    fireEvent.click(screen.getByText('Create business'));
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('biz-new', 'Gulberg Grill'));
+    expect(api.createBusiness).toHaveBeenCalledWith({
+      name: 'Gulberg Grill',
+      categoryIds: ['cat-1'],
+      description: undefined,
+      phone: undefined,
+      address: '12 Food Street',
+      city: 'Karachi',
+    });
+  });
+
+  it('surfaces API errors and prevents double submission while saving', async () => {
+    let resolve!: (v: api.Business) => void;
+    vi.spyOn(api, 'createBusiness').mockImplementation(
+      () => new Promise<api.Business>((res) => (resolve = res)),
+    );
+    render(<CreateBusinessScreen onBack={() => {}} onCreated={() => {}} />);
+
+    await screen.findByText('Business name');
+    fillValidForm();
+    fireEvent.click(screen.getByText('Create business'));
+    expect(await screen.findByText('Creating…')).toBeTruthy();
+
+    // Second click while saving is a no-op.
+    fireEvent.click(screen.getByText('Creating…'));
+    expect(api.createBusiness).toHaveBeenCalledTimes(1);
+
+    resolve({
+      id: 'biz-new',
+      name: 'Gulberg Grill',
+      slug: 'gulberg-grill',
+      description: null,
+      imageUrl: null,
+      isVerified: false,
+      address: '12 Food Street',
+      city: 'Karachi',
+      locality: null,
+      phone: null,
+      email: null,
+      currency: 'PKR',
+      categories: [],
+    });
+  });
+
+  it('maps a 403 API response to a friendly message', async () => {
+    vi.spyOn(api, 'createBusiness').mockRejectedValue(new api.ApiError(403, 'FORBIDDEN', 'Insufficient permissions'));
+    render(<CreateBusinessScreen onBack={() => {}} onCreated={() => {}} />);
+
+    await screen.findByText('Business name');
+    fillValidForm();
+    fireEvent.click(screen.getByText('Create business'));
+
+    expect(await screen.findByText('Only business accounts can list a business.')).toBeTruthy();
+  });
+});
+
+describe('validateBusinessForm', () => {
+  const valid = { name: 'Gulberg Grill', categoryId: 'cat-1', description: '', phone: '', address: '12 Food Street', city: 'Karachi' };
+
+  it('accepts a valid form with no errors', () => {
+    expect(validateBusinessForm(valid)).toEqual({});
+  });
+
+  it('flags each invalid field', () => {
+    const errors = validateBusinessForm({ ...valid, name: 'G', categoryId: '', address: 'x', city: '', phone: 'abc', description: 'x'.repeat(2001) });
+    expect(Object.keys(errors).sort()).toEqual(['address', 'categoryId', 'city', 'description', 'name', 'phone']);
+  });
+});

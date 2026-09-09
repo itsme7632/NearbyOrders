@@ -63,7 +63,7 @@ function BookingGroup(props: { label: string; hint?: string; bookings: Booking[]
 }
 
 /** Business-owner view of all bookings across their businesses, grouped by action needed. */
-export function OwnerBookingsScreen(props: { onOpenBooking: (id: string) => void }) {
+export function OwnerBookingsScreen(props: { onOpenBooking: (id: string) => void; onListBusiness?: () => void }) {
   const businesses = useAsyncData<Business[]>(() => getMyBusinesses(), []);
   const [businessId, setBusinessId] = useState<string | undefined>(undefined);
 
@@ -74,8 +74,9 @@ export function OwnerBookingsScreen(props: { onOpenBooking: (id: string) => void
       <div className="screen">
         <EmptyState
           icon={<StoreIcon size={30} />}
-          title="No business yet"
-          body="Once your business is onboarded, customer bookings will appear here."
+          title="Your business"
+          body="You haven't listed a business yet. Create your business profile and start accepting bookings."
+          action={props.onListBusiness ? <Button onClick={props.onListBusiness}>List my business</Button> : null}
         />
       </div>
     );

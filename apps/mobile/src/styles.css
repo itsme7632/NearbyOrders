@@ -836,6 +836,44 @@ p { overflow-wrap: break-word; }
   .date-chip { width: 52px; min-height: 62px; }
 }
 
+/* Self-service onboarding (Phase 3C.5) */
+.screen-head h1 { margin: 0; font-size: 22px; }
+.screen-head p { margin: 4px 0 0; }
+.field select {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--navy);
+  font: inherit;
+}
+.field select:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
+.created-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: rgba(22, 163, 74, 0.08);
+  border: 1px solid rgba(22, 163, 74, 0.35);
+  color: var(--success);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13.5px;
+  margin-bottom: 12px;
+}
+.created-banner svg { flex-shrink: 0; margin-top: 2px; }
+.created-banner strong { color: inherit; }
+.onboard-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12.5px;
+  margin: 14px 0 10px;
+}
+.onboard-note svg { flex-shrink: 0; }
+
 /* Owner booking management (Phase 3C) */
 .count-pill {
   display: inline-flex;

@@ -14,12 +14,14 @@ import { BookingsScreen, BookingDetailScreen } from './screens/Bookings.js';
 import { OwnerBookingsScreen, OwnerBookingDetailScreen } from './screens/OwnerBookings.js';
 import { ProfileScreen } from './screens/Profile.js';
 import { OwnerDashboardScreen } from './screens/OwnerDashboard.js';
+import { CreateBusinessScreen } from './screens/CreateBusiness.js';
 
 function App() {
   const [tab, setTab] = useState<Tab>('Home');
   const [route, push, back] = useRoute();
   const [session, setSession] = useState<Session | null>(getSession());
   const [exploreSeed, setExploreSeed] = useState<{ category?: string; query?: string; nonce: number }>({ nonce: 0 });
+  const [justCreatedName, setJustCreatedName] = useState<string | null>(null);
   useEffect(() => onSessionChange(setSession), []);
 
   const openBusiness = (id: string) => push(`/business/${id}`);
@@ -79,7 +81,29 @@ function App() {
       )
     ) : null;
   } else if (route.name === 'owner-dashboard') {
-    content = session ? <OwnerDashboardScreen onBack={back} /> : <ProfileScreen onOwnerDashboard={() => push('/owner')} />;
+    content = session ? (
+      <OwnerDashboardScreen
+        onBack={back}
+        onListBusiness={session.user.role === 'BUSINESS_OWNER' ? () => push('/create-business') : undefined}
+        justCreatedName={route.justCreated ? route.justCreatedName : null}
+      />
+    ) : (
+      <ProfileScreen onOwnerDashboard={() => push('/owner')} />
+    );
+  } else if (route.name === 'create-business') {
+    // Owner-only self-service onboarding; the backend enforces the role again.
+    content =
+      session && session.user.role === 'BUSINESS_OWNER' ? (
+        <CreateBusinessScreen
+          onBack={back}
+          onCreated={(_id, name) => {
+            setJustCreatedName(name);
+            push(`/owner?created=${encodeURIComponent(name)}`);
+          }}
+        />
+      ) : (
+        <ProfileScreen onOwnerDashboard={() => push('/owner')} />
+      );
   } else if (tab === 'Home') {
     content = (
       <HomeScreen
@@ -107,7 +131,10 @@ function App() {
   } else if (tab === 'Bookings') {
     content = session ? (
       session.user.role === 'BUSINESS_OWNER' ? (
-        <OwnerBookingsScreen onOpenBooking={(id) => push(`/booking/${id}`)} />
+        <OwnerBookingsScreen
+          onOpenBooking={(id) => push(`/booking/${id}`)}
+          onListBusiness={session.user.role === 'BUSINESS_OWNER' ? () => push('/create-business') : undefined}
+        />
       ) : (
         <BookingsScreen
           onOpenBooking={(id) => push(`/booking/${id}`)}

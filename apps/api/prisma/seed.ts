@@ -64,6 +64,13 @@ async function createDemoData() {
     create: { email: 'demo-customer@nearbyorders.test', passwordHash, role: 'CUSTOMER', firstName: 'Demo', lastName: 'Customer' },
   });
 
+  // Admin used for approving self-service listings in preview environments.
+  await prisma.user.upsert({
+    where: { email: 'demo-admin@nearbyorders.test' },
+    update: {},
+    create: { email: 'demo-admin@nearbyorders.test', passwordHash, role: 'ADMIN', firstName: 'Demo', lastName: 'Admin' },
+  });
+
   const categories = await prisma.category.findMany();
   const bySlug = (slug: string) => categories.find((c) => c.slug === slug)!.id;
 

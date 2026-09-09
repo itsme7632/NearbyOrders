@@ -284,13 +284,30 @@ export async function buildApp(): Promise<FastifyInstance> {
   /* ----------------------- Businesses (owner) ------------------------ */
   app.post('/api/v1/businesses', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
     const d = businessSchema.parse(q.body);
-    const { categoryIds, ...input } = d;
+    const { categoryIds, latitude, longitude, ...input } = d;
     const validCategories = await prisma.category.findMany({ where: { id: { in: categoryIds }, isActive: true } });
     if (validCategories.length !== categoryIds.length)
       return r.status(400).send({ error: { code: 'INVALID_CATEGORY', message: 'One or more categories are invalid' } });
+    // Coordinates are optional for self-service onboarding (no maps in the
+    // create form). When omitted, a city-centre fallback keeps the existing
+    // schema/not-null contract and nearby search functional until real
+    // coordinates are captured in a later phase.
+    const FALLBACK_COORDS: Record<string, { latitude: number; longitude: number }> = {
+      karachi: { latitude: 24.8607, longitude: 67.0011 },
+      lahore: { latitude: 31.5204, longitude: 74.3587 },
+      islamabad: { latitude: 33.6844, longitude: 73.0479 },
+      rawalpindi: { latitude: 33.5651, longitude: 73.0169 },
+      faisalabad: { latitude: 31.4187, longitude: 73.0791 },
+      multan: { latitude: 30.1575, longitude: 71.5249 },
+      peshawar: { latitude: 34.0151, longitude: 71.5249 },
+      quetta: { latitude: 30.1798, longitude: 66.975 },
+    };
+    const fallback = FALLBACK_COORDS[d.city.trim().toLowerCase()] ?? { latitude: 30.3753, longitude: 69.3451 };
     const b = await prisma.business.create({
       data: {
         ...input,
+        latitude: latitude ?? fallback.latitude,
+        longitude: longitude ?? fallback.longitude,
         slug: `${slugify(d.name)}-${Date.now().toString(36)}`,
         ownerId: currentUser(q).id,
         categories: { create: categoryIds.map((categoryId) => ({ categoryId })) },
