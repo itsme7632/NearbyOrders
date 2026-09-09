@@ -303,6 +303,67 @@ describe('booking status transitions', () => {
   });
 });
 
+describe('owner booking management (Phase 3C)', () => {
+  it('owner rejects a pending booking and the customer sees the final status', async () => {
+    const { customer, owner, businessId, serviceId } = await bookableFixture();
+    const created = await createBooking(customer.token, { businessId, serviceId, date: tomorrowPkt(), startTime: '10:00' });
+    const bookingId = JSON.parse(created.body).data.id as string;
+
+    const res = await app.inject({ method: 'PATCH', url: `/api/v1/bookings/${bookingId}/status`, headers: authed(owner.token), payload: { status: 'REJECTED' } });
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).data.status).toBe('REJECTED');
+
+    // Customer sees the owner's decision reflected on their own booking.
+    const asCustomer = await app.inject({ method: 'GET', url: `/api/v1/bookings/${bookingId}`, headers: authed(customer.token) });
+    expect(JSON.parse(asCustomer.body).data.status).toBe('REJECTED');
+
+    // REJECTED is terminal.
+    const revive = await app.inject({ method: 'PATCH', url: `/api/v1/bookings/${bookingId}/status`, headers: authed(owner.token), payload: { status: 'CONFIRMED' } });
+    expect(revive.statusCode).toBe(409);
+  });
+
+  it('owner completes a confirmed booking and the customer sees COMPLETED', async () => {
+    const { customer, owner, businessId, serviceId } = await bookableFixture();
+    const created = await createBooking(customer.token, { businessId, serviceId, date: tomorrowPkt(), startTime: '11:00' });
+    const bookingId = JSON.parse(created.body).data.id as string;
+    await app.inject({ method: 'PATCH', url: `/api/v1/bookings/${bookingId}/status`, headers: authed(owner.token), payload: { status: 'CONFIRMED' } });
+
+    const res = await app.inject({ method: 'PATCH', url: `/api/v1/bookings/${bookingId}/status`, headers: authed(owner.token), payload: { status: 'COMPLETED' } });
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).data.status).toBe('COMPLETED');
+
+    const asCustomer = await app.inject({ method: 'GET', url: `/api/v1/bookings/${bookingId}`, headers: authed(customer.token) });
+    expect(JSON.parse(asCustomer.body).data.status).toBe('COMPLETED');
+  });
+
+  it('booking responses expose only safe customer fields (never passwordHash)', async () => {
+    const { owner, customer, businessId, serviceId } = await bookableFixture();
+    await prisma.user.update({ where: { id: customer.userId }, data: { firstName: 'Ayesha', lastName: 'Khan' } });
+    const created = await createBooking(customer.token, { businessId, serviceId, date: tomorrowPkt(), startTime: '12:00' });
+    const bookingId = JSON.parse(created.body).data.id as string;
+
+    const list = await app.inject({ method: 'GET', url: `/api/v1/businesses/${businessId}/bookings`, headers: authed(owner.token) });
+    expect(list.statusCode).toBe(200);
+    const listed = JSON.parse(list.body).data.find((b: { id: string }) => b.id === bookingId);
+    expect(listed.customer).toMatchObject({ email: expect.any(String), firstName: 'Ayesha', lastName: 'Khan' });
+    expect(Object.keys(listed.customer).sort()).toEqual(['email', 'firstName', 'id', 'lastName']);
+
+    const single = await app.inject({ method: 'PATCH', url: `/api/v1/bookings/${bookingId}/status`, headers: authed(owner.token), payload: { status: 'CONFIRMED' } });
+    expect(single.statusCode).toBe(200);
+    // Nothing in any owner-visible response may leak credential material.
+    expect(list.body).not.toContain('passwordHash');
+    expect(single.body).not.toContain('passwordHash');
+  });
+
+  it('owner booking management requires authentication', async () => {
+    const { businessId } = await bookableFixture();
+    const list = await app.inject({ method: 'GET', url: `/api/v1/businesses/${businessId}/bookings` });
+    expect(list.statusCode).toBe(401);
+    const patch = await app.inject({ method: 'PATCH', url: '/api/v1/bookings/does-not-matter/status', payload: { status: 'CONFIRMED' } });
+    expect(patch.statusCode).toBe(401);
+  });
+});
+
 describe('time helpers (Asia/Karachi)', () => {
   it('stores the business-local date and UTC instants consistently', async () => {
     const { customer, businessId, serviceId } = await bookableFixture();

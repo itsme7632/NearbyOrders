@@ -11,6 +11,7 @@ import { ExploreScreen } from './screens/Explore.js';
 import { BusinessDetailScreen } from './screens/BusinessDetail.js';
 import { BookServiceScreen } from './screens/BookService.js';
 import { BookingsScreen, BookingDetailScreen } from './screens/Bookings.js';
+import { OwnerBookingsScreen, OwnerBookingDetailScreen } from './screens/OwnerBookings.js';
 import { ProfileScreen } from './screens/Profile.js';
 import { OwnerDashboardScreen } from './screens/OwnerDashboard.js';
 
@@ -68,7 +69,15 @@ function App() {
           )
       : null;
   } else if (route.name === 'booking') {
-    content = session ? <BookingDetailScreen bookingId={route.bookingId} onBack={back} /> : null;
+    // Same detail route for both roles; each gets their own view (owner view
+    // includes lifecycle actions; customer view includes cancellation).
+    content = session ? (
+      session.user.role === 'BUSINESS_OWNER' ? (
+        <OwnerBookingDetailScreen bookingId={route.bookingId} onBack={back} />
+      ) : (
+        <BookingDetailScreen bookingId={route.bookingId} onBack={back} />
+      )
+    ) : null;
   } else if (route.name === 'owner-dashboard') {
     content = session ? <OwnerDashboardScreen onBack={back} /> : <ProfileScreen onOwnerDashboard={() => push('/owner')} />;
   } else if (tab === 'Home') {
@@ -97,13 +106,17 @@ function App() {
     );
   } else if (tab === 'Bookings') {
     content = session ? (
-      <BookingsScreen
-        onOpenBooking={(id) => push(`/booking/${id}`)}
-        onExplore={() => {
-          setTab('Explore');
-          push('/');
-        }}
-      />
+      session.user.role === 'BUSINESS_OWNER' ? (
+        <OwnerBookingsScreen onOpenBooking={(id) => push(`/booking/${id}`)} />
+      ) : (
+        <BookingsScreen
+          onOpenBooking={(id) => push(`/booking/${id}`)}
+          onExplore={() => {
+            setTab('Explore');
+            push('/');
+          }}
+        />
+      )
     ) : null;
   } else {
     content = <ProfileScreen onOwnerDashboard={() => push('/owner')} />;

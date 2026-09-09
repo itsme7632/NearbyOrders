@@ -220,7 +220,7 @@ export type Booking = {
   status: BookingStatus;
   notes: string | null;
   createdAt: string;
-  /** Only present on list endpoints. */
+  /** Only present on list endpoints — safe subset, never credentials. */
   customer?: { id: string; email: string; firstName: string | null; lastName: string | null };
 };
 
@@ -238,3 +238,11 @@ export const listMyBookings = () => request<Booking[]>('/bookings', { auth: true
 export const getBooking = (id: string) => request<Booking>(`/bookings/${id}`, { auth: true });
 
 export const cancelMyBooking = (id: string) => request<Booking>(`/bookings/${id}/cancel`, { method: 'POST', auth: true });
+
+/** Business bookings for the signed-in owner (server enforces ownership). */
+export const listBusinessBookings = (businessId: string) =>
+  request<Booking[]>(`/businesses/${businessId}/bookings`, { auth: true });
+
+/** Owner/admin status change; the backend enforces ownership + allowed transitions. */
+export const setBookingStatus = (id: string, status: 'CONFIRMED' | 'REJECTED' | 'COMPLETED' | 'CANCELLED') =>
+  request<Booking>(`/bookings/${id}/status`, { method: 'PATCH', body: { status }, auth: true });

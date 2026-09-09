@@ -835,3 +835,25 @@ p { overflow-wrap: break-word; }
   .slot-grid { grid-template-columns: repeat(2, 1fr); }
   .date-chip { width: 52px; min-height: 62px; }
 }
+
+/* Owner booking management (Phase 3C) */
+.count-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  margin-left: 8px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  vertical-align: 2px;
+}
+.section-hint {
+  color: var(--muted);
+  font-size: 13px;
+  margin: -2px 0 10px;
+}
