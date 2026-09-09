@@ -427,8 +427,8 @@ p { overflow-wrap: break-word; }
 .auth-screen { padding-top: 24px; }
 .auth-card {
   text-align: left;
-  padding: 22px 18px 20px;
-  margin-top: 18px;
+  padding: 20px 18px 18px;
+  margin-top: 14px;
 }
 .auth-brand {
   display: flex;
@@ -436,10 +436,11 @@ p { overflow-wrap: break-word; }
   align-items: center;
   gap: 2px;
   text-align: center;
+  margin-top: 4px;
 }
 .auth-brand-mark {
-  width: 52px;
-  height: 52px;
+  width: 50px;
+  height: 50px;
   border-radius: 15px;
   background: linear-gradient(135deg, var(--primary), var(--secondary));
   color: #fff;
@@ -447,20 +448,20 @@ p { overflow-wrap: break-word; }
   align-items: center;
   justify-content: center;
   box-shadow: var(--shadow);
-  margin-bottom: 6px;
+  margin-bottom: 5px;
 }
 .auth-brand-name { font-size: 21px; font-weight: 800; color: var(--primary); letter-spacing: -0.01em; }
 .auth-brand-name b { color: var(--navy); font-weight: 800; }
 .auth-brand-tag { font-size: 13px; color: var(--muted); }
 .auth-card h1 { margin: 0 0 4px; }
-.auth-lede { margin: 0 0 16px; font-size: 14px; line-height: 1.5; color: var(--muted); }
-/* Reference-style input row: leading icon, stacked label + control. */
+.auth-lede { margin: 0 0 14px; font-size: 14px; line-height: 1.5; color: var(--muted); }
+/* Reference-style input row: leading icon + a single placeholder-only input.
+   The permanent label is rendered by the wrapping Field outside the box. */
 .auth-input {
   display: flex;
   align-items: stretch;
-  gap: 0;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--card);
   transition: border-color 0.08s ease;
 }
@@ -468,34 +469,34 @@ p { overflow-wrap: break-word; }
 .auth-input.input-invalid { border-color: var(--error); }
 .auth-input-icon {
   flex: 0 0 auto;
-  width: 46px;
+  width: 42px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--muted);
 }
-.auth-input-field { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; padding: 7px 12px 7px 0; }
-.auth-input-label { font-size: 11.5px; font-weight: 700; color: var(--muted); line-height: 1.2; }
+.auth-input-field { flex: 1; min-width: 0; display: flex; align-items: center; padding-right: 10px; }
 .auth-input input {
   border: 0;
-  padding: 1px 0 0;
+  padding: 0;
   width: 100%;
   font: inherit;
-  font-size: 15px;
+  font-size: 16px;
   background: transparent;
   color: var(--navy);
-  min-height: 24px;
+  height: 44px;
 }
+.auth-input input::placeholder { color: #94a3b8; }
 .auth-input input:focus { outline: none; }
-.password-slot { position: relative; display: flex; align-items: center; }
-.password-slot input { padding-right: 44px; }
+.password-slot { position: relative; display: flex; align-items: center; flex: 1; min-width: 0; }
+.password-slot input { padding-right: 40px; }
 .password-toggle {
   position: absolute;
   right: -6px;
   top: 50%;
   transform: translateY(-50%);
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   border-radius: 10px;
   display: inline-flex;
   align-items: center;
@@ -506,7 +507,7 @@ p { overflow-wrap: break-word; }
 .auth-row { display: flex; align-items: center; justify-content: flex-end; margin-top: 10px; }
 .forgot-link { color: var(--secondary); font-weight: 600; font-size: 13.5px; padding: 8px 2px; }
 .forgot-link:disabled { color: var(--muted); cursor: not-allowed; opacity: 0.75; }
-.role-picker-field { border: 0; padding: 0; margin: 12px 0 0; min-width: 0; }
+.role-picker-field { border: 0; padding: 0; margin: 10px 0 0; min-width: 0; }
 .role-picker-field legend { padding: 0; }
 .role-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .role-option {
@@ -514,14 +515,13 @@ p { overflow-wrap: break-word; }
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
-  padding: 14px 12px;
+  gap: 3px;
+  padding: 12px 12px 11px;
   border: 1.5px solid var(--border);
   border-radius: 14px;
   background: var(--card);
   text-align: left;
   color: var(--navy);
-  min-height: 96px;
 }
 .role-option svg:first-child { color: var(--muted); }
 .role-option-name { font-weight: 700; font-size: 13.5px; }
@@ -533,14 +533,15 @@ p { overflow-wrap: break-word; }
   position: absolute;
   top: 8px;
   right: 8px;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border-radius: 999px;
   background: var(--primary);
   color: #fff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 0 0 2px var(--card);
 }
 .agree-row {
   display: flex;
@@ -573,8 +574,8 @@ p { overflow-wrap: break-word; }
 .link-inline:hover { text-decoration: underline; }
 @media (max-width: 359px) {
   .role-picker { grid-template-columns: 1fr; }
-  .role-option { min-height: 0; }
-  .auth-input-icon { width: 40px; }
+  .auth-input-icon { width: 38px; }
+  .auth-input input { height: 42px; font-size: 15px; }
 }
 @media (min-width: 480px) {
   .auth-screen { display: flex; flex-direction: column; justify-content: center; min-height: calc(100vh - 40px); }

@@ -19,24 +19,29 @@ const MIN_PASSWORD = 12;
 type Mode = 'login' | 'register';
 type Role = 'CUSTOMER' | 'BUSINESS_OWNER';
 
-/** Input row with a leading icon and floating label, per the auth design reference. */
-function AuthInput(props: { label: string; icon: ReactNode; invalid?: boolean; children: ReactNode }) {
+/**
+ * Input row with a leading icon. The permanent label lives outside (via the
+ * wrapping Field); the input shows only a placeholder, per the auth reference.
+ */
+function AuthInput(props: { icon: ReactNode; invalid?: boolean; children: ReactNode }) {
   return (
     <div className={`auth-input${props.invalid ? ' input-invalid' : ''}`}>
       <span className="auth-input-icon" aria-hidden>
         {props.icon}
       </span>
-      <span className="auth-input-field">
-        <span className="auth-input-label" aria-hidden>
-          {props.label}
-        </span>
-        {props.children}
-      </span>
+      <span className="auth-input-field">{props.children}</span>
     </div>
   );
 }
 
-function PasswordInput(props: { value: string; onChange: (v: string) => void; autoComplete: string; invalid?: boolean }) {
+function PasswordInput(props: {
+  value: string;
+  onChange: (v: string) => void;
+  autoComplete: string;
+  invalid?: boolean;
+  placeholder: string;
+  label: string;
+}) {
   const [visible, setVisible] = useState(false);
   return (
     <div className="password-slot">
@@ -45,15 +50,16 @@ function PasswordInput(props: { value: string; onChange: (v: string) => void; au
         value={props.value}
         onChange={(e) => props.onChange(e.target.value)}
         autoComplete={props.autoComplete}
-        aria-label="Password"
+        aria-label={props.label}
         aria-invalid={props.invalid || undefined}
+        placeholder={props.placeholder}
         enterKeyHint="done"
       />
       <button
         type="button"
         className="password-toggle"
         onClick={() => setVisible((v) => !v)}
-        aria-label={visible ? 'Hide password' : 'Show password'}
+        aria-label={visible ? `Hide ${props.label.toLowerCase()}` : `Show ${props.label.toLowerCase()}`}
         aria-pressed={visible}
       >
         {visible ? <EyeOffIcon size={19} /> : <EyeIcon size={19} />}
@@ -177,7 +183,7 @@ export function ProfileScreen(props: { onOwnerDashboard: () => void }) {
           noValidate
         >
           <Field label="Email" hint={emailMessage ?? undefined}>
-            <AuthInput label="Email" icon={<MailIcon size={18} />} invalid={Boolean(emailMessage)}>
+            <AuthInput icon={<MailIcon size={18} />} invalid={Boolean(emailMessage)}>
               <input
                 type="email"
                 inputMode="email"
@@ -194,12 +200,14 @@ export function ProfileScreen(props: { onOwnerDashboard: () => void }) {
           </Field>
 
           <Field label="Password" hint={passwordMessage ?? undefined}>
-            <AuthInput label="Password" icon={<LockIcon size={18} />} invalid={Boolean(passwordMessage)}>
+            <AuthInput icon={<LockIcon size={18} />} invalid={Boolean(passwordMessage)}>
               <PasswordInput
                 value={password}
                 onChange={setPassword}
                 autoComplete={registering ? 'new-password' : 'current-password'}
                 invalid={Boolean(passwordMessage)}
+                placeholder="Enter your password"
+                label="Password"
               />
             </AuthInput>
           </Field>
@@ -207,12 +215,14 @@ export function ProfileScreen(props: { onOwnerDashboard: () => void }) {
           {registering ? (
             <>
               <Field label="Confirm password" hint={confirmMessage ?? undefined}>
-                <AuthInput label="Confirm password" icon={<LockIcon size={18} />} invalid={Boolean(confirmMessage)}>
+                <AuthInput icon={<LockIcon size={18} />} invalid={Boolean(confirmMessage)}>
                   <PasswordInput
                     value={confirm}
                     onChange={setConfirm}
                     autoComplete="new-password"
                     invalid={Boolean(confirmMessage)}
+                    placeholder="Confirm your password"
+                    label="Confirm password"
                   />
                 </AuthInput>
               </Field>
