@@ -18,6 +18,21 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+async function isPortOpen(host: string, port: number, timeoutMs = 1000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host, port, timeout: timeoutMs });
+    socket.once('connect', () => {
+      socket.end();
+      resolve(true);
+    });
+    socket.once('error', () => resolve(false));
+    socket.once('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
+
 async function waitForPostgres(url: string, timeoutMs = 60_000): Promise<void> {
   const parsed = new URL(url);
   const port = Number(parsed.port || 5432);
@@ -121,7 +136,9 @@ if (!databaseUrl) {
         if (!existsSync(path.join(dataDir, 'PG_VERSION'))) {
           asUser(bin('initdb'), ['-D', dataDir, '-U', user, '-A', 'trust', '-E', 'utf8']);
         }
-        if (!existsSync(path.join(dataDir, 'postmaster.pid'))) {
+        // Drive the boot decision off reachability, not the pid file: a server
+        // killed without cleanup leaves a stale postmaster.pid behind.
+        if (!(await isPortOpen('127.0.0.1', port))) {
           // Remove socket files left behind by a previously killed server; they
           // would otherwise make the new postmaster fail to bind its socket.
           for (const stale of [`.s.PGSQL.${port}`, `.s.PGSQL.${port}.lock`]) {
@@ -157,7 +174,7 @@ if (!databaseUrl) {
         if (!existsSync(path.join(dataDir, 'PG_VERSION'))) {
           await pg.initialise();
         }
-        if (!existsSync(path.join(dataDir, 'postmaster.pid'))) {
+        if (!(await isPortOpen('127.0.0.1', port))) {
           for (const stale of [`.s.PGSQL.${port}`, `.s.PGSQL.${port}.lock`]) {
             rmSync(path.join(socketDir, stale), { force: true });
           }
