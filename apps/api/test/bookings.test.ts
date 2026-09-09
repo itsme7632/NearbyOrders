@@ -105,12 +105,20 @@ describe('availability', () => {
 
   it('past slots are marked unavailable', async () => {
     const { businessId, serviceId } = await bookableFixture();
-    // Today in PKT: morning slots of the current day are (almost always) past.
-    const today = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const res = await app.inject({ method: 'GET', url: `/api/v1/businesses/${businessId}/services/${serviceId}/availability?date=${today}` });
-    const data = JSON.parse(res.body).data as { slots: { start: string; available: boolean }[] };
+    // A fully elapsed business-local day (yesterday PKT): every slot start is
+    // strictly before now, so all must be reported unavailable. Unlike the
+    // current day's morning slots, this is deterministic at any wall-clock
+    // time — a suite run at 02:00 PKT would otherwise see 09:00 as still
+    // upcoming.
+    const yesterdayPkt = new Date(Date.now() + 5 * 60 * 60 * 1000 - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const res = await app.inject({ method: 'GET', url: `/api/v1/businesses/${businessId}/services/${serviceId}/availability?date=${yesterdayPkt}` });
+    const data = JSON.parse(res.body).data as { closed: boolean; slots: { start: string; available: boolean }[] };
+    expect(data.closed).toBe(false);
+    // Full day of slots generated (09:00–21:00, 60-minute service)…
+    expect(data.slots.length).toBe(12);
     expect(data.slots[0].start).toBe('09:00');
-    expect(data.slots[0].available).toBe(false);
+    // …and every one of them is in the past, so none may be bookable.
+    expect(data.slots.every((s) => !s.available)).toBe(true);
   });
 });
 
