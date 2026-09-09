@@ -23,4 +23,15 @@ describe('hash routing', () => {
   it('parses the owner dashboard route', () => {
     expect(parseHash('#/owner')).toEqual({ name: 'owner-dashboard' });
   });
+
+  it('parses booking flow routes with optional service preselection', () => {
+    expect(parseHash('#/book/biz-1')).toEqual({ name: 'book', businessId: 'biz-1', serviceId: undefined });
+    expect(parseHash('#/book/biz-1/svc-9')).toEqual({ name: 'book', businessId: 'biz-1', serviceId: 'svc-9' });
+    expect(parseHash('#/book/biz-1/svc-9?x=1')).toEqual({ name: 'book', businessId: 'biz-1', serviceId: 'svc-9' });
+  });
+
+  it('parses single booking detail routes', () => {
+    expect(parseHash('#/booking/bk-42')).toEqual({ name: 'booking', bookingId: 'bk-42' });
+    expect(parseHash('#/booking/')).toEqual({ name: 'tabs' });
+  });
 });

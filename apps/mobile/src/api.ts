@@ -192,3 +192,49 @@ export const deleteProduct = (id: string) => request<void>(`/products/${id}`, { 
 export const getHours = (businessId: string) => request<BusinessHour[]>(`/businesses/${businessId}/hours`);
 export const putHours = (businessId: string, days: HourInput[]) =>
   request<BusinessHour[]>(`/businesses/${businessId}/hours`, { method: 'PUT', body: days, auth: true });
+
+/* ------------------------------ bookings --------------------------- */
+
+export type Availability = {
+  date: string;
+  serviceDurationMinutes: number;
+  businessHours: { open: string; close: string } | null;
+  closed: boolean;
+  slots: { start: string; end: string; available: boolean }[];
+};
+
+export type BookingStatus = 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'CANCELLED' | 'COMPLETED';
+
+export type Booking = {
+  id: string;
+  businessId: string;
+  businessName: string;
+  businessSlug: string;
+  serviceId: string | null;
+  serviceName: string | null;
+  priceMinor: number | null;
+  currency: string;
+  bookingDate: string;
+  startTime: string;
+  endTime: string;
+  status: BookingStatus;
+  notes: string | null;
+  createdAt: string;
+  /** Only present on list endpoints. */
+  customer?: { id: string; email: string; firstName: string | null; lastName: string | null };
+};
+
+export type BookingInput = { businessId: string; serviceId: string; date: string; startTime: string; notes?: string };
+
+/** Per-date slot availability for a bookable service (Phase 3A endpoint). */
+export const getAvailability = (businessId: string, serviceId: string, date: string) =>
+  request<Availability>(`/businesses/${businessId}/services/${serviceId}/availability?date=${date}`);
+
+export const createBooking = (input: BookingInput) => request<Booking>('/bookings', { method: 'POST', body: input, auth: true });
+
+/** All bookings visible to the current user (customers see their own). */
+export const listMyBookings = () => request<Booking[]>('/bookings', { auth: true });
+
+export const getBooking = (id: string) => request<Booking>(`/bookings/${id}`, { auth: true });
+
+export const cancelMyBooking = (id: string) => request<Booking>(`/bookings/${id}/cancel`, { method: 'POST', auth: true });

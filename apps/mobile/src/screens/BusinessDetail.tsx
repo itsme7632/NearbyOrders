@@ -5,7 +5,7 @@ import { StoreIcon } from '../components/icons.js';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
-export function BusinessDetailScreen(props: { idOrSlug: string; onBack: () => void }) {
+export function BusinessDetailScreen(props: { idOrSlug: string; onBack: () => void; onBook?: (serviceId?: string) => void }) {
   const business = useAsyncData<Business>(() => getBusiness(props.idOrSlug), [props.idOrSlug]);
 
   if (business.loading) return <Loading label="Loading business…" />;
@@ -96,13 +96,28 @@ export function BusinessDetailScreen(props: { idOrSlug: string; onBack: () => vo
                 {s.description ? <p className="item-desc">{s.description}</p> : null}
                 <div className="item-tags">
                   {s.durationMinutes ? <span className="pill">{s.durationMinutes} min</span> : null}
+                  {props.onBook && s.isActive && s.durationMinutes ? (
+                    <button
+                      type="button"
+                      className="pill pill-action"
+                      onClick={() => props.onBook?.(s.id)}
+                    >
+                      Book
+                    </button>
+                  ) : null}
                 </div>
               </li>
             ))}
           </ul>
-          <Button full disabled>
-            Book this service — coming soon
-          </Button>
+          {props.onBook && b.services?.some((s) => s.isActive && s.durationMinutes) ? (
+            <Button full onClick={() => props.onBook?.()}>
+              Book this service
+            </Button>
+          ) : (
+            <Button full disabled>
+              Booking unavailable
+            </Button>
+          )}
         </section>
       ) : null}
 
