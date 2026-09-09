@@ -1,7 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import net from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -10,10 +9,16 @@ import { fileURLToPath } from 'node:url';
  * - If DATABASE_URL is exported (CI), it is used as-is and migrations are applied.
  * - Otherwise a throwaway embedded PostgreSQL (devDependency `embedded-postgres`)
  *   is booted on 127.0.0.1:54330 and used for the run.
+ *
+ * Vitest runs this setup file once per test file in parallel workers, so all
+ * boot operations are serialized with a filesystem lock and re-check whether
+ * the server is already up before touching anything.
  */
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-async function waitForPostgres(url: string, timeoutMs = 30_000): Promise<void> {
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function waitForPostgres(url: string, timeoutMs = 60_000): Promise<void> {
   const parsed = new URL(url);
   const port = Number(parsed.port || 5432);
   const host = parsed.hostname;
@@ -32,7 +37,7 @@ async function waitForPostgres(url: string, timeoutMs = 30_000): Promise<void> {
       });
     });
     if (ok) return;
-    await new Promise((r) => setTimeout(r, 500));
+    await sleep(500);
   }
   throw new Error(`PostgreSQL not reachable at ${host}:${port} within ${timeoutMs}ms`);
 }
@@ -44,12 +49,36 @@ async function runMigrations(url: string): Promise<void> {
   });
 }
 
+/**
+ * Serializes concurrent workers. Returns false immediately if another worker
+ * already holds the lock (the caller then waits for readiness instead).
+ */
+function acquireBootLock(dataDir: string, timeoutMs = 120_000): boolean {
+  const lockDir = `${dataDir}.lock`;
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      mkdirSync(lockDir);
+      return true;
+    } catch {
+      if (Date.now() > deadline) throw new Error('Timed out waiting for test PostgreSQL boot lock');
+      return false;
+    }
+  }
+}
+
+function releaseBootLock(dataDir: string): void {
+  rmSync(`${dataDir}.lock`, { recursive: true, force: true });
+}
+
 let databaseUrl = process.env.DATABASE_URL;
 
 if (!databaseUrl) {
   const { default: EmbeddedPostgres } = await import('embedded-postgres');
 
-  const dataDir = path.resolve(here, '../../.local-dev/test-pgdata');
+  // here = <root>/apps/api/test → repo root is three levels up.
+  const dataDir = path.resolve(here, '../../../.local-dev/test-pgdata');
+  const socketDir = path.dirname(dataDir);
   const port = 54330;
   const user = 'nearbyorders_test';
 
@@ -75,23 +104,41 @@ if (!databaseUrl) {
     const bin = (name: string) => path.join(nativeDir, 'bin', name);
     const osUser = process.env.SUDO_USER || process.env.PG_OS_USER || 'daytona';
 
-    mkdirSync(dataDir, { recursive: true });
-    execFileSync('chown', ['-R', `${osUser}:${osUser}`, path.dirname(dataDir)]);
-    const asUser = (file: string, args: string[]) =>
-      execFileSync('runuser', ['-u', osUser, '--', file, ...args], { stdio: 'pipe' });
+    if (acquireBootLock(dataDir)) {
+      try {
+        mkdirSync(dataDir, { recursive: true });
+        execFileSync('chown', ['-R', `${osUser}:${osUser}`, socketDir]);
+        const asUser = (file: string, args: string[]) => {
+          try {
+            return execFileSync('runuser', ['-u', osUser, '--', file, ...args], { stdio: 'pipe' });
+          } catch (err) {
+            const e = err as { stdout?: Buffer; stderr?: Buffer; message?: string };
+            const detail = [e.stdout?.toString(), e.stderr?.toString(), e.message].filter(Boolean).join('\n');
+            throw new Error(`${path.basename(file)} failed:\n${detail}`);
+          }
+        };
 
-    if (!existsSync(path.join(dataDir, 'PG_VERSION'))) {
-      asUser(bin('initdb'), ['-D', dataDir, '-U', user, '-A', 'trust', '-E', 'utf8']);
-    }
-    if (!existsSync(path.join(dataDir, 'postmaster.pid')) || os.platform() === 'win32') {
-      // `-l` detaches the postmaster's stdio; without it execFileSync can hang on the inherited pipe.
-      asUser(bin('pg_ctl'), [
-        '-D', dataDir,
-        '-o', `-p ${port} -k ${path.dirname(dataDir)} -c listen_addresses=127.0.0.1`,
-        '-l', path.join(path.dirname(dataDir), 'test-postgres.log'),
-        '-w', '-t', '30',
-        'start',
-      ]);
+        if (!existsSync(path.join(dataDir, 'PG_VERSION'))) {
+          asUser(bin('initdb'), ['-D', dataDir, '-U', user, '-A', 'trust', '-E', 'utf8']);
+        }
+        if (!existsSync(path.join(dataDir, 'postmaster.pid'))) {
+          // Remove socket files left behind by a previously killed server; they
+          // would otherwise make the new postmaster fail to bind its socket.
+          for (const stale of [`.s.PGSQL.${port}`, `.s.PGSQL.${port}.lock`]) {
+            rmSync(path.join(socketDir, stale), { force: true });
+          }
+          // `-l` detaches the postmaster's stdio; without it execFileSync can hang on the inherited pipe.
+          asUser(bin('pg_ctl'), [
+            '-D', dataDir,
+            '-o', `-p ${port} -k ${socketDir} -c listen_addresses=127.0.0.1`,
+            '-l', path.join(dataDir, 'test-postgres.log'),
+            '-w', '-t', '60',
+            'start',
+          ]);
+        }
+      } finally {
+        releaseBootLock(dataDir);
+      }
     }
     // The minimal binary distribution ships no createdb/psql, so we use the
     // always-present "postgres" database for the throwaway test run.
@@ -105,22 +152,27 @@ if (!databaseUrl) {
       port,
       persistent: false,
     });
-    if (!existsSync(path.join(dataDir, 'PG_VERSION'))) {
-      await pg.initialise();
-    }
-    try {
-      await pg.start();
-      await pg.createDatabase(user);
-    } catch {
-      // Already running/created from a previous run in the same session.
-    }
-    process.on('exit', () => {
+    if (acquireBootLock(dataDir)) {
       try {
-        pg.stop();
-      } catch {
-        /* already stopped */
+        if (!existsSync(path.join(dataDir, 'PG_VERSION'))) {
+          await pg.initialise();
+        }
+        if (!existsSync(path.join(dataDir, 'postmaster.pid'))) {
+          for (const stale of [`.s.PGSQL.${port}`, `.s.PGSQL.${port}.lock`]) {
+            rmSync(path.join(socketDir, stale), { force: true });
+          }
+          await pg.start();
+        }
+        try {
+          await pg.createDatabase(user);
+        } catch {
+          // Already created from a previous run in the same session.
+        }
+      } finally {
+        releaseBootLock(dataDir);
       }
-    });
+    }
+    // Left running across parallel workers and sessions (dev-only, throwaway).
     databaseUrl = `postgresql://${user}:unused-local-only@127.0.0.1:${port}/${user}`;
     console.log(`[setup] using embedded PostgreSQL at 127.0.0.1:${port}`);
   }
