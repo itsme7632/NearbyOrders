@@ -11,7 +11,9 @@ export type Route =
   | { name: 'order'; orderId: string }
   | { name: 'notifications' }
   | { name: 'owner-dashboard'; justCreated?: boolean; justCreatedName?: string; justCreatedStatus?: string }
-  | { name: 'create-business' };
+  | { name: 'create-business' }
+  | { name: 'edit-profile' }
+  | { name: 'change-password' };
 
 /** Parses `#/business/<idOrSlug>`, `#/book/...`, `#/booking/<id>`, `#/owner`, `#/create-business` style hash routes. */
 export function parseHash(hash: string): Route {
@@ -38,6 +40,8 @@ export function parseHash(hash: string): Route {
     if (orderId) return { name: 'order', orderId };
   }
   if (clean === 'create-business') return { name: 'create-business' };
+  if (clean === 'edit-profile') return { name: 'edit-profile' };
+  if (clean === 'change-password') return { name: 'change-password' };
   if (clean === 'owner') {
     const params = new URLSearchParams(queryPart ?? '');
     const created = params.get('created');

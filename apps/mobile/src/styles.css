@@ -135,6 +135,13 @@ p { overflow-wrap: break-word; }
 
 /* ---------------- chips & pills ---------------- */
 .category-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.see-all-link {
+  color: var(--secondary);
+  font-weight: 700;
+  font-size: 13.5px;
+  padding: 6px 2px;
+}
+.see-all-link:hover { text-decoration: underline; }
 .category-chip {
   background: var(--card);
   border: 1px solid var(--border);
@@ -797,6 +804,81 @@ p { overflow-wrap: break-word; }
 }
 
 .profile-card { text-align: center; }
+
+/* ---------------- account hub (Profile tab, signed in) ---------------- */
+.profile-hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  text-align: left;
+}
+.profile-hero .avatar { margin: 0; flex: 0 0 auto; }
+.profile-hero-text { flex: 1; min-width: 0; }
+.profile-hero-name {
+  margin: 0;
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+.profile-hero-email {
+  margin: 2px 0 6px;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.hub-section { margin-top: 16px; }
+.hub-section-label {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+}
+.hub-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.hub-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 13px 14px;
+  min-height: 52px;
+  border-bottom: 1px solid var(--border);
+}
+.hub-row:last-child { border-bottom: 0; }
+button.hub-row:active { background: var(--bg); }
+.hub-row-disabled { color: var(--muted); }
+.hub-row-icon {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--light);
+  color: var(--primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.hub-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.hub-row-title { font-weight: 600; font-size: 14.5px; overflow-wrap: anywhere; }
+.hub-row-sub { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
+.hub-row-chevron { flex: 0 0 auto; color: var(--muted); display: inline-flex; }
+.hub-row-soon {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
 .avatar {
   width: 56px;
   height: 56px;

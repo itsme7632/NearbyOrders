@@ -13,6 +13,9 @@ export class ApiError extends Error {
 
 export type Session = { accessToken: string; user: { id: string; email: string; role: string } };
 
+/** Own-account fields as returned by /auth/me and /auth/profile. */
+export type MyProfile = { id: string; email: string; role: string; firstName: string | null; lastName: string | null; phone?: string | null };
+
 let session: Session | null = null;
 const sessionListeners = new Set<(s: Session | null) => void>();
 
@@ -163,6 +166,26 @@ export const login = (email: string, password: string) =>
   });
 
 export const logout = () => setSession(null);
+
+/* ------------------------------ account ----------------------------- */
+
+/** Current profile (names/phone) for the signed-in user. */
+export const whoami = () => request<MyProfile>('/auth/me', { auth: true });
+
+/**
+ * Updates the signed-in user's own profile. There is no userId parameter by
+ * design — the server derives ownership from the access token.
+ */
+export const updateMyProfile = (patch: { firstName?: string | null; lastName?: string | null; phone?: string | null }) =>
+  request<MyProfile>('/auth/profile', { method: 'PATCH', body: patch, auth: true });
+
+/**
+ * Changes the signed-in user's password (server re-proves the current one and
+ * revokes other sessions). The response is 204 with no body — passwords are
+ * never returned or persisted client-side.
+ */
+export const changeMyPassword = (currentPassword: string, newPassword: string) =>
+  request<void>('/auth/password', { method: 'PATCH', body: { currentPassword, newPassword }, auth: true });
 
 /* --------------------------- categories ---------------------------- */
 

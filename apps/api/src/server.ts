@@ -14,6 +14,8 @@ import {
   createNotifications,
   type NotificationType,
   registerSchema,
+  profileUpdateSchema,
+  passwordChangeSchema,
   categoryCreateSchema,
   categoryUpdateSchema,
   businessSchema,
@@ -166,7 +168,49 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   app.get('/api/v1/auth/me', { preHandler: auth }, async (q) => {
     const u = currentUser(q);
-    return { data: { id: u.id, email: u.email, role: u.role, firstName: u.firstName, lastName: u.lastName } };
+    return { data: { id: u.id, email: u.email, role: u.role, firstName: u.firstName, lastName: u.lastName, phone: u.phone } };
+  });
+
+  /**
+   * Own-profile update. Fields are editable only on the authenticated user's
+   * own row (there is no userId parameter at all — identity comes from the
+   * token). Email is intentionally not editable: it is the login identity and
+   * no verification workflow exists yet.
+   */
+  app.patch('/api/v1/auth/profile', { preHandler: auth }, async (q) => {
+    const d = profileUpdateSchema.parse(q.body);
+    const u = await prisma.user.update({
+      where: { id: currentUser(q).id },
+      data: {
+        ...(d.firstName !== undefined ? { firstName: d.firstName } : {}),
+        ...(d.lastName !== undefined ? { lastName: d.lastName } : {}),
+        ...(d.phone !== undefined ? { phone: d.phone } : {}),
+      },
+      select: { id: true, email: true, role: true, firstName: true, lastName: true, phone: true },
+    });
+    return { data: u };
+  });
+
+  /**
+   * Password change: re-proves the current password, hashes the new one, and
+   * revokes every refresh token so other devices must sign in again. Passwords
+   * are never logged (the logger redacts `password` fields) and the response
+   * carries no secret material.
+   */
+  app.patch('/api/v1/auth/password', { preHandler: auth }, async (q, r) => {
+    const d = passwordChangeSchema.parse(q.body);
+    const u = currentUser(q);
+    const row = await prisma.user.findUnique({ where: { id: u.id }, select: { passwordHash: true } });
+    if (!row || !(await argon2.verify(row.passwordHash, d.currentPassword)))
+      return r.status(400).send({ error: { code: 'INVALID_CREDENTIALS', message: 'Current password is incorrect' } });
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: u.id }, data: { passwordHash: await argon2.hash(d.newPassword, { type: argon2.argon2id }) } }),
+      prisma.refreshToken.updateMany({ where: { userId: u.id, revokedAt: null }, data: { revokedAt: new Date() } }),
+    ]);
+    await prisma.auditLog.create({
+      data: { actorId: u.id, action: 'PASSWORD_CHANGED', entityType: 'User', entityId: u.id },
+    });
+    return r.status(204).send();
   });
 
   /* --------------------------- Categories --------------------------- */

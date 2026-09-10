@@ -1,15 +1,33 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ApiError, getSession, login, logout, onSessionChange, type Session } from '../api.js';
-import { Button, Field } from '../components/ui.js';
+import {
+  ApiError,
+  changeMyPassword,
+  getSession,
+  login,
+  logout,
+  onSessionChange,
+  updateMyProfile,
+  whoami,
+  type MyProfile,
+  type Session,
+} from '../api.js';
+import { Button, ErrorState, Field } from '../components/ui.js';
 import {
   AlertIcon,
+  BellIcon,
   CheckIcon,
+  ChevronRightIcon,
   EyeIcon,
   EyeOffIcon,
+  HelpIcon,
+  InfoIcon,
+  KeyIcon,
   LockIcon,
   MailIcon,
+  OrdersIcon,
   PinIcon,
   StoreIcon,
+  UserIcon,
   UserPlusIcon,
 } from '../components/icons.js';
 
@@ -74,7 +92,372 @@ function roleCopy(role: Role): string {
     : 'List your business, manage services, products and hours.';
 }
 
-export function ProfileScreen(props: { onOwnerDashboard: () => void }) {
+/* ------------------------------------------------------------------ */
+/* Signed-in: Account & Settings hub                                   */
+/* ------------------------------------------------------------------ */
+
+/** One tappable settings row (or a static one when disabled). */
+function HubRow(props: {
+  icon: ReactNode;
+  title: string;
+  subtitle?: string;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  const body = (
+    <>
+      <span className="hub-row-icon" aria-hidden>
+        {props.icon}
+      </span>
+      <span className="hub-row-text">
+        <span className="hub-row-title">{props.title}</span>
+        {props.subtitle ? <span className="hub-row-sub">{props.subtitle}</span> : null}
+      </span>
+      {props.disabled ? (
+        <span className="hub-row-soon">Soon</span>
+      ) : (
+        <span className="hub-row-chevron" aria-hidden>
+          <ChevronRightIcon size={18} />
+        </span>
+      )}
+    </>
+  );
+  if (props.disabled || !props.onClick) return <div className="hub-row hub-row-disabled">{body}</div>;
+  return (
+    <button type="button" className="hub-row" onClick={props.onClick}>
+      {body}
+    </button>
+  );
+}
+
+function HubSection(props: { label: string; children: ReactNode }) {
+  return (
+    <section className="hub-section" aria-label={props.label}>
+      <h3 className="hub-section-label">{props.label}</h3>
+      <div className="hub-card">{props.children}</div>
+    </section>
+  );
+}
+
+export function EditProfileScreen(props: { onBack: () => void; onSaved: () => void }) {
+  const [profile, setProfile] = useState<MyProfile | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [touched, setTouched] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    whoami()
+      .then((p) => {
+        if (cancelled) return;
+        setProfile(p);
+        setFirstName(p.firstName ?? '');
+        setLastName(p.lastName ?? '');
+        setPhone(p.phone ?? '');
+      })
+      .catch(() => {
+        if (!cancelled) setLoadError('Could not load your profile. Please try again.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const phoneProvided = phone.trim().length > 0;
+  const phoneValid = !phoneProvided || /^[+\d][\d\s-]{6,19}$/.test(phone.trim());
+  const canSubmit = !busy && !loadError && phoneValid;
+
+  const submit = async () => {
+    setTouched(true);
+    setSaved(false);
+    if (!canSubmit) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await updateMyProfile({
+        firstName: firstName.trim() || null,
+        lastName: lastName.trim() || null,
+        phone: phone.trim() || null,
+      });
+      setSaved(true);
+      props.onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save your profile. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="screen">
+      <button type="button" className="back-link" onClick={props.onBack}>
+        ‹ Back
+      </button>
+      <div className="screen-head">
+        <h1>Edit profile</h1>
+        <p className="muted">Update how your name appears in the app.</p>
+      </div>
+
+      {loadError ? (
+        <div className="card">
+          <ErrorState message={loadError} />
+        </div>
+      ) : !profile ? (
+        <div className="loading" role="status">
+          <span className="spinner" aria-hidden /> Loading your profile…
+        </div>
+      ) : (
+        <div className="card">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submit();
+            }}
+            noValidate
+          >
+            <Field label="First name">
+              <input value={firstName} onChange={(e) => setFirstName(e.target.value)} autoComplete="given-name" placeholder="Your first name" aria-label="First name" enterKeyHint="next" />
+            </Field>
+            <Field label="Last name">
+              <input value={lastName} onChange={(e) => setLastName(e.target.value)} autoComplete="family-name" placeholder="Your last name" aria-label="Last name" enterKeyHint="next" />
+            </Field>
+            <Field label="Phone" hint={phoneProvided && !phoneValid ? 'Enter a valid phone number, e.g. +92 300 1234567' : undefined}>
+              <input
+                type="tel"
+                inputMode="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                autoComplete="tel"
+                placeholder="e.g. +92 300 1234567"
+                aria-label="Phone"
+                aria-invalid={phoneProvided && !phoneValid}
+                enterKeyHint="done"
+              />
+            </Field>
+            <Field label="Email">
+              <input value={profile.email} disabled aria-readonly readOnly aria-label="Email (cannot be changed)" />
+            </Field>
+            <p className="hint">Email is your sign-in identity and cannot be changed yet.</p>
+
+            {error ? (
+              <div className="auth-error" role="alert">
+                <AlertIcon size={18} />
+                <span>{error}</span>
+              </div>
+            ) : null}
+            {saved && !error ? <p className="save-ok">Profile updated ✓</p> : null}
+
+            <div className="btn-row">
+              <Button type="submit" disabled={!canSubmit}>
+                {busy ? 'Saving…' : 'Save changes'}
+              </Button>
+              <Button variant="ghost" onClick={props.onBack} disabled={busy}>
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ChangePasswordScreen(props: { onBack: () => void }) {
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [touched, setTouched] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  const nextValid = next.length >= 12;
+  const confirmValid = next === confirm;
+  const canSubmit = !busy && current.length > 0 && nextValid && confirmValid;
+
+  const submit = async () => {
+    setTouched(true);
+    setDone(false);
+    if (!canSubmit) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await changeMyPassword(current, next);
+      setDone(true);
+      setCurrent('');
+      setNext('');
+      setConfirm('');
+      setTouched(false);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 400) setError('Your current password is incorrect.');
+      else setError(e instanceof Error ? e.message : 'Could not change your password. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="screen">
+      <button type="button" className="back-link" onClick={props.onBack}>
+        ‹ Back
+      </button>
+      <div className="screen-head">
+        <h1>Change password</h1>
+        <p className="muted">Choose a strong password you don't use elsewhere.</p>
+      </div>
+
+      <div className="card">
+        {done ? (
+          <div className="created-banner" role="status">
+            <CheckIcon size={16} />
+            <span>Password changed. Other devices have been signed out.</span>
+          </div>
+        ) : null}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submit();
+          }}
+          noValidate
+        >
+          <Field label="Current password">
+            <PasswordInput value={current} onChange={setCurrent} autoComplete="current-password" placeholder="Enter your current password" label="Current password" />
+          </Field>
+          <Field label="New password" hint={next.length > 0 && !nextValid ? 'Use at least 12 characters.' : undefined}>
+            <PasswordInput value={next} onChange={setNext} autoComplete="new-password" invalid={next.length > 0 && !nextValid} placeholder="At least 12 characters" label="New password" />
+          </Field>
+          <Field label="Confirm new password" hint={confirm.length > 0 && !confirmValid ? 'Passwords do not match.' : undefined}>
+            <PasswordInput value={confirm} onChange={setConfirm} autoComplete="new-password" invalid={confirm.length > 0 && !confirmValid} placeholder="Repeat your new password" label="Confirm new password" />
+          </Field>
+
+          {error ? (
+            <div className="auth-error" role="alert">
+              <AlertIcon size={18} />
+              <span>{error}</span>
+            </div>
+          ) : null}
+
+          <Button full type="submit" disabled={!canSubmit}>
+            {busy ? 'Updating…' : 'Update password'}
+          </Button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function AccountHub(props: {
+  session: Session;
+  onOwnerDashboard: () => void;
+  onEditProfile: () => void;
+  onChangePassword: () => void;
+  onOpenOrders: () => void;
+  onOpenBookings: () => void;
+  onOpenNotifications: () => void;
+}) {
+  const [profile, setProfile] = useState<MyProfile | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    whoami()
+      .then((p) => {
+        if (!cancelled) setProfile(p);
+      })
+      .catch(() => {
+        /* header falls back to email-derived name; refreshes on next visit */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const isOwner = props.session.user.role === 'BUSINESS_OWNER';
+  const isAdmin = props.session.user.role === 'ADMIN';
+  const displayName = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ');
+  const initial = (displayName || props.session.user.email)[0]?.toUpperCase() ?? '?';
+
+  return (
+    <div className="screen">
+      <div className="card profile-hero">
+        <div className="avatar" aria-hidden>
+          {initial}
+        </div>
+        <div className="profile-hero-text">
+          <h2 className="profile-hero-name">{displayName || props.session.user.email}</h2>
+          <p className="profile-hero-email">{props.session.user.email}</p>
+          <span className="pill">{isOwner ? 'Business owner' : isAdmin ? 'Administrator' : 'Customer'}</span>
+        </div>
+        <Button sm variant="secondary" onClick={props.onEditProfile}>
+          Edit profile
+        </Button>
+      </div>
+
+      {isOwner ? (
+        <div className="card">
+          <Button full onClick={props.onOwnerDashboard}>
+            Manage my business
+          </Button>
+        </div>
+      ) : null}
+
+      <HubSection label="Account">
+        <HubRow icon={<UserIcon size={19} />} title="Personal information" subtitle="Name and phone number" onClick={props.onEditProfile} />
+        <HubRow icon={<KeyIcon size={19} />} title="Change password" onClick={props.onChangePassword} />
+      </HubSection>
+
+      <HubSection label="Activity">
+        <HubRow icon={<OrdersIcon size={19} />} title="My orders" onClick={props.onOpenOrders} />
+        <HubRow icon={<BookingsHubIcon size={19} />} title="My bookings" onClick={props.onOpenBookings} />
+        <HubRow icon={<span aria-hidden>★</span>} title="My reviews" subtitle="Reviews you've written" disabled />
+      </HubSection>
+
+      <HubSection label="Preferences">
+        <HubRow icon={<BellIcon size={19} />} title="Notifications" subtitle="Updates about your bookings and orders" onClick={props.onOpenNotifications} />
+      </HubSection>
+
+      <HubSection label="Support & information">
+        <HubRow icon={<HelpIcon size={19} />} title="Help & support" disabled />
+        <HubRow icon={<InfoIcon size={19} />} title="Terms & conditions" disabled />
+        <HubRow icon={<InfoIcon size={19} />} title="Privacy policy" disabled />
+        <HubRow icon={<InfoIcon size={19} />} title="About NearbyOrders" subtitle="Find nearby. Book or order." disabled />
+      </HubSection>
+
+      <div className="card">
+        <Button full variant="ghost" onClick={logout}>
+          Sign out
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function BookingsHubIcon(props: { size?: number }) {
+  return <BookingsIconSize {...props} />;
+}
+
+function BookingsIconSize(props: { size?: number }) {
+  return (
+    <svg width={props.size ?? 22} height={props.size ?? 22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
+      <rect x="3.5" y="5" width="17" height="16" rx="2.5" />
+      <path d="M3.5 9.5h17" />
+      <path d="M8 3v4" />
+      <path d="M16 3v4" />
+    </svg>
+  );
+}
+
+export function ProfileScreen(props: {
+  onOwnerDashboard: () => void;
+  onEditProfile: () => void;
+  onChangePassword: () => void;
+  onOpenOrders: () => void;
+  onOpenBookings: () => void;
+  onOpenNotifications: () => void;
+}) {
   const [session, setSessionState] = useState<Session | null>(getSession());
   useEffect(() => onSessionChange(setSessionState), []);
 
@@ -89,26 +472,16 @@ export function ProfileScreen(props: { onOwnerDashboard: () => void }) {
   const [busy, setBusy] = useState(false);
 
   if (session) {
-    const isOwner = session.user.role === 'BUSINESS_OWNER';
-    const isAdmin = session.user.role === 'ADMIN';
     return (
-      <div className="screen">
-        <div className="card profile-card auth-card">
-          <div className="avatar" aria-hidden>
-            {(session.user.email[0] ?? '?').toUpperCase()}
-          </div>
-          <h2>{session.user.email}</h2>
-          <p className="muted">{isOwner ? 'Business owner' : isAdmin ? 'Administrator' : 'Customer'}</p>
-          {isOwner ? (
-            <Button full onClick={props.onOwnerDashboard}>
-              Manage my business
-            </Button>
-          ) : null}
-          <Button full variant="ghost" onClick={logout}>
-            Sign out
-          </Button>
-        </div>
-      </div>
+      <AccountHub
+        session={session}
+        onOwnerDashboard={props.onOwnerDashboard}
+        onEditProfile={props.onEditProfile}
+        onChangePassword={props.onChangePassword}
+        onOpenOrders={props.onOpenOrders}
+        onOpenBookings={props.onOpenBookings}
+        onOpenNotifications={props.onOpenNotifications}
+      />
     );
   }
 

@@ -19,14 +19,31 @@ const CORE_CATEGORIES: { name: string; slug: string }[] = [
   { name: 'Food & Restaurants', slug: 'food-restaurants' },
   { name: 'Beauty & Salon', slug: 'beauty-salon' },
   { name: 'Health & Medical', slug: 'health-medical' },
-  { name: 'Fitness', slug: 'fitness' },
-  { name: 'Education', slug: 'education' },
-  { name: 'Automotive', slug: 'automotive' },
   { name: 'Home Services', slug: 'home-services' },
+  { name: 'Automotive', slug: 'automotive' },
+  { name: 'Education', slug: 'education' },
+  { name: 'Fitness', slug: 'fitness' },
   { name: 'Shopping', slug: 'shopping' },
   { name: 'Professional Services', slug: 'professional-services' },
-  { name: 'Other', slug: 'other' },
+  { name: 'Events & Entertainment', slug: 'events-entertainment' },
 ];
+
+/**
+ * Development seeds accidentally produced by test fixtures that once ran
+ * against the shared dev database ("Admin Cat 178…", "Helper Category", …).
+ * They are only deleted when no business references them; any category with
+ * attached businesses is left untouched for an admin to rename instead.
+ */
+export async function pruneStrayCategories(): Promise<void> {
+  const strays = await prisma.category.findMany({
+    where: { businesses: { none: {} } },
+    select: { id: true, name: true, slug: true },
+  });
+  const junk = strays.filter((c) => !CORE_CATEGORIES.some((core) => core.slug === c.slug));
+  if (junk.length === 0) return;
+  const result = await prisma.category.deleteMany({ where: { id: { in: junk.map((c) => c.id) } } });
+  console.log(`Pruned ${result.count} stray test categories (none referenced by businesses).`);
+}
 
 const DEFAULT_HOURS = [
   { dayOfWeek: 0, isClosed: true, opensAt: null, closesAt: null },
@@ -38,7 +55,7 @@ const DEFAULT_HOURS = [
   { dayOfWeek: 6, isClosed: false, opensAt: '10:00', closesAt: '23:00' },
 ];
 
-async function upsertCoreCategories() {
+export async function upsertCoreCategories() {
   for (const c of CORE_CATEGORIES) {
     await prisma.category.upsert({
       where: { slug: c.slug },
@@ -176,6 +193,7 @@ async function createDemoData() {
 }
 
 async function main() {
+  await pruneStrayCategories();
   await upsertCoreCategories();
   if (process.env.SEED_DEMO_DATA === '1') {
     console.log('SEED_DEMO_DATA=1: creating clearly-marked demo data…');

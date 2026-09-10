@@ -4,7 +4,7 @@ import './styles.css';
 import { navigationTabs, type Tab } from './navigation.js';
 import { getSession, onSessionChange, type Session } from './api.js';
 import { useRoute } from './hooks.js';
-import { AlertIcon, BookingsIcon, ExploreIcon, HomeIcon, OrdersIcon, ProfileIcon } from './components/icons.js';
+import { BellIcon, BookingsIcon, ExploreIcon, HomeIcon, OrdersIcon, ProfileIcon } from './components/icons.js';
 import { EmptyState, Loading } from './components/ui.js';
 import { HomeScreen } from './screens/Home.js';
 import { ExploreScreen } from './screens/Explore.js';
@@ -12,7 +12,7 @@ import { BusinessDetailScreen } from './screens/BusinessDetail.js';
 import { BookServiceScreen } from './screens/BookService.js';
 import { BookingsScreen, BookingDetailScreen } from './screens/Bookings.js';
 import { OwnerBookingsScreen, OwnerBookingDetailScreen } from './screens/OwnerBookings.js';
-import { ProfileScreen } from './screens/Profile.js';
+import { ProfileScreen, EditProfileScreen, ChangePasswordScreen } from './screens/Profile.js';
 import { OwnerDashboardScreen } from './screens/OwnerDashboard.js';
 import { CreateBusinessScreen } from './screens/CreateBusiness.js';
 import { CartScreen } from './screens/Cart.js';
@@ -20,7 +20,8 @@ import { OrdersScreen, OrderDetailScreen } from './screens/Orders.js';
 import { NotificationsScreen } from './screens/Notifications.js';
 import { useUnreadNotifications } from './useUnreadNotifications.js';
 
-function App() {
+/** Exported (besides self-mounting below) so tests can render the full app shell. */
+export function App() {
   const [tab, setTab] = useState<Tab>('Home');
   const [route, push, back] = useRoute();
   const [session, setSession] = useState<Session | null>(getSession());
@@ -32,6 +33,42 @@ function App() {
   const openBusiness = (id: string) => push(`/business/${id}`);
 
   const openCart = () => push('/cart');
+
+  /** Signed-out fallback: ProfileScreen doubles as the auth screen. */
+  const profileAuthScreen = (
+    <ProfileScreen
+      onOwnerDashboard={() => push('/owner')}
+      onEditProfile={() => push('/edit-profile')}
+      onChangePassword={() => push('/change-password')}
+      onOpenOrders={() => {
+        setTab('Orders');
+        push('/');
+      }}
+      onOpenBookings={() => {
+        setTab('Bookings');
+        push('/');
+      }}
+      onOpenNotifications={() => push('/notifications')}
+    />
+  );
+
+  /** Signed-in Profile tab: the account & settings hub. */
+  const profileHubScreen = (
+    <ProfileScreen
+      onOwnerDashboard={() => push('/owner')}
+      onEditProfile={() => push('/edit-profile')}
+      onChangePassword={() => push('/change-password')}
+      onOpenOrders={() => {
+        setTab('Orders');
+        push('/');
+      }}
+      onOpenBookings={() => {
+        setTab('Bookings');
+        push('/');
+      }}
+      onOpenNotifications={() => push('/notifications')}
+    />
+  );
 
   // Phase 5: unread badge on the header bell. Refreshes on app open, window
   // focus, session changes, and explicitly after read-state mutations.
@@ -87,6 +124,10 @@ function App() {
     content = session ? (
       <NotificationsScreen onOpenNotification={openNotification} onReadStateChange={unread.refresh} />
     ) : null;
+  } else if (route.name === 'edit-profile') {
+    content = session ? <EditProfileScreen onBack={back} onSaved={unread.refresh} /> : null;
+  } else if (route.name === 'change-password') {
+    content = session ? <ChangePasswordScreen onBack={back} /> : null;
   } else if (route.name === 'book') {
     // The hash already carries the destination, so after sign-in this same
     // route renders the booking flow again — no separate return logic needed.
@@ -135,7 +176,7 @@ function App() {
         justCreatedStatus={route.justCreated ? route.justCreatedStatus ?? null : null}
       />
     ) : (
-      <ProfileScreen onOwnerDashboard={() => push('/owner')} />
+      profileAuthScreen
     );
   } else if (route.name === 'create-business') {
     // Owner-only self-service onboarding; the backend enforces the role again.
@@ -150,7 +191,7 @@ function App() {
           }}
         />
       ) : (
-        <ProfileScreen onOwnerDashboard={() => push('/owner')} />
+        profileAuthScreen
       );
   } else if (tab === 'Home') {
     content = (
@@ -158,6 +199,7 @@ function App() {
         onSearch={(query) => goExplore({ query })}
         onOpenBusiness={openBusiness}
         onExploreCategory={(category) => goExplore({ category })}
+        onSeeAllCategories={() => goExplore({})}
       />
     );
   } else if (tab === 'Explore') {
@@ -203,7 +245,7 @@ function App() {
       )
     ) : null;
   } else {
-    content = <ProfileScreen onOwnerDashboard={() => push('/owner')} />;
+    content = session ? profileHubScreen : profileAuthScreen;
   }
 
   // Authentication is its own flow: when a signed-out user reaches an
@@ -216,7 +258,7 @@ function App() {
       route.name === 'book' ||
       route.name === 'booking' ||
       route.name === 'notifications');
-  if (authFlow && content === null) content = <ProfileScreen onOwnerDashboard={() => push('/owner')} />;
+  if (authFlow && content === null) content = session ? profileHubScreen : profileAuthScreen;
 
   return (
     <main className={authFlow ? 'auth-mode' : undefined}>
@@ -237,7 +279,7 @@ function App() {
               onClick={() => push('/notifications')}
               aria-label={unread.count > 0 ? `Notifications, ${unread.count} unread` : 'Notifications'}
             >
-              <AlertIcon size={22} />
+              <BellIcon size={22} />
               {unread.count > 0 ? <span className="bell-badge">{unread.count > 99 ? '99+' : unread.count}</span> : null}
             </button>
           ) : null}
@@ -278,4 +320,5 @@ function OwnerOrdersRedirect(props: { onOwnerDashboard: () => void }) {
   return <Loading label="Opening your business…" />;
 }
 
-createRoot(document.getElementById('root')!).render(<App />);
+const mountPoint = document.getElementById('root');
+if (mountPoint) createRoot(mountPoint).render(<App />);

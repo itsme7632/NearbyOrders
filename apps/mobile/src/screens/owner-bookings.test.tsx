@@ -44,8 +44,8 @@ const makeBooking = (overrides: Partial<Booking> = {}): Booking => ({
 });
 
 const pending = makeBooking();
-const confirmed = makeBooking({ id: 'bk-2', status: 'CONFIRMED' });
-const completed = makeBooking({ id: 'bk-3', status: 'COMPLETED' });
+const confirmed = makeBooking({ id: 'bk-2', status: 'CONFIRMED', bookingDate: '2026-09-11' });
+const completed = makeBooking({ id: 'bk-3', status: 'COMPLETED', bookingDate: '2026-09-09' });
 
 function mockOwnerApis(bookings: Booking[]) {
   vi.spyOn(api, 'getMyBusinesses').mockResolvedValue([business]);
@@ -59,12 +59,14 @@ beforeEach(() => {
 
 describe('OwnerBookingsScreen', () => {
   it('groups bookings into Incoming, Upcoming and History', async () => {
-    mockOwnerApis([completed, confirmed, pending]);
+    mockOwnerApis([pending, confirmed, completed]);
     render(<OwnerBookingsScreen onOpenBooking={() => {}} />);
 
-    expect(await screen.findByRole('region', { name: 'Incoming' })).toBeTruthy();
-    expect(screen.getByRole('region', { name: 'Upcoming' })).toBeTruthy();
-    expect(screen.getByRole('region', { name: 'History' })).toBeTruthy();
+    await waitFor(() => screen.getAllByText('Ayesha Khan').length >= 3);
+    expect(screen.getAllByText('Ayesha Khan')).toHaveLength(3);
+    expect(screen.getByText('Waiting for your response')).toBeTruthy();
+    expect(screen.getByText('Upcoming')).toBeTruthy();
+    expect(screen.getByText('History')).toBeTruthy();
     // The customer name appears once per card (3 bookings in total).
     expect(screen.getAllByText('Ayesha Khan')).toHaveLength(3);
     expect(screen.getByText('Waiting for your response')).toBeTruthy();

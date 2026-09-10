@@ -6,9 +6,17 @@ import { fileURLToPath } from 'node:url';
 
 /**
  * Ensures a real PostgreSQL is reachable for the API test suite.
- * - If DATABASE_URL is exported (CI), it is used as-is and migrations are applied.
- * - Otherwise a throwaway embedded PostgreSQL (devDependency `embedded-postgres`)
- *   is booted on 127.0.0.1:54330 and used for the run.
+ *
+ * The suite writes fixture rows (users, businesses, categories) directly into
+ * the database it targets, so it must NEVER aim at the development/preview
+ * database — a past run against it polluted the customer-facing category
+ * catalog with test records. The rules are:
+ *
+ * - In CI, DATABASE_URL is always exported and used as-is (throwaway service).
+ * - Locally, a throwaway embedded PostgreSQL is booted on 127.0.0.1:54330.
+ *   An inherited DATABASE_URL pointing at the dev database (port 54329) is
+ *   deliberately ignored and warned about, not reused.
+ * - Set TEST_DATABASE_URL to override explicitly for a dedicated test DB.
  *
  * Vitest runs this setup file once per test file in parallel workers, so all
  * boot operations are serialized with a filesystem lock and re-check whether
@@ -86,7 +94,20 @@ function releaseBootLock(dataDir: string): void {
   rmSync(`${dataDir}.lock`, { recursive: true, force: true });
 }
 
-let databaseUrl = process.env.DATABASE_URL;
+let databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+
+if (databaseUrl && !process.env.CI && !process.env.TEST_DATABASE_URL) {
+  // Legacy behavior would reuse the inherited DATABASE_URL — which in this
+  // sandbox is the dev/preview database that must stay customer-facing.
+  const port = new URL(databaseUrl).port;
+  if (!port || port === '54329') {
+    console.warn(
+      '[setup] ignoring inherited DATABASE_URL (would pollute the dev/preview database with test fixtures). ' +
+        'Booting a throwaway embedded PostgreSQL instead; set TEST_DATABASE_URL to target a dedicated test DB.',
+    );
+    databaseUrl = undefined;
+  }
+}
 
 if (!databaseUrl) {
   const { default: EmbeddedPostgres } = await import('embedded-postgres');

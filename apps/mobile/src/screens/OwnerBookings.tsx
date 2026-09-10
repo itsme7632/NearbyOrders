@@ -45,7 +45,7 @@ function OwnerBookingCard(props: { booking: Booking; onOpen: () => void }) {
 
 function BookingGroup(props: { label: string; hint?: string; bookings: Booking[]; onOpenBooking: (id: string) => void }) {
   return (
-    <section aria-label={props.label}>
+    <section aria-label={`${props.label} section`}>
       <div className="section-head">
         <h2>
           {props.label}

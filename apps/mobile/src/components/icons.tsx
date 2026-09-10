@@ -158,6 +158,16 @@ export function AlertIcon(props: IconProps) {
   );
 }
 
+/** Notification bell: the recognizable header glyph for the notifications flow. */
+export function BellIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M18 10a6 6 0 1 0-12 0c0 4.2-1.6 5.8-2.5 6.7-.3.3-.1.8.3.8h16.4c.4 0 .6-.5.3-.8-.9-.9-2.5-2.5-2.5-6.7Z" />
+      <path d="M10 20.5a2.2 2.2 0 0 0 4 0" />
+    </Icon>
+  );
+}
+
 export function CheckIcon(props: IconProps) {
   return (
     <Icon {...props}>
@@ -172,6 +182,64 @@ export function ImageIcon(props: IconProps) {
       <rect x="3.5" y="5" width="17" height="14" rx="2.5" />
       <circle cx="9" cy="10" r="1.8" />
       <path d="m6 19 5.5-5.5a1.5 1.5 0 0 1 2.2 0L19 19" />
+    </Icon>
+  );
+}
+
+/* --------- account-hub row icons (Profile settings hub) --------- */
+
+export function UserIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4.5 20.5c1.3-3.4 4.1-5 7.5-5s6.2 1.6 7.5 5" />
+    </Icon>
+  );
+}
+
+export function KeyIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="8" cy="14.5" r="4.5" />
+      <path d="m11.5 11 8-8" />
+      <path d="m16 7 2.5 2.5" />
+      <path d="m18.5 4.5 2 2" />
+    </Icon>
+  );
+}
+
+export function HelpIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.6 9.2a2.5 2.5 0 1 1 3.4 2.9c-.8.4-1 .9-1 1.9" />
+      <path d="M12 16.8h.01" />
+    </Icon>
+  );
+}
+
+export function InfoIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5.5" />
+      <path d="M12 7.6h.01" />
+    </Icon>
+  );
+}
+
+export function StarIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m12 3.6 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.8l5.9-.9z" />
+    </Icon>
+  );
+}
+
+export function ChevronRightIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m9.5 6.5 6 5.5-6 5.5" />
     </Icon>
   );
 }

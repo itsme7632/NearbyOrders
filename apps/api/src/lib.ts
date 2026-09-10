@@ -15,6 +15,34 @@ export const registerSchema = z.object({
   role: z.enum(['CUSTOMER', 'BUSINESS_OWNER']).optional(),
 });
 
+/** Profile fields a signed-in user may change about themselves. Email is intentionally absent: it is the login identity and has no verification workflow yet. */
+export const profileUpdateSchema = z
+  .object({
+    firstName: z.union([z.string().trim().min(1).max(80), z.literal(''), z.null()]).optional().transform((v) => (v === '' || v === null ? null : v)),
+    lastName: z.union([z.string().trim().max(80), z.literal(''), z.null()]).optional().transform((v) => (v === '' || v === null ? null : v)),
+    phone: z
+      .union([
+        z.string().trim().min(7).max(20).regex(/^[+\d][\d\s-]+$/, 'Invalid phone number'),
+        z.literal(''),
+        z.null(),
+      ])
+      .optional()
+      .transform((v) => (v === '' || v === null ? null : v)),
+  })
+  .refine((d) => d.firstName !== undefined || d.lastName !== undefined || d.phone !== undefined, {
+    message: 'No changes provided',
+  });
+
+/**
+ * Password change. The current password must be re-proven; the new password
+ * meets the same strength bar as registration. Never logged (server redacts
+ * `password` fields) and never stored client-side.
+ */
+export const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(1).max(128),
+  newPassword: z.string().min(12).max(128),
+});
+
 /* ------------------------------------------------------------------ */
 /* Shared primitives                                                   */
 /* ------------------------------------------------------------------ */
