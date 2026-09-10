@@ -325,3 +325,34 @@ export const getMyOrder = getOrder;
 /** Owner lifecycle changes; customers may only cancel a PENDING order. */
 export const setOrderStatus = (id: string, status: OrderStatus) =>
   request<Order>(`/orders/${id}/status`, { method: 'PATCH', body: { status }, auth: true });
+
+/* ---------------------------- notifications ------------------------ */
+
+export type Notification = {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  entityType: 'Booking' | 'Order';
+  entityId: string;
+  isRead: boolean;
+  readAt: string | null;
+  createdAt: string;
+};
+
+/** Matches the wrapped list response: { data: { items, nextCursor } }. */
+export type NotificationPage = { items: Notification[]; nextCursor: string | null };
+
+export const listNotifications = (limit = 30, cursor?: string) => {
+  const qs = new URLSearchParams({ limit: String(limit) });
+  if (cursor) qs.set('cursor', cursor);
+  return request<NotificationPage>(`/notifications?${qs.toString()}`, { auth: true });
+};
+
+export const getUnreadCount = () => request<{ count: number }>('/notifications/unread-count', { auth: true });
+
+export const markNotificationRead = (id: string) =>
+  request<Notification>(`/notifications/${id}/read`, { method: 'PATCH', auth: true });
+
+export const markAllNotificationsRead = () =>
+  request<{ updated: number }>('/notifications/read-all', { method: 'PATCH', auth: true });

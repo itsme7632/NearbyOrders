@@ -9,6 +9,7 @@ export type Route =
   | { name: 'booking'; bookingId: string }
   | { name: 'cart' }
   | { name: 'order'; orderId: string }
+  | { name: 'notifications' }
   | { name: 'owner-dashboard'; justCreated?: boolean; justCreatedName?: string; justCreatedStatus?: string }
   | { name: 'create-business' };
 
@@ -31,6 +32,7 @@ export function parseHash(hash: string): Route {
     if (bookingId) return { name: 'booking', bookingId };
   }
   if (clean === 'cart') return { name: 'cart' };
+  if (clean === 'notifications') return { name: 'notifications' };
   if (clean.startsWith('order/')) {
     const orderId = clean.slice('order/'.length);
     if (orderId) return { name: 'order', orderId };

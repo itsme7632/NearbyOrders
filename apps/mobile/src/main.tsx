@@ -4,7 +4,7 @@ import './styles.css';
 import { navigationTabs, type Tab } from './navigation.js';
 import { getSession, onSessionChange, type Session } from './api.js';
 import { useRoute } from './hooks.js';
-import { BookingsIcon, ExploreIcon, HomeIcon, OrdersIcon, ProfileIcon } from './components/icons.js';
+import { AlertIcon, BookingsIcon, ExploreIcon, HomeIcon, OrdersIcon, ProfileIcon } from './components/icons.js';
 import { EmptyState, Loading } from './components/ui.js';
 import { HomeScreen } from './screens/Home.js';
 import { ExploreScreen } from './screens/Explore.js';
@@ -17,6 +17,8 @@ import { OwnerDashboardScreen } from './screens/OwnerDashboard.js';
 import { CreateBusinessScreen } from './screens/CreateBusiness.js';
 import { CartScreen } from './screens/Cart.js';
 import { OrdersScreen, OrderDetailScreen } from './screens/Orders.js';
+import { NotificationsScreen } from './screens/Notifications.js';
+import { useUnreadNotifications } from './useUnreadNotifications.js';
 
 function App() {
   const [tab, setTab] = useState<Tab>('Home');
@@ -30,6 +32,23 @@ function App() {
   const openBusiness = (id: string) => push(`/business/${id}`);
 
   const openCart = () => push('/cart');
+
+  // Phase 5: unread badge on the header bell. Refreshes on app open, window
+  // focus, session changes, and explicitly after read-state mutations.
+  const unread = useUnreadNotifications();
+
+  /** Deep link for a notification: entity detail, or a safe fallback when the target no longer exists. */
+  const openNotification = (n: { entityType: 'Booking' | 'Order' | string; entityId: string }) => {
+    if (n.entityType === 'Booking') {
+      setTab('Bookings');
+      push(`/booking/${n.entityId}`);
+    } else if (n.entityType === 'Order') {
+      setTab('Orders');
+      push(`/order/${n.entityId}`);
+    } else {
+      push('/notifications');
+    }
+  };
 
   const goExplore = (seed: { category?: string; query?: string }) => {
     setTab('Explore');
@@ -64,6 +83,10 @@ function App() {
     ) : null;
   } else if (route.name === 'order') {
     content = session ? <OrderDetailScreen orderId={route.orderId} onBack={back} /> : null;
+  } else if (route.name === 'notifications') {
+    content = session ? (
+      <NotificationsScreen onOpenNotification={openNotification} onReadStateChange={unread.refresh} />
+    ) : null;
   } else if (route.name === 'book') {
     // The hash already carries the destination, so after sign-in this same
     // route renders the booking flow again — no separate return logic needed.
@@ -189,7 +212,10 @@ function App() {
   // route/tab stays active, so after sign-in they land where they intended.
   const authFlow =
     !session &&
-    ((route.name === 'tabs' && (tab === 'Profile' || tab === 'Bookings')) || route.name === 'book' || route.name === 'booking');
+    ((route.name === 'tabs' && (tab === 'Profile' || tab === 'Bookings')) ||
+      route.name === 'book' ||
+      route.name === 'booking' ||
+      route.name === 'notifications');
   if (authFlow && content === null) content = <ProfileScreen onOwnerDashboard={() => push('/owner')} />;
 
   return (
@@ -202,6 +228,17 @@ function App() {
           {session?.user.role === 'BUSINESS_OWNER' ? (
             <button className="header-link" onClick={() => push('/owner')}>
               My business
+            </button>
+          ) : null}
+          {session ? (
+            <button
+              type="button"
+              className="bell-btn"
+              onClick={() => push('/notifications')}
+              aria-label={unread.count > 0 ? `Notifications, ${unread.count} unread` : 'Notifications'}
+            >
+              <AlertIcon size={22} />
+              {unread.count > 0 ? <span className="bell-badge">{unread.count > 99 ? '99+' : unread.count}</span> : null}
             </button>
           ) : null}
         </header>

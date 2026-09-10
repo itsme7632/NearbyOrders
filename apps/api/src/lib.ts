@@ -267,6 +267,104 @@ export const orderSchema = z.object({
 });
 
 /* ------------------------------------------------------------------ */
+/* Notifications (Phase 5 foundation)                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Controlled notification event types. Only events the platform actually
+ * produces; extend this map when new business events exist.
+ */
+export const NOTIFICATION_TYPES = {
+  BOOKING_CREATED: 'BOOKING_CREATED',
+  BOOKING_ACCEPTED: 'BOOKING_ACCEPTED',
+  BOOKING_REJECTED: 'BOOKING_REJECTED',
+  BOOKING_CANCELLED: 'BOOKING_CANCELLED',
+  BOOKING_COMPLETED: 'BOOKING_COMPLETED',
+  ORDER_CREATED: 'ORDER_CREATED',
+  ORDER_ACCEPTED: 'ORDER_ACCEPTED',
+  ORDER_REJECTED: 'ORDER_REJECTED',
+  ORDER_PREPARING: 'ORDER_PREPARING',
+  ORDER_READY: 'ORDER_READY',
+  ORDER_COMPLETED: 'ORDER_COMPLETED',
+  ORDER_CANCELLED: 'ORDER_CANCELLED',
+} as const;
+
+export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
+
+/** Explicit, safe notification input — never a raw domain object. */
+export type NotificationInput = {
+  userId: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  entityType: 'Booking' | 'Order';
+  entityId: string;
+};
+
+/**
+ * The delivery-channel contract. Phase 5 ships the in-app channel only;
+ * push/email/SMS/WhatsApp providers can be registered later without touching
+ * any business logic — they just implement this interface.
+ */
+export interface NotificationChannelProvider {
+  readonly name: string;
+  deliver(notifications: NotificationInput[]): Promise<void>;
+}
+
+/**
+ * In-app channel: persists notifications. Duplicate protection comes from the
+ * (userId, type, entityId) unique index — a retried business event with the
+ * same key can never create a second row (skipDuplicates makes it idempotent).
+ */
+export class InAppNotificationProvider implements NotificationChannelProvider {
+  readonly name = 'in-app';
+
+  // eslint-disable-next-line no-explicit-any
+  constructor(private readonly client: any) {}
+
+  async deliver(notifications: NotificationInput[]): Promise<void> {
+    if (notifications.length === 0) return;
+    await this.client.notification.createMany({
+      data: notifications.map((n) => ({
+        userId: n.userId,
+        type: n.type,
+        title: n.title,
+        message: n.message,
+        entityType: n.entityType,
+        entityId: n.entityId,
+      })),
+      // Unique (userId, type, entityId): replays are silently ignored.
+      skipDuplicates: true,
+    });
+  }
+}
+
+/**
+ * Creates notifications for the successful business event. Returns a promise:
+ * - Inside a transaction (pass the `tx` client): callers MUST `await` it so the
+ *   rows commit or roll back together with the business change.
+ * - Outside one (root client): callers may `void` it — delivery failures are
+ *   swallowed and never break the business operation.
+ */
+export async function createNotifications(
+  // eslint-disable-next-line no-explicit-any
+  rootClient: any,
+  inputs: NotificationInput[],
+  // eslint-disable-next-line no-explicit-any
+  txClient?: any,
+): Promise<void> {
+  if (inputs.length === 0) return;
+  const provider = new InAppNotificationProvider(txClient ?? rootClient);
+  if (txClient) {
+    // Transactional: surface failures so the business operation rolls back too.
+    await provider.deliver(inputs);
+  } else {
+    // Standalone: never let notification problems break the business event.
+    await provider.deliver(inputs).catch(() => undefined);
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Status transitions                                                  */
 /* ------------------------------------------------------------------ */
 

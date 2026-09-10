@@ -55,6 +55,7 @@ model User {
   orders       Order[]
   sessions     RefreshToken[]
   auditActions AuditLog[]     @relation("AuditActor")
+  notifications Notification[]
 
   @@index([role, isSuspended])
 }
@@ -209,6 +210,26 @@ model OrderItem {
   product        Product @relation(fields: [productId], references: [id])
 
   @@index([orderId])
+}
+
+/// In-app notification. One row per (userId, type, entityId) event; a unique
+/// index on (userId, type, entityId) makes retry-safe creation idempotent.
+model Notification {
+  id         String    @id @default(uuid())
+  userId     String
+  type       String
+  title      String
+  message    String
+  entityType String
+  entityId   String
+  isRead     Boolean   @default(false)
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type, entityId])
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
 }
 
 model RefreshToken {

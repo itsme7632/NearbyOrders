@@ -7,9 +7,12 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import jwt from '@fastify/jwt';
 import argon2 from 'argon2';
-import { ZodError } from 'zod';
+import { ZodError, z } from 'zod';
 import {
   prisma,
+  NOTIFICATION_TYPES,
+  createNotifications,
+  type NotificationType,
   registerSchema,
   categoryCreateSchema,
   categoryUpdateSchema,
@@ -647,6 +650,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     // same business with a transaction-scoped advisory lock, then re-check
     // overlap inside the transaction and insert. Two overlapping requests can
     // never both pass the check because the second waits for the first to commit.
+    const customer = currentUser(q);
     const booking = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${business.id}))`;
       const conflicting = await tx.booking.findFirst({
@@ -659,9 +663,9 @@ export async function buildApp(): Promise<FastifyInstance> {
         select: { id: true },
       });
       if (conflicting) throw bookingError(409, 'SLOT_TAKEN', 'That time slot was just booked. Please choose another.');
-      return tx.booking.create({
+      const created = await tx.booking.create({
         data: {
-          customerId: currentUser(q).id,
+          customerId: customer.id,
           businessId: business.id,
           serviceId: service.id,
           bookingDate: new Date(Date.parse(`${d.date}T00:00:00Z`)),
@@ -670,6 +674,19 @@ export async function buildApp(): Promise<FastifyInstance> {
           notes: d.notes,
         },
       });
+      // Owner notification commits atomically with the booking — a rolled-back
+      // booking can never leave a phantom notification.
+      await createNotifications(prisma, [
+        {
+          userId: business.ownerId,
+          type: NOTIFICATION_TYPES.BOOKING_CREATED,
+          title: 'New booking request',
+          message: `${customer.firstName ?? customer.email.split('@')[0]} booked ${service.name} on ${d.date} at ${d.startTime}.`,
+          entityType: 'Booking',
+          entityId: created.id,
+        },
+      ], tx);
+      return created;
     });
 
     return r.status(201).send({ data: publicBooking({ ...booking, business, service }) });
@@ -729,7 +746,21 @@ export async function buildApp(): Promise<FastifyInstance> {
       return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Booking not found' } });
     if (!allowedTransitions.booking[booking.status].includes('CANCELLED'))
       return r.status(409).send({ error: { code: 'INVALID_TRANSITION', message: `A ${booking.status.toLowerCase()} booking cannot be cancelled` } });
-    return { data: publicBooking(await prisma.booking.update({ where: { id: booking.id }, data: { status: 'CANCELLED' }, include: BOOKING_INCLUDE })) };
+    const cancelled = await prisma.$transaction(async (tx) => {
+      const updated = await tx.booking.update({ where: { id: booking.id }, data: { status: 'CANCELLED' } });
+      await createNotifications(prisma, [
+        {
+          userId: booking.business.ownerId,
+          type: NOTIFICATION_TYPES.BOOKING_CANCELLED,
+          title: 'Booking cancelled',
+          message: `${currentUser(q).firstName ?? 'A customer'} cancelled their ${booking.service?.name ?? 'booking'} on ${pktDateOf(booking.startAt)}.`,
+          entityType: 'Booking',
+          entityId: booking.id,
+        },
+      ], tx);
+      return updated;
+    });
+    return { data: publicBooking({ ...cancelled, business: booking.business, service: booking.service }) };
   });
 
   app.patch('/api/v1/bookings/:id/status', { preHandler: roles('BUSINESS_OWNER', 'ADMIN') }, async (q, r) => {
@@ -739,7 +770,42 @@ export async function buildApp(): Promise<FastifyInstance> {
       return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Booking not found' } });
     if (!allowedTransitions.booking[booking.status].includes(status))
       return r.status(409).send({ error: { code: 'INVALID_TRANSITION', message: `Cannot change a ${booking.status.toLowerCase()} booking to ${status.toLowerCase()}` } });
-    return { data: publicBooking(await prisma.booking.update({ where: { id: booking.id }, data: { status }, include: BOOKING_INCLUDE })) };
+    // Status-change notification for the customer (only transitions that exist).
+    const customerNotice: Record<string, { type: NotificationType; title: string; message: (serviceName: string, when: string) => string } | undefined> = {
+      CONFIRMED: {
+        type: NOTIFICATION_TYPES.BOOKING_ACCEPTED,
+        title: 'Booking accepted',
+        message: (s, w) => `Your ${s} booking on ${w} has been accepted.`,
+      },
+      REJECTED: {
+        type: NOTIFICATION_TYPES.BOOKING_REJECTED,
+        title: 'Booking declined',
+        message: (s, w) => `Unfortunately your ${s} booking on ${w} was declined.`,
+      },
+      COMPLETED: {
+        type: NOTIFICATION_TYPES.BOOKING_COMPLETED,
+        title: 'Booking completed',
+        message: (s, w) => `Your ${s} booking on ${w} is complete. Thanks for choosing ${booking.business.name}!`,
+      },
+    };
+    const notice = customerNotice[status];
+    const updated = await prisma.$transaction(async (tx) => {
+      const row = await tx.booking.update({ where: { id: booking.id }, data: { status } });
+      if (notice) {
+        await createNotifications(prisma, [
+          {
+            userId: booking.customerId,
+            type: notice.type,
+            title: notice.title,
+            message: notice.message(booking.service?.name ?? 'booking', pktDateOf(booking.startAt)),
+            entityType: 'Booking',
+            entityId: booking.id,
+          },
+        ], tx);
+      }
+      return row;
+    });
+    return { data: publicBooking({ ...updated, business: booking.business, service: booking.service }) };
   });
 
   /**
@@ -791,11 +857,13 @@ export async function buildApp(): Promise<FastifyInstance> {
       (sum, i) => sum + products.find((p) => p.id === i.productId)!.priceMinor * i.quantity,
       0,
     );
+    const customer = currentUser(q);
+    const itemCount = d.items.reduce((sum, i) => sum + i.quantity, 0);
     const created = await prisma.$transaction(async (tx) => {
       const order = await tx.order.create({
         data: {
           businessId: d.businessId,
-          customerId: currentUser(q).id,
+          customerId: customer.id,
           subtotalMinor,
           notes: d.notes,
           fulfillmentType: d.fulfillmentType,
@@ -808,6 +876,20 @@ export async function buildApp(): Promise<FastifyInstance> {
         },
         include: ORDER_INCLUDE,
       });
+      // Owner notification commits atomically with the order.
+      const owner = await tx.business.findUnique({ where: { id: d.businessId }, select: { ownerId: true } });
+      if (owner) {
+        await createNotifications(prisma, [
+          {
+            userId: owner.ownerId,
+            type: NOTIFICATION_TYPES.ORDER_CREATED,
+            title: 'New order received',
+            message: `${customer.firstName ?? 'A customer'} placed an order (${itemCount} item${itemCount === 1 ? '' : 's'}, Rs ${Math.round(subtotalMinor / 100)}).`,
+            entityType: 'Order',
+            entityId: order.id,
+          },
+        ], tx);
+      }
       return order;
     });
     return r.status(201).send({ data: publicOrder(created) });
@@ -848,7 +930,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     const u = currentUser(q);
     const o = await prisma.order.findUnique({
       where: { id: (q.params as { id: string }).id },
-      include: { business: { select: { ownerId: true } } },
+      include: ORDER_INCLUDE,
     });
     if (!o) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Order not found' } });
     const isOwner = u.role === 'BUSINESS_OWNER' && o.business.ownerId === u.id;
@@ -869,7 +951,146 @@ export async function buildApp(): Promise<FastifyInstance> {
             : 'Order not found',
         },
       });
-    return { data: publicOrder(await prisma.order.update({ where: { id: o.id }, data: { status }, include: ORDER_INCLUDE })) };
+    // Customer notifications for owner-driven changes; owner notification for
+    // customer cancellation. Only transitions the system actually supports.
+    const noticeFor = (next: string): { userId: string; type: NotificationType; title: string; message: string } | null => {
+      const entity = { entityType: 'Order' as const, entityId: o.id };
+      if (isOwner) {
+        const map: Record<string, { type: NotificationType; title: string; message: string }> = {
+          ACCEPTED: { type: NOTIFICATION_TYPES.ORDER_ACCEPTED, title: 'Order accepted', message: `${o.business.name} accepted your order.` },
+          REJECTED: { type: NOTIFICATION_TYPES.ORDER_REJECTED, title: 'Order declined', message: `Unfortunately ${o.business.name} could not accept your order.` },
+          PREPARING: { type: NOTIFICATION_TYPES.ORDER_PREPARING, title: 'Your order is being prepared', message: `${o.business.name} is now preparing your order.` },
+          READY: { type: NOTIFICATION_TYPES.ORDER_READY, title: 'Order ready', message: `Your order from ${o.business.name} is ready.` },
+          COMPLETED: { type: NOTIFICATION_TYPES.ORDER_COMPLETED, title: 'Order completed', message: `Your order from ${o.business.name} is complete. Enjoy!` },
+          CANCELLED: { type: NOTIFICATION_TYPES.ORDER_CANCELLED, title: 'Order cancelled', message: `Your order from ${o.business.name} was cancelled.` },
+        };
+        const n = map[next];
+        return n ? { userId: o.customerId, ...n, ...entity } : null;
+      }
+      // Customer cancelled → notify the owner.
+      if (next === 'CANCELLED') {
+        return {
+          userId: o.business.ownerId,
+          type: NOTIFICATION_TYPES.ORDER_CANCELLED,
+          title: 'Order cancelled',
+          message: `${u.firstName ?? 'A customer'} cancelled their order (Rs ${Math.round(o.subtotalMinor / 100)}).`,
+          ...entity,
+        };
+      }
+      return null;
+    };
+    const notice = noticeFor(status);
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({ where: { id: o.id }, data: { status } });
+      if (notice) {
+        await createNotifications(prisma, [
+          {
+            userId: notice.userId,
+            type: notice.type,
+            title: notice.title,
+            message: notice.message,
+            entityType: 'Order',
+            entityId: o.id,
+          },
+        ], tx);
+      }
+    });
+    // Refetch with the full include for the authoritative response.
+    const fresh = await prisma.order.findUnique({ where: { id: o.id }, include: ORDER_INCLUDE });
+    return { data: publicOrder(fresh!) };
+  });
+
+  /* -------------------------- Notifications -------------------------- */
+
+  /** Customer-safe notification DTO: explicit fields only, no relations. */
+  const publicNotification = (n: {
+    id: string;
+    type: string;
+    title: string;
+    message: string;
+    entityType: string;
+    entityId: string;
+    isRead: boolean;
+    readAt: Date | null;
+    createdAt: Date;
+  }) => ({
+    id: n.id,
+    type: n.type,
+    title: n.title,
+    message: n.message,
+    entityType: n.entityType,
+    entityId: n.entityId,
+    isRead: n.isRead,
+    readAt: n.readAt,
+    createdAt: n.createdAt,
+  });
+
+  const notificationSelect = {
+    id: true,
+    type: true,
+    title: true,
+    message: true,
+    entityType: true,
+    entityId: true,
+    isRead: true,
+    readAt: true,
+    createdAt: true,
+  } as const;
+
+  app.get('/api/v1/notifications', { preHandler: auth }, async (q) => {
+    const u = currentUser(q);
+    const query = z
+      .object({
+        limit: z.coerce.number().int().min(1).max(50).default(30),
+        cursor: z.string().uuid().optional(),
+      })
+      .parse(q.query ?? {});
+    const rows = await prisma.notification.findMany({
+      where: { userId: u.id },
+      select: notificationSelect,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: query.limit + 1,
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+    });
+    const hasMore = rows.length > query.limit;
+    const items = hasMore ? rows.slice(0, -1) : rows;
+    // Wrapped like every other endpoint ({ data: ... }) so the mobile client's
+    // single unwrap yields { items, nextCursor } instead of a bare array that
+    // would silently drop the pagination cursor.
+    return {
+      data: {
+        items: items.map(publicNotification),
+        nextCursor: hasMore ? items[items.length - 1]!.id : null,
+      },
+    };
+  });
+
+  app.get('/api/v1/notifications/unread-count', { preHandler: auth }, async (q) => {
+    const count = await prisma.notification.count({ where: { userId: currentUser(q).id, isRead: false } });
+    return { data: { count } };
+  });
+
+  app.patch('/api/v1/notifications/:id/read', { preHandler: auth }, async (q, r) => {
+    const u = currentUser(q);
+    const id = (q.params as { id: string }).id;
+    // 404 (not 403) when the notification belongs to someone else.
+    const existing = await prisma.notification.findFirst({ where: { id, userId: u.id }, select: { id: true } });
+    if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Notification not found' } });
+    const updated = await prisma.notification.update({
+      where: { id },
+      data: { isRead: true, readAt: new Date() },
+      select: notificationSelect,
+    });
+    return { data: publicNotification(updated) };
+  });
+
+  app.patch('/api/v1/notifications/read-all', { preHandler: auth }, async (q) => {
+    const u = currentUser(q);
+    const result = await prisma.notification.updateMany({
+      where: { userId: u.id, isRead: false },
+      data: { isRead: true, readAt: new Date() },
+    });
+    return { data: { updated: result.count } };
   });
 
   /* ------------------------------ Admin ------------------------------ */
