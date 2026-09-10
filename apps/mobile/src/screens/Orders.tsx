@@ -1,8 +1,10 @@
-import { getMyOrder, listMyOrders } from '../api.js';
+import { useEffect, useState } from 'react';
+import { getMyOrder, listMyOrders, listMyReviews } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, Loading, Money } from '../components/ui.js';
 import { OrdersIcon } from '../components/icons.js';
 import type { Order, OrderStatus } from '../api.js';
+import { ReviewForm } from '../components/ReviewForm.js';
 
 /** Short, human-safe order label: never exposes the raw database id. */
 export function orderNumber(o: Order): string {
@@ -132,6 +134,54 @@ export function OrderDetailScreen(props: { orderId: string; onBack: () => void }
         </div>
       </section>
       <p className="hint">Purchase-time prices are shown — later menu changes never alter your order.</p>
+
+      {o.status === 'COMPLETED' ? <OrderReviewPanel order={o} /> : null}
     </div>
+  );
+}
+
+/** Leave-a-review panel for completed orders; server rejects duplicates. */
+function OrderReviewPanel(props: { order: Order }) {
+  const [showForm, setShowForm] = useState(false);
+  const [reviewed, setReviewed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    listMyReviews()
+      .then((mine) => {
+        if (active) setReviewed(mine.some((rv) => rv.orderId === props.order.id));
+      })
+      .catch(() => {
+        if (active) setReviewed(false); // Fail open; the API still blocks duplicates.
+      });
+    return () => {
+      active = false;
+    };
+  }, [props.order.id]);
+
+  if (reviewed === null) return null;
+  if (reviewed)
+    return (
+      <p className="review-done" role="status">
+        ★ Reviewed — thank you for your feedback.
+      </p>
+    );
+  if (!showForm)
+    return (
+      <Button full variant="secondary" onClick={() => setShowForm(true)}>
+        Leave a review
+      </Button>
+    );
+  return (
+    <ReviewForm
+      businessId={props.order.business.id}
+      source={{ orderId: props.order.id }}
+      heading="Rate this business"
+      onSubmitted={() => {
+        setReviewed(true);
+        setShowForm(false);
+      }}
+      onCancel={() => setShowForm(false)}
+    />
   );
 }

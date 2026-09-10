@@ -267,6 +267,35 @@ export const orderSchema = z.object({
 });
 
 /* ------------------------------------------------------------------ */
+/* Reviews (Phase 6)                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A review must reference exactly one qualifying transaction: booking XOR
+ * order. Rating is a strict integer 1–5 (0, 6, negatives, decimals and
+ * non-numeric strings all fail). The comment is optional; when present it is
+ * trimmed once and must not be whitespace-only — customer text is never
+ * rewritten beyond that.
+ */
+export const reviewCreateSchema = z
+  .object({
+    bookingId: z.string().uuid().optional(),
+    orderId: z.string().uuid().optional(),
+    rating: z.number().int().min(1).max(5),
+    comment: z
+      .string()
+      .max(1000)
+      .optional()
+      .transform((v) => v?.trim())
+      .refine((v) => v === undefined || v.length > 0, {
+        message: 'Comment cannot be empty',
+      }),
+  })
+  .refine((v) => Boolean(v.bookingId) !== Boolean(v.orderId), {
+    message: 'Exactly one of bookingId or orderId is required',
+  });
+
+/* ------------------------------------------------------------------ */
 /* Notifications (Phase 5 foundation)                                  */
 /* ------------------------------------------------------------------ */
 

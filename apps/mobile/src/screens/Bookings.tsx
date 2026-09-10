@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   cancelMyBooking,
   getBooking,
   listMyBookings,
+  listMyReviews,
   ApiError,
   type Booking,
   type BookingStatus,
@@ -11,6 +12,7 @@ import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, Loading, Money } from '../components/ui.js';
 import { AlertIcon, BookingsIcon, CheckIcon } from '../components/icons.js';
 import { daysBetween, formatSlotTime, longDateLabel, todayPkt } from '../time.js';
+import { ReviewForm } from '../components/ReviewForm.js';
 
 const STATUS_LABEL: Record<BookingStatus, string> = {
   PENDING: 'Pending',
@@ -238,7 +240,55 @@ export function BookingDetailScreen(props: { bookingId: string; onBack: () => vo
             </Button>
           )
         ) : null}
+
+        {data.status === 'COMPLETED' ? <BookingReviewPanel booking={data} /> : null}
       </div>
     </div>
+  );
+}
+
+/** Leave-a-review panel for completed bookings; server rejects duplicates. */
+function BookingReviewPanel(props: { booking: Booking }) {
+  const [showForm, setShowForm] = useState(false);
+  const [reviewed, setReviewed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    listMyReviews()
+      .then((mine) => {
+        if (active) setReviewed(mine.some((rv) => rv.bookingId === props.booking.id));
+      })
+      .catch(() => {
+        if (active) setReviewed(false); // Fail open to the CTA; the API still blocks duplicates.
+      });
+    return () => {
+      active = false;
+    };
+  }, [props.booking.id]);
+
+  if (reviewed === null) return null;
+  if (reviewed)
+    return (
+      <p className="review-done" role="status">
+        ★ Reviewed — thank you for your feedback.
+      </p>
+    );
+  if (!showForm)
+    return (
+      <Button full variant="secondary" onClick={() => setShowForm(true)}>
+        Leave a review
+      </Button>
+    );
+  return (
+    <ReviewForm
+      businessId={props.booking.businessId}
+      source={{ bookingId: props.booking.id }}
+      heading="Rate this business"
+      onSubmitted={() => {
+        setReviewed(true);
+        setShowForm(false);
+      }}
+      onCancel={() => setShowForm(false)}
+    />
   );
 }

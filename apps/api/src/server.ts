@@ -27,6 +27,7 @@ import {
   bookingListQuerySchema,
   availabilityQuerySchema,
   orderSchema,
+  reviewCreateSchema,
   businessStatusSchema,
   bookingStatusSchema,
   orderStatusSchema,
@@ -998,6 +999,175 @@ export async function buildApp(): Promise<FastifyInstance> {
     // Refetch with the full include for the authoritative response.
     const fresh = await prisma.order.findUnique({ where: { id: o.id }, include: ORDER_INCLUDE });
     return { data: publicOrder(fresh!) };
+  });
+
+  /* ------------------------------ Reviews ------------------------------ */
+
+  /** Public review DTO: reviewer is reduced to a display name, nothing else. */
+  const publicReview = (rv: {
+    id: string;
+    rating: number;
+    comment: string | null;
+    createdAt: Date;
+    customer: { firstName: string | null; lastName: string | null };
+  }) => ({
+    id: rv.id,
+    rating: rv.rating,
+    comment: rv.comment,
+    createdAt: rv.createdAt,
+    reviewerName: [rv.customer.firstName, rv.customer.lastName ? `${rv.customer.lastName[0]}.` : null]
+      .filter(Boolean)
+      .join(' ') || 'Customer',
+  });
+
+  const REVIEW_LIST_SELECT = {
+    id: true,
+    rating: true,
+    comment: true,
+    createdAt: true,
+    customer: { select: { firstName: true, lastName: true } },
+  } as const;
+
+  /** Aggregates over the complete review set — never just the visible page. */
+  const ratingSummary = async (businessId: string) => {
+    const agg = await prisma.review.aggregate({
+      where: { businessId },
+      _avg: { rating: true },
+      _count: { rating: true },
+    });
+    return {
+      averageRating: agg._avg.rating === null ? null : Math.round(agg._avg.rating * 10) / 10,
+      reviewCount: agg._count.rating,
+    };
+  };
+
+  app.post('/api/v1/businesses/:businessId/reviews', { preHandler: roles('CUSTOMER') }, async (q, r) => {
+    const u = currentUser(q);
+    const businessId = (q.params as { businessId: string }).businessId;
+    const d = reviewCreateSchema.parse(q.body);
+
+    // Eligibility is proven by the transaction, not claimed by the client:
+    // it must exist, belong to this customer, belong to this business, and be
+    // COMPLETED. Everything else is rejected.
+    let source: { businessId: string } | null = null;
+    if (d.bookingId) {
+      const booking = await prisma.booking.findFirst({
+        where: { id: d.bookingId, customerId: u.id, businessId, status: 'COMPLETED' },
+        select: { businessId: true },
+      });
+      source = booking;
+    } else if (d.orderId) {
+      const order = await prisma.order.findFirst({
+        where: { id: d.orderId, customerId: u.id, businessId, status: 'COMPLETED' },
+        select: { businessId: true },
+      });
+      source = order;
+    }
+    if (!source)
+      return r
+        .status(404)
+        .send({ error: { code: 'NOT_FOUND', message: 'You can only review a completed booking or order of your own' } });
+
+    try {
+      const created = await prisma.review.create({
+        data: {
+          businessId,
+          customerId: u.id,
+          bookingId: d.bookingId ?? null,
+          orderId: d.orderId ?? null,
+          rating: d.rating,
+          comment: d.comment ?? null,
+        },
+        select: REVIEW_LIST_SELECT,
+      });
+      return r.status(201).send({ data: publicReview(created) });
+    } catch (e) {
+      // The partial unique indexes make duplicate reviews impossible even
+      // under concurrent submissions.
+      if ((e as { code?: string }).code === 'P2002')
+        return r.status(409).send({ error: { code: 'ALREADY_REVIEWED', message: 'You have already reviewed this' } });
+      throw e;
+    }
+  });
+
+  // Public reviews + rating summary for a business. Public business discovery
+  // is unauthenticated, so reading reviews is too; nothing private is exposed.
+  app.get('/api/v1/businesses/:businessId/reviews', async (q) => {
+    const businessId = (q.params as { businessId: string }).businessId;
+    const query = z
+      .object({
+        limit: z.coerce.number().int().min(1).max(50).default(10),
+        cursor: z.string().uuid().optional(),
+      })
+      .parse(q.query ?? {});
+    const [rows, summary] = await Promise.all([
+      prisma.review.findMany({
+        where: { businessId },
+        select: REVIEW_LIST_SELECT,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: query.limit + 1,
+        ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+      }),
+      ratingSummary(businessId),
+    ]);
+    const hasMore = rows.length > query.limit;
+    const items = hasMore ? rows.slice(0, -1) : rows;
+    return {
+      data: {
+        items: items.map(publicReview),
+        nextCursor: hasMore ? items[items.length - 1]!.id : null,
+        ...summary,
+      },
+    };
+  });
+
+  // The customer's own reviews: lets detail screens show "Reviewed" instead of
+  // a second review CTA, and doubles as a simple review history.
+  app.get('/api/v1/my-reviews', { preHandler: roles('CUSTOMER') }, async (q) => {
+    const rows = await prisma.review.findMany({
+      where: { customerId: currentUser(q).id },
+      select: {
+        id: true,
+        rating: true,
+        comment: true,
+        createdAt: true,
+        bookingId: true,
+        orderId: true,
+        business: { select: { id: true, name: true, slug: true } },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 100,
+    });
+    return {
+      data: rows.map((rv) => ({
+        id: rv.id,
+        rating: rv.rating,
+        comment: rv.comment,
+        createdAt: rv.createdAt,
+        bookingId: rv.bookingId,
+        orderId: rv.orderId,
+        business: rv.business,
+      })),
+    };
+  });
+
+  // Reviews across every business the owner manages; scoped by ownerId so a
+  // foreign business's reviews are never returned.
+  app.get('/api/v1/my-business-reviews', { preHandler: roles('BUSINESS_OWNER') }, async (q) => {
+    const rows = await prisma.review.findMany({
+      where: { business: { ownerId: currentUser(q).id } },
+      select: {
+        id: true,
+        rating: true,
+        comment: true,
+        createdAt: true,
+        business: { select: { id: true, name: true } },
+        customer: { select: { firstName: true, lastName: true } },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 100,
+    });
+    return { data: rows.map((rv) => ({ ...publicReview(rv), business: rv.business })) };
   });
 
   /* -------------------------- Notifications -------------------------- */

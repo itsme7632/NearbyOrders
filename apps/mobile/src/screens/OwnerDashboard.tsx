@@ -21,15 +21,18 @@ import { useAsyncData } from '../hooks.js';
 import {
   ApiError,
   getHours,
+  listMyBusinessReviews,
   listProducts,
   listServices,
+  type OwnerReview,
 } from '../api.js';
 import { Button, EmptyState, ErrorState, Field, Loading, Money, Toggle } from '../components/ui.js';
+import { Stars } from '../components/ReviewForm.js';
 import { AlertIcon, CheckIcon, OrdersIcon, StoreIcon } from '../components/icons.js';
 import { ImageUploader, type ImageUploaderState, type PendingImage } from '../components/ImageUploader.js';
 import { OwnerOrders } from './OwnerOrders.js';
 
-type OwnerTab = 'orders' | 'profile' | 'services' | 'products' | 'hours';
+type OwnerTab = 'orders' | 'profile' | 'services' | 'products' | 'hours' | 'reviews';
 
 export function OwnerDashboardScreen(props: {
   onBack: () => void;
@@ -118,6 +121,7 @@ export function OwnerDashboardScreen(props: {
             ['services', 'Services'],
             ['products', 'Products'],
             ['hours', 'Hours'],
+            ['reviews', 'Reviews'],
           ] as const
         ).map(([key, label]) => (
           <button key={key} className={`owner-tab${tab === key ? ' owner-tab-active' : ''}`} onClick={() => setTab(key)}>
@@ -131,6 +135,7 @@ export function OwnerDashboardScreen(props: {
       {tab === 'services' ? <OwnerServices businessId={active.id} /> : null}
       {tab === 'products' ? <OwnerProducts businessId={active.id} /> : null}
       {tab === 'hours' ? <OwnerHours businessId={active.id} /> : null}
+      {tab === 'reviews' ? <OwnerReviews businessId={active.id} /> : null}
     </div>
   );
 }
@@ -946,6 +951,51 @@ function OwnerHours(props: { businessId: string }) {
       <Button full onClick={save} disabled={busy || hasErrors}>
         {busy ? 'Saving…' : 'Save hours'}
       </Button>
+    </section>
+  );
+}
+
+/* ------------------------------ Reviews ------------------------------ */
+
+/** Customer reviews for one of the owner's businesses (read-only). */
+export function OwnerReviews(props: { businessId: string }) {
+  const reviews = useAsyncData<OwnerReview[]>(() => listMyBusinessReviews(), []);
+
+  if (reviews.loading) return <Loading label="Loading reviews…" />;
+  if (reviews.error) return <ErrorState message={reviews.error} onRetry={reviews.reload} />;
+
+  // The endpoint scopes by owner; filter to the business this tab acts on.
+  const items = (reviews.data ?? []).filter((rv) => rv.business.id === props.businessId);
+
+  if (items.length === 0)
+    return (
+      <section className="card" aria-label="Reviews">
+        <h2>Reviews</h2>
+        <p className="muted">No reviews yet. Customers can review after a completed booking or order.</p>
+      </section>
+    );
+
+  const avg = items.reduce((sum, rv) => sum + rv.rating, 0) / items.length;
+
+  return (
+    <section className="card" aria-label="Reviews">
+      <h2>Reviews</h2>
+      <div className="rating-summary">
+        <span className="rating-average">{(Math.round(avg * 10) / 10).toFixed(1)}</span>
+        <Stars value={avg} count={items.length} />
+      </div>
+      <ul className="review-list">
+        {items.map((rv) => (
+          <li key={rv.id} className="review-item">
+            <div className="review-head">
+              <span className="review-author">{rv.reviewerName}</span>
+              <span className="review-date">{new Date(rv.createdAt).toLocaleDateString()}</span>
+            </div>
+            <Stars value={rv.rating} />
+            {rv.comment ? <p className="review-comment-text">{rv.comment}</p> : null}
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

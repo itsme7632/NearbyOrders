@@ -56,6 +56,7 @@ model User {
   sessions     RefreshToken[]
   auditActions AuditLog[]     @relation("AuditActor")
   notifications Notification[]
+  reviews      Review[]       @relation("ReviewCustomer")
 
   @@index([role, isSuspended])
 }
@@ -97,6 +98,7 @@ model Business {
   products    Product[]
   bookings    Booking[]
   orders      Order[]
+  reviews     Review[]
 
   @@index([ownerId])
   @@index([status, city])
@@ -174,6 +176,7 @@ model Booking {
   customer    User          @relation(fields: [customerId], references: [id])
   business    Business      @relation(fields: [businessId], references: [id])
   service     Service?      @relation(fields: [serviceId], references: [id])
+  review      Review?
 
   @@index([businessId, status])
   @@index([customerId, status])
@@ -194,6 +197,7 @@ model Order {
   customer        User        @relation(fields: [customerId], references: [id])
   business        Business    @relation(fields: [businessId], references: [id])
   items           OrderItem[]
+  review          Review?
 
   @@index([businessId, status])
   @@index([customerId, status])
@@ -255,4 +259,27 @@ model AuditLog {
   actor      User?    @relation("AuditActor", fields: [actorId], references: [id])
 
   @@index([entityType, entityId])
+}
+
+/// A customer review backed by exactly one qualifying completed transaction.
+/// Exactly one of bookingId / orderId is set — enforced in code and by the
+/// two partial unique indexes below, which also block duplicate reviews for
+/// the same transaction.
+model Review {
+  id         String   @id @default(uuid())
+  businessId String
+  customerId String
+  bookingId  String?  @unique
+  orderId    String?  @unique
+  rating     Int
+  comment    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  business   Business @relation(fields: [businessId], references: [id])
+  customer   User     @relation("ReviewCustomer", fields: [customerId], references: [id])
+  booking    Booking? @relation(fields: [bookingId], references: [id])
+  order      Order?   @relation(fields: [orderId], references: [id])
+
+  @@index([businessId, createdAt])
+  @@index([customerId, createdAt])
 }

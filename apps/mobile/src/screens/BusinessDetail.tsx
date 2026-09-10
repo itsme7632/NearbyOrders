@@ -1,11 +1,12 @@
-import { useState } from 'react';
-import { getBusiness, type Business, type Product } from '../api.js';
+import { useEffect, useState } from 'react';
+import { getBusiness, listBusinessReviews, type Business, type Product, type PublicReview, type ReviewPage } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, CategoryPill, EmptyState, ErrorState, Loading, Money, OpenBadge, VerifiedBadge } from '../components/ui.js';
 import { StoreIcon } from '../components/icons.js';
 import { formatSlotTime } from '../time.js';
 import { addToCart, replaceWith } from '../cart.js';
 import { useCartCount } from '../useCartCount.js';
+import { Stars } from '../components/ReviewForm.js';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
@@ -220,6 +221,86 @@ export function BusinessDetailScreen(props: {
           )}
         </section>
       ) : null}
+
+      <ReviewsSection businessId={b.id} />
     </div>
+  );
+}
+
+/** Public reviews + rating summary, with cursor pagination. */
+function ReviewsSection(props: { businessId: string }) {
+  const [state, setState] = useState<{ items: PublicReview[]; cursor: string | null; avg: number | null; count: number } | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const page = useAsyncData<ReviewPage>(() => listBusinessReviews(props.businessId), [props.businessId]);
+
+  useEffect(() => {
+    if (page.data)
+      setState({ items: page.data.items, cursor: page.data.nextCursor, avg: page.data.averageRating, count: page.data.reviewCount });
+  }, [page.data]);
+
+  const loadMore = async () => {
+    if (!state?.cursor || loadingMore) return;
+    setLoadingMore(true);
+    setLoadMoreError(null);
+    try {
+      const next = await listBusinessReviews(props.businessId, 10, state.cursor);
+      setState({
+        items: [...state.items, ...next.items],
+        cursor: next.nextCursor,
+        avg: next.averageRating,
+        count: next.reviewCount,
+      });
+    } catch {
+      setLoadMoreError('Could not load more reviews.');
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  if (page.loading && !state) return <Loading label="Loading reviews…" />;
+  if (page.error && !state)
+    return (
+      <section className="card" aria-label="Reviews">
+        <h2>Reviews</h2>
+        <ErrorState message={page.error} onRetry={page.reload} />
+      </section>
+    );
+  if (!state) return null;
+
+  return (
+    <section className="card" aria-label="Reviews">
+      <h2>Reviews</h2>
+      <div className="rating-summary">
+        <span className="rating-average">{state.avg !== null ? state.avg.toFixed(1) : '—'}</span>
+        <Stars value={state.avg} count={state.count} />
+      </div>
+      {state.items.length === 0 ? (
+        <p className="muted">No reviews yet. Customers can review after a completed booking or order.</p>
+      ) : (
+        <ul className="review-list">
+          {state.items.map((rv) => (
+            <li key={rv.id} className="review-item">
+              <div className="review-head">
+                <span className="review-author">{rv.reviewerName}</span>
+                <span className="review-date">{new Date(rv.createdAt).toLocaleDateString()}</span>
+              </div>
+              <Stars value={rv.rating} />
+              {rv.comment ? <p className="review-comment-text">{rv.comment}</p> : null}
+            </li>
+          ))}
+        </ul>
+      )}
+      {loadMoreError ? (
+        <p className="auth-error" role="alert">
+          {loadMoreError}
+        </p>
+      ) : null}
+      {state.cursor ? (
+        <Button full variant="secondary" sm onClick={() => void loadMore()} disabled={loadingMore}>
+          {loadingMore ? 'Loading…' : 'Load more reviews'}
+        </Button>
+      ) : null}
+    </section>
   );
 }

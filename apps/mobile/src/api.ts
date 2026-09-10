@@ -356,3 +356,47 @@ export const markNotificationRead = (id: string) =>
 
 export const markAllNotificationsRead = () =>
   request<{ updated: number }>('/notifications/read-all', { method: 'PATCH', auth: true });
+
+/* ------------------------------- reviews ------------------------------- */
+
+export type PublicReview = {
+  id: string;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+  reviewerName: string;
+};
+
+export type ReviewPage = {
+  items: PublicReview[];
+  nextCursor: string | null;
+  averageRating: number | null;
+  reviewCount: number;
+};
+
+export type MyReview = {
+  id: string;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+  bookingId: string | null;
+  orderId: string | null;
+  business: { id: string; name: string; slug: string };
+};
+
+export type OwnerReview = PublicReview & { business: { id: string; name: string } };
+
+export type ReviewSource = { bookingId?: string; orderId?: string };
+
+export const listBusinessReviews = (businessId: string, limit = 10, cursor?: string) => {
+  const qs = new URLSearchParams({ limit: String(limit) });
+  if (cursor) qs.set('cursor', cursor);
+  return request<ReviewPage>(`/businesses/${businessId}/reviews?${qs.toString()}`);
+};
+
+export const createReview = (businessId: string, source: ReviewSource, rating: number, comment?: string) =>
+  request<PublicReview>(`/businesses/${businessId}/reviews`, { method: 'POST', auth: true, body: { ...source, rating, ...(comment ? { comment } : {}) } });
+
+export const listMyReviews = () => request<MyReview[]>('/my-reviews', { auth: true });
+
+export const listMyBusinessReviews = () => request<OwnerReview[]>('/my-business-reviews', { auth: true });
