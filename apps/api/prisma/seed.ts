@@ -57,11 +57,22 @@ const DEFAULT_HOURS = [
 
 export async function upsertCoreCategories() {
   for (const c of CORE_CATEGORIES) {
-    await prisma.category.upsert({
-      where: { slug: c.slug },
-      update: {},
-      create: { name: c.name, slug: c.slug, isActive: true },
-    });
+    try {
+      await prisma.category.upsert({
+        where: { slug: c.slug },
+        update: {},
+        create: { name: c.name, slug: c.slug, isActive: true },
+      });
+    } catch (err) {
+      // Fresh-DB race (the test suite boots an unseeded database and runs
+      // files in parallel workers): a sibling worker's first insert can win
+      // between our SELECT and INSERT, so our upsert fails with P2002 on the
+      // other unique constraint (name). The winner wrote the identical
+      // canonical row — confirm it exists and move on.
+      if ((err as { code?: string }).code !== 'P2002') throw err;
+      const row = await prisma.category.findUnique({ where: { slug: c.slug } });
+      if (!row) throw err;
+    }
   }
   console.log(`Seeded ${CORE_CATEGORIES.length} core categories.`);
 }

@@ -59,12 +59,22 @@ export const authed = (token: string) => ({ authorization: `Bearer ${token}` });
  */
 const FIXTURE_CATEGORY_SLUG = 'food-restaurants';
 export async function ensureCategory(): Promise<{ id: string; slug: string }> {
-  const category = await prisma.category.upsert({
-    where: { slug: FIXTURE_CATEGORY_SLUG },
-    update: { isActive: true },
-    create: { name: 'Food & Restaurants', slug: FIXTURE_CATEGORY_SLUG, isActive: true },
-  });
-  return { id: category.id, slug: category.slug };
+  try {
+    const category = await prisma.category.upsert({
+      where: { slug: FIXTURE_CATEGORY_SLUG },
+      update: { isActive: true },
+      create: { name: 'Food & Restaurants', slug: FIXTURE_CATEGORY_SLUG, isActive: true },
+    });
+    return { id: category.id, slug: category.slug };
+  } catch (err) {
+    // Fresh-DB race: parallel test files boot against an unseeded database,
+    // and a sibling worker can win the first insert between our SELECT and
+    // INSERT, failing our upsert with P2002 on the other unique constraint
+    // (name). The winner wrote the identical canonical row — reuse it.
+    if ((err as { code?: string }).code !== 'P2002') throw err;
+    const category = await prisma.category.findUniqueOrThrow({ where: { slug: FIXTURE_CATEGORY_SLUG } });
+    return { id: category.id, slug: category.slug };
+  }
 }
 
 /** Creates an owned business for an owner token and returns its id/slug (still PENDING). */
