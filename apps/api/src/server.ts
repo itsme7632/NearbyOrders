@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
+import multipart from '@fastify/multipart';
 import type { Prisma } from '@prisma/client';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
@@ -12,6 +13,11 @@ import {
   prisma,
   NOTIFICATION_TYPES,
   createNotifications,
+  addCalendarMonths,
+  paymentRequestCreateSchema,
+  paymentMethodSchema,
+  paymentMethodUpdateSchema,
+  paymentRejectSchema,
   type NotificationType,
   registerSchema,
   profileUpdateSchema,
@@ -53,6 +59,7 @@ import {
 } from './lib.js';
 import type { AuthUser } from './lib.js';
 import type { SubscriptionStatus } from '@prisma/client';
+import { RECEIPT_ACCEPTED_TYPES, RECEIPT_KEY_PATTERN, RECEIPT_MAX_BYTES, readReceipt, receiptContentType, saveReceipt } from './receiptStorage.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -89,6 +96,11 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(cors, { origin: env.cors.split(',') });
   await app.register(rateLimit, { max: rateMax, timeWindow: '1 minute' });
   await app.register(jwt, { secret: env.access });
+  await app.register(multipart, {
+    limits: { fileSize: RECEIPT_MAX_BYTES, files: 1 },
+    // Only the receipt endpoint consumes multipart bodies.
+    attachFieldsToBody: false,
+  });
 
   app.setErrorHandler((e, _q, r) => {
     if (e instanceof ZodError)
@@ -571,6 +583,527 @@ export async function buildApp(): Promise<FastifyInstance> {
       data: { actorId: currentUser(q).id, action: 'SUBSCRIPTION_CANCELLED', entityType: 'BusinessSubscription', entityId: cancelled.id, metadata: { businessId: id } },
     });
     return { data: publicSubscription(cancelled) };
+  });
+
+  /* ------------------- Manual subscription payments (Phase 7B) ------- */
+
+  /** Public shape of a pay-in channel for businesses (no admin-only data). */
+  const publicPaymentMethod = (m: {
+    id: string;
+    name: string;
+    type: string;
+    accountTitle: string;
+    accountNumber: string;
+    iban: string | null;
+    instructions: string | null;
+  }) => ({
+    id: m.id,
+    name: m.name,
+    type: m.type,
+    accountTitle: m.accountTitle,
+    accountNumber: m.accountNumber,
+    iban: m.iban,
+    instructions: m.instructions,
+  });
+
+  /** Owner-safe payment-request DTO: business-safe fields, no reviewer internals. */
+  const ownerPaymentRequest = (p: {
+    id: string;
+    status: string;
+    amountMinor: number;
+    currency: string;
+    transactionReference: string;
+    receiptStorageKey: string;
+    rejectionReason: string | null;
+    submittedAt: Date;
+    reviewedAt: Date | null;
+    subscription: { id: string } | null;
+    paymentMethod: { id: string; name: string; type: string };
+  }) => ({
+    id: p.id,
+    status: p.status,
+    amountMinor: p.amountMinor,
+    currency: p.currency,
+    transactionReference: p.transactionReference,
+    receiptStorageKey: p.receiptStorageKey,
+    rejectionReason: p.rejectionReason,
+    submittedAt: p.submittedAt,
+    reviewedAt: p.reviewedAt,
+    subscriptionId: p.subscription?.id ?? null,
+    paymentMethod: { id: p.paymentMethod.id, name: p.paymentMethod.name, type: p.paymentMethod.type },
+  });
+
+  /** Active pay-in channels in display order. Public to authenticated businesses. */
+  app.get('/api/v1/subscription/payment-methods', { preHandler: auth }, async () => {
+    const methods = await prisma.paymentMethod.findMany({
+      where: { isActive: true },
+      orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }],
+    });
+    return { data: methods.map(publicPaymentMethod) };
+  });
+
+  /**
+   * REAL receipt upload (product-wide rule: upload, never a URL field). The
+   * business uploads the picked image file; the server stores the bytes and
+   * returns an opaque storage key for the payment request. No user-facing
+   * receipt URL exists — receipts are only readable through the authorized
+   * view endpoint below.
+   */
+  app.post('/api/v1/subscription/payment-receipts', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const file = await q.file();
+    if (!file) return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'A receipt image file is required' } });
+    if (!RECEIPT_ACCEPTED_TYPES.includes(file.mimetype as (typeof RECEIPT_ACCEPTED_TYPES)[number])) {
+      return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Receipts must be JPG, PNG or WebP images' } });
+    }
+    try {
+      const bytes = await file.toBuffer();
+      const storageKey = await saveReceipt(bytes, file.mimetype);
+      return r.status(201).send({ data: { storageKey } });
+    } catch (e) {
+      if ((e as { code?: string }).code === 'FST_PART_FILE_LIMIT_EXCEEDED' || (e as { statusCode?: number }).statusCode === 413)
+        return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: `Receipts must be ${Math.round(RECEIPT_MAX_BYTES / (1024 * 1024))} MB or smaller` } });
+      throw e;
+    }
+  });
+
+  /**
+   * Receipt bytes for an authorized viewer only: the owning business or an
+   * ADMIN. Storage keys are opaque and validated before any disk access, so
+   * no path traversal or public URL is ever exposed. The key itself contains
+   * a slash (`receipts/<uuid>.<ext>`), so the route is a wildcard and the
+   * full remainder is the key — a single `:param` would never match.
+   */
+  app.get('/api/v1/subscription/payment-receipts/*', { preHandler: auth }, async (q, r) => {
+    const storageKey = (q.params as { '*': string })['*'];
+    if (!RECEIPT_KEY_PATTERN.test(storageKey))
+      return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Receipt not found' } });
+    const request = await prisma.subscriptionPaymentRequest.findFirst({ where: { receiptStorageKey: storageKey }, include: { business: { select: { ownerId: true } } } });
+    if (!request)
+      return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Receipt not found' } });
+    const user = currentUser(q);
+    const authorized = user.role === 'ADMIN' || request.business.ownerId === user.id;
+    if (!authorized)
+      return r.status(403).send({ error: { code: 'FORBIDDEN', message: 'You cannot view this receipt' } });
+    const bytes = await readReceipt(storageKey);
+    if (!bytes) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Receipt not found' } });
+    return r.header('content-type', receiptContentType(storageKey) ?? 'application/octet-stream').send(bytes);
+  });
+
+  /**
+   * Payment history for one owned business, newest first. Simple keyset
+   * pagination on (submittedAt, id) via cursor param.
+   */
+  app.get('/api/v1/businesses/:id/subscription/payment-requests', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    const query = z
+      .object({ limit: z.coerce.number().int().min(1).max(50).optional(), cursor: z.string().optional() })
+      .parse(q.query ?? {});
+    const requests = await prisma.subscriptionPaymentRequest.findMany({
+      where: { businessId: id },
+      orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+      take: query.limit ?? 20,
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+      include: { paymentMethod: { select: { id: true, name: true, type: true } }, subscription: { select: { id: true } } },
+    });
+    return {
+      data: {
+        items: requests.map(ownerPaymentRequest),
+        nextCursor: requests.length === (query.limit ?? 20) ? requests[requests.length - 1].id : null,
+      },
+    };
+  });
+
+  /**
+   * Submits manual payment proof. The amount is always the server-computed
+   * plan price (the client never sends money values); the receipt is a
+   * storage key returned by the existing image-upload abstraction — never a
+   * user-facing URL. Duplicate protection: one PENDING request per business.
+   */
+  app.post('/api/v1/businesses/:id/subscription/payment-requests', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    const body = paymentRequestCreateSchema.parse(q.body);
+
+    const method = await prisma.paymentMethod.findFirst({ where: { id: body.paymentMethodId, isActive: true } });
+    if (!method) return r.status(400).send({ error: { code: 'INVALID_PAYMENT_METHOD', message: 'Choose a valid payment method' } });
+
+    const plan = await ensurePlan('nearbyorders-business');
+    const now = new Date();
+    const current = await latestSubscription(id);
+    const live = current && evaluateSubscription(current) === current.status ? current : null; // still TRIAL/ACTIVE by its own clock
+
+    // Duplicate guard (checked again inside the advisory-lock transaction).
+    const pending = await prisma.subscriptionPaymentRequest.findFirst({ where: { businessId: id, status: 'PENDING' }, select: { id: true } });
+    if (pending) return r.status(409).send({ error: { code: 'PAYMENT_ALREADY_PENDING', message: 'You already have a payment awaiting verification. Wait for the review or cancel it from your payment history.' } });
+
+    try {
+      const created = await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${id}))`;
+        const dup = await tx.subscriptionPaymentRequest.findFirst({ where: { businessId: id, status: 'PENDING' }, select: { id: true } });
+        if (dup) throw Object.assign(new Error('dup'), { code: 'PAYMENT_ALREADY_PENDING' });
+        return tx.subscriptionPaymentRequest.create({
+          data: {
+            businessId: id,
+            subscriptionId: live?.id ?? null,
+            paymentMethodId: method.id,
+            amountMinor: plan.monthlyPriceMinor,
+            currency: plan.currency,
+            transactionReference: body.transactionReference,
+            receiptStorageKey: body.receiptStorageKey,
+            status: 'PENDING',
+            submittedAt: now,
+          },
+        });
+      });
+      await prisma.auditLog.create({
+        data: { actorId: currentUser(q).id, action: 'SUBSCRIPTION_PAYMENT_SUBMITTED', entityType: 'SubscriptionPaymentRequest', entityId: created.id, metadata: { businessId: id, paymentMethodId: method.id, amountMinor: created.amountMinor } },
+      });
+      const withRelations = await prisma.subscriptionPaymentRequest.findUniqueOrThrow({
+        where: { id: created.id },
+        include: { paymentMethod: { select: { id: true, name: true, type: true } }, subscription: { select: { id: true } } },
+      });
+      return r.status(201).send({ data: ownerPaymentRequest(withRelations) });
+    } catch (e) {
+      if ((e as { code?: string }).code === 'PAYMENT_ALREADY_PENDING')
+        return r.status(409).send({ error: { code: 'PAYMENT_ALREADY_PENDING', message: 'You already have a payment awaiting verification' } });
+      throw e;
+    }
+  });
+
+  /** Single payment request; only the owning business can view it. */
+  app.get('/api/v1/businesses/:id/subscription/payment-requests/:requestId', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const requestId = (q.params as { requestId: string }).requestId;
+    await ownedBusiness(q, id);
+    const req = await prisma.subscriptionPaymentRequest.findFirst({
+      where: { id: requestId, businessId: id },
+      include: { paymentMethod: { select: { id: true, name: true, type: true } }, subscription: { select: { id: true } } },
+    });
+    if (!req) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Payment request not found' } });
+    return { data: ownerPaymentRequest(req) };
+  });
+
+  /**
+   * Owner-side cancellation of their own PENDING request (e.g. wrong
+   * reference typed). Never touches approved/rejected rows.
+   */
+  app.post('/api/v1/businesses/:id/subscription/payment-requests/:requestId/cancel', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const requestId = (q.params as { requestId: string }).requestId;
+    await ownedBusiness(q, id);
+    const req = await prisma.subscriptionPaymentRequest.findFirst({ where: { id: requestId, businessId: id } });
+    if (!req) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Payment request not found' } });
+    if (req.status !== 'PENDING')
+      return r.status(409).send({ error: { code: 'NOT_PENDING', message: 'Only a pending payment request can be cancelled' } });
+    const cancelled = await prisma.subscriptionPaymentRequest.update({
+      where: { id: req.id },
+      data: { status: 'CANCELLED', reviewedAt: new Date() },
+      include: { paymentMethod: { select: { id: true, name: true, type: true } }, subscription: { select: { id: true } } },
+    });
+    await prisma.auditLog.create({
+      data: { actorId: currentUser(q).id, action: 'SUBSCRIPTION_PAYMENT_CANCELLED', entityType: 'SubscriptionPaymentRequest', entityId: req.id, metadata: { businessId: id } },
+    });
+    return { data: ownerPaymentRequest(cancelled) };
+  });
+
+  /* ------------------- Admin: payments & methods (Phase 7B) ----------- */
+
+  /** Admin DTO: adds review metadata (reviewer id) the owner DTO omits. */
+  const adminPaymentRequest = (p: {
+    id: string;
+    status: string;
+    amountMinor: number;
+    currency: string;
+    transactionReference: string;
+    receiptStorageKey: string;
+    rejectionReason: string | null;
+    submittedAt: Date;
+    reviewedAt: Date | null;
+    reviewedByUserId: string | null;
+    subscription: { id: string; status: string } | null;
+    paymentMethod: { id: string; name: string; type: string; accountTitle: string; accountNumber: string; iban: string | null };
+    business: { id: string; name: string; slug: string; owner: { id: string; email: string; firstName: string | null; lastName: string | null } };
+  }) => ({
+    id: p.id,
+    status: p.status,
+    amountMinor: p.amountMinor,
+    currency: p.currency,
+    transactionReference: p.transactionReference,
+    receiptStorageKey: p.receiptStorageKey,
+    rejectionReason: p.rejectionReason,
+    submittedAt: p.submittedAt,
+    reviewedAt: p.reviewedAt,
+    reviewedByUserId: p.reviewedByUserId,
+    subscription: p.subscription ? { id: p.subscription.id, status: p.subscription.status } : null,
+    paymentMethod: p.paymentMethod,
+    business: {
+      id: p.business.id,
+      name: p.business.name,
+      slug: p.business.slug,
+      owner: { id: p.business.owner.id, email: p.business.owner.email, firstName: p.business.owner.firstName, lastName: p.business.owner.lastName },
+    },
+  });
+
+  const PAYMENT_REQUEST_INCLUDE = {
+    paymentMethod: { select: { id: true, name: true, type: true, accountTitle: true, accountNumber: true, iban: true } },
+    subscription: { select: { id: true, status: true } },
+    business: {
+      select: { id: true, name: true, slug: true, owner: { select: { id: true, email: true, firstName: true, lastName: true } } },
+    },
+  } as const;
+
+  app.get('/api/v1/admin/subscription/payment-requests', { preHandler: roles('ADMIN') }, async (q) => {
+    const query = z
+      .object({
+        status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']).optional(),
+        limit: z.coerce.number().int().min(1).max(100).optional(),
+        cursor: z.string().optional(),
+      })
+      .parse(q.query ?? {});
+    const requests = await prisma.subscriptionPaymentRequest.findMany({
+      where: query.status ? { status: query.status } : undefined,
+      orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+      take: query.limit ?? 50,
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+      include: PAYMENT_REQUEST_INCLUDE,
+    });
+    return {
+      data: {
+        items: requests.map(adminPaymentRequest),
+        nextCursor: requests.length === (query.limit ?? 50) ? requests[requests.length - 1].id : null,
+      },
+    };
+  });
+
+  app.get('/api/v1/admin/subscription/payment-requests/:id', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const req = await prisma.subscriptionPaymentRequest.findUnique({
+      where: { id: (q.params as { id: string }).id },
+      include: PAYMENT_REQUEST_INCLUDE,
+    });
+    if (!req) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Payment request not found' } });
+    return { data: adminPaymentRequest(req) };
+  });
+
+  /**
+   * Approves a payment request and activates/renews the subscription —
+   * atomically. The advisory lock (same pattern as trial start and booking
+   * slots) serializes concurrent reviews; the PENDING re-check inside the
+   * lock makes a double-approve impossible, and the receipt re-check guards
+   * against a reference being approved twice across different requests.
+   * Period math: renewing a live paid subscription extends from its current
+   * expiry; otherwise the new period starts now (a running trial is replaced
+   * — the business paid for the month).
+   */
+  app.post('/api/v1/admin/subscription/payment-requests/:id/approve', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const requestId = (q.params as { id: string }).id;
+    const admin = currentUser(q);
+    const now = new Date();
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const existing = await tx.subscriptionPaymentRequest.findUnique({ where: { id: requestId } });
+        if (!existing) throw Object.assign(new Error('missing'), { code: 'NOT_FOUND' });
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${existing.businessId}))`;
+
+        // Reload inside the lock — the authoritative state.
+        const request = await tx.subscriptionPaymentRequest.findUniqueOrThrow({
+          where: { id: requestId },
+          include: { business: { select: { ownerId: true } } },
+        });
+        if (request.status !== 'PENDING') throw Object.assign(new Error('dup'), { code: 'NOT_PENDING' });
+
+        const method = await tx.paymentMethod.findUnique({ where: { id: request.paymentMethodId } });
+        if (!method || !method.isActive) throw Object.assign(new Error('method'), { code: 'INVALID_PAYMENT_METHOD' });
+        const plan = await tx.plan.findFirst({ where: { slug: 'nearbyorders-business' } });
+        if (!plan) throw Object.assign(new Error('plan'), { code: 'PLAN_MISSING' });
+        if (request.amountMinor !== plan.monthlyPriceMinor)
+          throw Object.assign(new Error('amount'), { code: 'AMOUNT_MISMATCH' });
+
+        // Approving the same transaction reference twice (two business rows
+        // claiming one real payment) is rejected.
+        const referenceClash = await tx.subscriptionPaymentRequest.findFirst({
+          where: { transactionReference: request.transactionReference, status: 'APPROVED', id: { not: request.id } },
+          select: { id: true },
+        });
+        if (referenceClash) throw Object.assign(new Error('ref'), { code: 'REFERENCE_ALREADY_APPROVED' });
+
+        const current = await tx.businessSubscription.findFirst({
+          where: { businessId: request.businessId },
+          orderBy: { createdAt: 'desc' },
+        });
+        const liveCurrent =
+          current && LIVE_SUBSCRIPTION_STATUSES.includes(current.status) && current.currentPeriodEndAt.getTime() > now.getTime()
+            ? current
+            : null;
+        // A paid renewal extends from the existing expiry; a fresh activation
+        // (expired/cancelled/none/trial) starts now.
+        const periodStart =
+          liveCurrent && liveCurrent.status === 'ACTIVE' ? liveCurrent.currentPeriodEndAt : now;
+        const periodEnd = addCalendarMonths(periodStart, 1);
+
+        // Renewal math (server-controlled dates only):
+        // - live paid subscription → extend from its current expiry (never
+        //   shorten an entitlement), reusing the row;
+        // - live trial → the paid month starts now, activating that same row
+        //   (no second live subscription is created);
+        // - anything else (none/expired/cancelled/suspended) → a fresh ACTIVE
+        //   row starting now.
+        let subscription;
+        if (liveCurrent && liveCurrent.status === 'ACTIVE') {
+          subscription = await tx.businessSubscription.update({
+            where: { id: liveCurrent.id },
+            data: { status: 'ACTIVE', currentPeriodStartAt: liveCurrent.currentPeriodEndAt, currentPeriodEndAt: periodEnd },
+          });
+        } else if (liveCurrent && liveCurrent.status === 'TRIAL') {
+          subscription = await tx.businessSubscription.update({
+            where: { id: liveCurrent.id },
+            data: { status: 'ACTIVE', currentPeriodStartAt: now, currentPeriodEndAt: periodEnd },
+          });
+        } else {
+          subscription = await tx.businessSubscription.create({
+            data: {
+              businessId: request.businessId,
+              planId: plan.id,
+              status: 'ACTIVE',
+              currentPeriodStartAt: now,
+              currentPeriodEndAt: periodEnd,
+            },
+          });
+        }
+
+        const approved = await tx.subscriptionPaymentRequest.update({
+          where: { id: request.id },
+          data: { status: 'APPROVED', reviewedAt: now, reviewedByUserId: admin.id, subscriptionId: subscription.id },
+        });
+
+        await createNotifications(
+          tx,
+          [
+            {
+              userId: request.business.ownerId,
+              type: NOTIFICATION_TYPES.SUBSCRIPTION_PAYMENT_APPROVED,
+              title: 'Subscription payment approved',
+              message: `Your NearbyOrders Business subscription payment has been approved. Your subscription is now active until ${periodEnd.toLocaleDateString('en-PK')}.`,
+              entityType: 'SubscriptionPaymentRequest',
+              entityId: request.id,
+            },
+          ],
+          tx,
+        );
+
+        return { approved, subscription };
+      });
+
+      await prisma.auditLog.create({
+        data: { actorId: admin.id, action: 'SUBSCRIPTION_PAYMENT_APPROVED', entityType: 'SubscriptionPaymentRequest', entityId: result.approved.id, metadata: { businessId: result.approved.businessId, subscriptionId: result.subscription.id } },
+      });
+      const full = await prisma.subscriptionPaymentRequest.findUniqueOrThrow({ where: { id: requestId }, include: PAYMENT_REQUEST_INCLUDE });
+      return { data: adminPaymentRequest(full) };
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === 'NOT_FOUND') return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Payment request not found' } });
+      if (code === 'NOT_PENDING') return r.status(409).send({ error: { code: 'NOT_PENDING', message: 'This payment request has already been reviewed' } });
+      if (code === 'INVALID_PAYMENT_METHOD') return r.status(409).send({ error: { code: 'INVALID_PAYMENT_METHOD', message: 'The payment method is no longer active' } });
+      if (code === 'AMOUNT_MISMATCH') return r.status(409).send({ error: { code: 'AMOUNT_MISMATCH', message: 'Payment amount no longer matches the plan price' } });
+      if (code === 'REFERENCE_ALREADY_APPROVED') return r.status(409).send({ error: { code: 'REFERENCE_ALREADY_APPROVED', message: 'This transaction reference was already approved on another payment request' } });
+      if (code === 'PLAN_MISSING') return r.status(500).send({ error: { code: 'INTERNAL_ERROR', message: 'Plan configuration missing' } });
+      throw e;
+    }
+  });
+
+  /**
+   * Rejects a payment request with a required reason. The subscription is
+   * untouched; the owner is notified and can submit a corrected request.
+   */
+  app.post('/api/v1/admin/subscription/payment-requests/:id/reject', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const requestId = (q.params as { id: string }).id;
+    const admin = currentUser(q);
+    const { reason } = paymentRejectSchema.parse(q.body);
+    const now = new Date();
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const existing = await tx.subscriptionPaymentRequest.findUnique({ where: { id: requestId } });
+        if (!existing) throw Object.assign(new Error('missing'), { code: 'NOT_FOUND' });
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${existing.businessId}))`;
+        const request = await tx.subscriptionPaymentRequest.findUniqueOrThrow({ where: { id: requestId }, include: { business: { select: { ownerId: true } } } });
+        if (request.status !== 'PENDING') throw Object.assign(new Error('dup'), { code: 'NOT_PENDING' });
+        const rejected = await tx.subscriptionPaymentRequest.update({
+          where: { id: request.id },
+          data: { status: 'REJECTED', rejectionReason: reason, reviewedAt: now, reviewedByUserId: admin.id },
+        });
+        await createNotifications(
+          tx,
+          [
+            {
+              userId: request.business.ownerId,
+              type: NOTIFICATION_TYPES.SUBSCRIPTION_PAYMENT_REJECTED,
+              title: 'Subscription payment rejected',
+              message: `Your NearbyOrders subscription payment was rejected. Reason: ${reason}`,
+              entityType: 'SubscriptionPaymentRequest',
+              entityId: request.id,
+            },
+          ],
+          tx,
+        );
+        return rejected;
+      });
+      await prisma.auditLog.create({
+        data: { actorId: admin.id, action: 'SUBSCRIPTION_PAYMENT_REJECTED', entityType: 'SubscriptionPaymentRequest', entityId: result.id, metadata: { businessId: result.businessId } },
+      });
+      const full = await prisma.subscriptionPaymentRequest.findUniqueOrThrow({ where: { id: requestId }, include: PAYMENT_REQUEST_INCLUDE });
+      return { data: adminPaymentRequest(full) };
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === 'NOT_FOUND') return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Payment request not found' } });
+      if (code === 'NOT_PENDING') return r.status(409).send({ error: { code: 'NOT_PENDING', message: 'This payment request has already been reviewed' } });
+      throw e;
+    }
+  });
+
+  /* ------------------- Admin: payment methods CRUD (Phase 7B) --------- */
+
+  app.get('/api/v1/admin/payment-methods', { preHandler: roles('ADMIN') }, async () => {
+    const methods = await prisma.paymentMethod.findMany({ orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }] });
+    return { data: methods };
+  });
+
+  app.post('/api/v1/admin/payment-methods', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const d = paymentMethodSchema.parse(q.body);
+    const created = await prisma.paymentMethod.create({ data: d });
+    await prisma.auditLog.create({
+      data: { actorId: currentUser(q).id, action: 'PAYMENT_METHOD_CREATED', entityType: 'PaymentMethod', entityId: created.id, metadata: { type: created.type } },
+    });
+    return r.status(201).send({ data: created });
+  });
+
+  app.patch('/api/v1/admin/payment-methods/:id', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const d = paymentMethodUpdateSchema.parse(q.body);
+    const existing = await prisma.paymentMethod.findUnique({ where: { id } });
+    if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Payment method not found' } });
+    const updated = await prisma.paymentMethod.update({ where: { id }, data: d });
+    await prisma.auditLog.create({
+      data: { actorId: currentUser(q).id, action: 'PAYMENT_METHOD_UPDATED', entityType: 'PaymentMethod', entityId: id, metadata: { keys: Object.keys(d) } },
+    });
+    return { data: updated };
+  });
+
+  /**
+   * Deleting a payment method is only allowed while it has no payment
+   * requests (FK RESTRICT); otherwise admins deactivate it — history must
+   * keep showing the channel a payment was paid to.
+   */
+  app.delete('/api/v1/admin/payment-methods/:id', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const existing = await prisma.paymentMethod.findUnique({ where: { id }, include: { _count: { select: { paymentRequests: true } } } });
+    if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Payment method not found' } });
+    if (existing._count.paymentRequests > 0)
+      return r.status(409).send({ error: { code: 'IN_USE', message: 'This payment method has payment requests and can only be deactivated, not deleted' } });
+    await prisma.paymentMethod.delete({ where: { id } });
+    await prisma.auditLog.create({
+      data: { actorId: currentUser(q).id, action: 'PAYMENT_METHOD_DELETED', entityType: 'PaymentMethod', entityId: id },
+    });
+    return r.status(204).send();
   });
 
   /* --------------------------- Services ----------------------------- */

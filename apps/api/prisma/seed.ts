@@ -220,10 +220,56 @@ export async function upsertPlans() {
   console.log(`Seeded ${PLAN_CATALOG.length} subscription plan(s).`);
 }
 
+/**
+ * DEVELOPMENT/TEST payment methods for the manual subscription-payment flow
+ * (Phase 7B). These are placeholder accounts — NOT real payment numbers — and
+ * clearly labelled as test data. Production values are created/edited by an
+ * ADMIN through the admin panel and API, never in source code. Idempotent by
+ * name; re-seeding never clobbers admin-edited details.
+ */
+const DEV_PAYMENT_METHODS = [
+  {
+    name: 'Easypaisa (Test)',
+    type: 'EASYPAISA' as const,
+    accountTitle: 'NearbyOrders Test',
+    accountNumber: '03000000000',
+    iban: null,
+    instructions: 'DEVELOPMENT TEST ACCOUNT — not a real Easypaisa number. Send Rs. 2,999 and keep the transaction ID for your receipt.',
+    displayOrder: 10,
+  },
+  {
+    name: 'JazzCash (Test)',
+    type: 'JAZZCASH' as const,
+    accountTitle: 'NearbyOrders Test',
+    accountNumber: '03000000000',
+    iban: null,
+    instructions: 'DEVELOPMENT TEST ACCOUNT — not a real JazzCash number. Send Rs. 2,999 and keep the transaction ID for your receipt.',
+    displayOrder: 20,
+  },
+  {
+    name: 'Bank Transfer (Test)',
+    type: 'BANK_TRANSFER' as const,
+    accountTitle: 'NearbyOrders Test',
+    accountNumber: '0000000000000',
+    iban: 'PK00TEST0000000000000000',
+    instructions: 'DEVELOPMENT TEST ACCOUNT — not a real bank account. Transfer Rs. 2,999 and keep the receipt reference for your submission.',
+    displayOrder: 30,
+  },
+];
+
+export async function upsertDevPaymentMethods() {
+  for (const m of DEV_PAYMENT_METHODS) {
+    const existing = await prisma.paymentMethod.findFirst({ where: { name: m.name } });
+    if (!existing) await prisma.paymentMethod.create({ data: m });
+  }
+  console.log(`Seeded ${DEV_PAYMENT_METHODS.length} dev/test payment method(s).`);
+}
+
 async function main() {
   await pruneStrayCategories();
   await upsertCoreCategories();
   await upsertPlans();
+  await upsertDevPaymentMethods();
   if (process.env.SEED_DEMO_DATA === '1') {
     console.log('SEED_DEMO_DATA=1: creating clearly-marked demo data…');
     await createDemoData();

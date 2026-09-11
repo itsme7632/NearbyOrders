@@ -10,3 +10,5 @@ coverage
 .local-dev
 android
 ios
+# Dev/test receipt uploads (opaque payment-receipt storage, Phase 7B)
+.receipts

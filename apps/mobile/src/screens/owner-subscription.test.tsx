@@ -53,7 +53,7 @@ describe('OwnerSubscription (no subscription yet)', () => {
     await waitFor(() => expect(reloadSpy.mock.calls.length).toBeGreaterThanOrEqual(2));
   });
 
-  it('shows no payment / upgrade / card UI anywhere', async () => {
+  it('shows no payment / upgrade / card UI while no subscription exists', async () => {
     render(<OwnerSubscription businessId="biz-1" />);
     await screen.findByRole('button', { name: 'Start 30-day free trial' });
     expect(screen.queryByText(/pay now/i)).toBeNull();

@@ -237,6 +237,96 @@ export const startBusinessTrial = (businessId: string) =>
 export const cancelBusinessSubscription = (businessId: string) =>
   request<Subscription>(`/businesses/${businessId}/subscription/cancel`, { method: 'POST', auth: true });
 
+/* --------------------- manual subscription payments ---------------- */
+
+/** Mirrors the server's PaymentMethodType enum. */
+export type PaymentMethodType = 'EASYPAISA' | 'JAZZCASH' | 'BANK_TRANSFER';
+
+/** A manual pay-in channel (Easypaisa / JazzCash / bank transfer), server-configured. */
+export type PaymentMethod = {
+  id: string;
+  name: string;
+  type: PaymentMethodType;
+  accountTitle: string;
+  accountNumber: string;
+  iban: string | null;
+  instructions: string | null;
+};
+
+/** Mirrors the server's PaymentRequestStatus enum. */
+export type PaymentRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+
+/** One submitted payment proof as seen by the owning business. */
+export type PaymentRequest = {
+  id: string;
+  status: PaymentRequestStatus;
+  /** Server-computed plan price — the client never sends an amount. */
+  amountMinor: number;
+  currency: string;
+  transactionReference: string;
+  receiptStorageKey: string;
+  rejectionReason: string | null;
+  submittedAt: string;
+  reviewedAt: string | null;
+  subscriptionId: string | null;
+  paymentMethod: { id: string; name: string; type: PaymentMethodType };
+};
+
+/** Wrapped list response for payment history: { data: { items, nextCursor } }. */
+export type PaymentRequestPage = { items: PaymentRequest[]; nextCursor: string | null };
+
+/** Active pay-in channels in display order (shown to any authenticated user). */
+export const listPaymentMethods = () => request<PaymentMethod[]>('/subscription/payment-methods', { auth: true });
+
+/** Payment history for an owned business, newest first. */
+export const listPaymentRequests = (businessId: string, limit = 20, cursor?: string) => {
+  const qs = new URLSearchParams({ limit: String(limit) });
+  if (cursor) qs.set('cursor', cursor);
+  return request<PaymentRequestPage>(`/businesses/${businessId}/subscription/payment-requests?${qs.toString()}`, { auth: true });
+};
+
+/**
+ * Submits payment proof for admin verification. The body carries only the
+ * chosen method, the transaction reference and the uploaded receipt's storage
+ * key — amount and currency come from the server's plan catalog.
+ */
+export const submitPaymentRequest = (
+  businessId: string,
+  body: { paymentMethodId: string; transactionReference: string; receiptStorageKey: string },
+) => request<PaymentRequest>(`/businesses/${businessId}/subscription/payment-requests`, { method: 'POST', body, auth: true });
+
+/** Cancels the business's own PENDING request so a corrected one can be sent. */
+export const cancelPaymentRequest = (businessId: string, requestId: string) =>
+  request<PaymentRequest>(`/businesses/${businessId}/subscription/payment-requests/${requestId}/cancel`, { method: 'POST', auth: true });
+
+/**
+ * Uploads the picked receipt image to the API (multipart). The server stores
+ * the bytes and returns an opaque, server-generated storage key — never a
+ * user-facing URL. Receipts stay viewable only through authorized endpoints.
+ */
+export async function uploadPaymentReceipt(file: File): Promise<string> {
+  const headers: Record<string, string> = {};
+  if (session) headers.authorization = `Bearer ${session.accessToken}`;
+
+  let res: Response;
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    res = await fetch(`${API_BASE}/subscription/payment-receipts`, { method: 'POST', headers, body: form });
+  } catch {
+    throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the NearbyOrders API. Is the API server running?');
+  }
+
+  const payload = (await res.json().catch(() => null)) as { data?: { storageKey?: string }; error?: { code?: string; message?: string } } | null;
+  if (!res.ok) {
+    if (res.status === 401 && session) setSession(null);
+    throw new ApiError(res.status, payload?.error?.code ?? 'UNKNOWN', payload?.error?.message ?? `Receipt upload failed (${res.status})`);
+  }
+  const storageKey = payload?.data?.storageKey;
+  if (!storageKey) throw new ApiError(500, 'UNKNOWN', 'Receipt upload returned no storage key');
+  return storageKey;
+}
+
 /* --------------------------- businesses ---------------------------- */
 
 export type BusinessQuery = {
@@ -395,7 +485,7 @@ export type Notification = {
   type: string;
   title: string;
   message: string;
-  entityType: 'Booking' | 'Order';
+  entityType: 'Booking' | 'Order' | 'SubscriptionPaymentRequest';
   entityId: string;
   isRead: boolean;
   readAt: string | null;

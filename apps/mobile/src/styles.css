@@ -1265,3 +1265,40 @@ button.hub-row:active { background: var(--bg); }
   font-size: 13px;
   margin: -2px 0 10px;
 }
+
+/* ---- Manual subscription payments (Phase 7B) ---- */
+.pay-section { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; }
+.pay-section h3 { font-size: 15px; margin: 0 0 8px; }
+.pay-section h4 { font-size: 13.5px; margin: 14px 0 6px; color: var(--muted); }
+.pay-pending {
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.3);
+  color: var(--secondary);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13.5px;
+  margin-bottom: 10px;
+}
+.pay-details {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin: 4px 0 10px;
+  background: var(--light);
+}
+.pay-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 3px 0;
+}
+.pay-detail-label { color: var(--muted); font-size: 12.5px; flex-shrink: 0; }
+.pay-detail-value { font-weight: 600; font-size: 13.5px; text-align: right; overflow-wrap: anywhere; }
+.pay-detail-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.02em; }
+.pay-ref { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.badge-neutral { background: rgba(100, 116, 139, 0.14); color: var(--muted); }
+@media (max-width: 359px) {
+  .pay-detail-row { flex-direction: column; gap: 1px; }
+  .pay-detail-value { text-align: left; }
+}

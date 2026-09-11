@@ -48,23 +48,24 @@ enum SubscriptionStatus {
 }
 
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  passwordHash  String
-  role          Role           @default(CUSTOMER)
-  firstName     String?
-  lastName      String?
-  phone         String?
-  isSuspended   Boolean        @default(false)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  businesses    Business[]     @relation("BusinessOwner")
-  bookings      Booking[]
-  orders        Order[]
-  sessions      RefreshToken[]
-  auditActions  AuditLog[]     @relation("AuditActor")
-  notifications Notification[]
-  reviews       Review[]       @relation("ReviewCustomer")
+  id               String                       @id @default(uuid())
+  email            String                       @unique
+  passwordHash     String
+  role             Role                         @default(CUSTOMER)
+  firstName        String?
+  lastName         String?
+  phone            String?
+  isSuspended      Boolean                      @default(false)
+  createdAt        DateTime                     @default(now())
+  updatedAt        DateTime                     @updatedAt
+  businesses       Business[]                   @relation("BusinessOwner")
+  bookings         Booking[]
+  orders           Order[]
+  sessions         RefreshToken[]
+  auditActions     AuditLog[]                   @relation("AuditActor")
+  notifications    Notification[]
+  reviews          Review[]                     @relation("ReviewCustomer")
+  reviewedPayments SubscriptionPaymentRequest[] @relation("PaymentReviewer")
 
   @@index([role, isSuspended])
 }
@@ -80,34 +81,35 @@ model Category {
 }
 
 model Business {
-  id            String                 @id @default(uuid())
-  ownerId       String
-  name          String
-  slug          String                 @unique
-  description   String?
-  phone         String?
-  email         String?
-  imageUrl      String?
-  isVerified    Boolean                @default(false)
-  status        BusinessStatus         @default(PENDING)
-  address       String
-  city          String
-  locality      String?
-  latitude      Decimal                @db.Decimal(10, 7)
-  longitude     Decimal                @db.Decimal(10, 7)
-  currency      String                 @default("PKR")
-  createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @updatedAt
-  archivedAt    DateTime?
-  owner         User                   @relation("BusinessOwner", fields: [ownerId], references: [id])
-  categories    BusinessCategory[]
-  hours         BusinessHour[]
-  services      Service[]
-  products      Product[]
-  bookings      Booking[]
-  orders        Order[]
-  reviews       Review[]
-  subscriptions BusinessSubscription[]
+  id              String                       @id @default(uuid())
+  ownerId         String
+  name            String
+  slug            String                       @unique
+  description     String?
+  phone           String?
+  email           String?
+  imageUrl        String?
+  isVerified      Boolean                      @default(false)
+  status          BusinessStatus               @default(PENDING)
+  address         String
+  city            String
+  locality        String?
+  latitude        Decimal                      @db.Decimal(10, 7)
+  longitude       Decimal                      @db.Decimal(10, 7)
+  currency        String                       @default("PKR")
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+  archivedAt      DateTime?
+  owner           User                         @relation("BusinessOwner", fields: [ownerId], references: [id])
+  categories      BusinessCategory[]
+  hours           BusinessHour[]
+  services        Service[]
+  products        Product[]
+  bookings        Booking[]
+  orders          Order[]
+  reviews         Review[]
+  subscriptions   BusinessSubscription[]
+  paymentRequests SubscriptionPaymentRequest[]
 
   @@index([ownerId])
   @@index([status, city])
@@ -296,19 +298,20 @@ model Plan {
 /// history. No payment records exist in this phase: activation with real
 /// payments arrives later.
 model BusinessSubscription {
-  id                   String             @id @default(uuid())
+  id                   String                       @id @default(uuid())
   businessId           String
   planId               String
-  status               SubscriptionStatus @default(TRIAL)
+  status               SubscriptionStatus           @default(TRIAL)
   trialStartAt         DateTime?
   trialEndAt           DateTime?
   currentPeriodStartAt DateTime
   currentPeriodEndAt   DateTime
   cancelledAt          DateTime?
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
-  business             Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  plan                 Plan               @relation(fields: [planId], references: [id])
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+  business             Business                     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  plan                 Plan                         @relation(fields: [planId], references: [id])
+  paymentRequests      SubscriptionPaymentRequest[]
 
   @@index([businessId, status])
   @@index([planId])
@@ -336,4 +339,86 @@ model Review {
 
   @@index([businessId, createdAt])
   @@index([customerId, createdAt])
+}
+
+/**
+ * ------------------------------------------------------------------
+ */
+/**
+ * Manual subscription payments (Phase 7B)
+ */
+/**
+ * ------------------------------------------------------------------
+ */
+
+/// Where a business can pay its NearbyOrders subscription manually
+/// (Easypaisa / JazzCash / bank transfer). Admin-managed data: changing a
+/// number or IBAN never requires a mobile-app release. No credentials are
+/// stored here — only the public pay-in details shown to businesses.
+enum PaymentMethodType {
+  EASYPAISA
+  JAZZCASH
+  BANK_TRANSFER
+}
+
+/// Lifecycle of a manual payment proof. There is no self-attestation: only an
+/// ADMIN review moves money-in to an active subscription.
+enum PaymentRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+/// A manual pay-in channel a business can use. `displayOrder` controls the
+/// order in the business picker; inactive rows are hidden from businesses.
+model PaymentMethod {
+  id              String                       @id @default(uuid())
+  name            String
+  type            PaymentMethodType
+  accountTitle    String
+  accountNumber   String
+  iban            String?
+  instructions    String?
+  isActive        Boolean                      @default(true)
+  displayOrder    Int                          @default(0)
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+  paymentRequests SubscriptionPaymentRequest[]
+
+  @@index([isActive, displayOrder])
+}
+
+/// A business's manual subscription-payment proof, awaiting (or past) admin
+/// verification. `subscriptionId` links to the subscription the payment
+/// intends to (re)activate; it may be null when the owner pays before any
+/// subscription row exists. The amount is always the server-computed plan
+/// price — never a client-sent number. Approvals use the same advisory-lock
+/// transaction pattern as booking slots and trial starts, so a request can
+/// only ever be processed once.
+model SubscriptionPaymentRequest {
+  id                   String                @id @default(uuid())
+  businessId           String
+  subscriptionId       String?
+  paymentMethodId      String
+  amountMinor          Int
+  currency             String                @default("PKR")
+  transactionReference String
+  receiptStorageKey    String
+  status               PaymentRequestStatus  @default(PENDING)
+  rejectionReason      String?
+  submittedAt          DateTime              @default(now())
+  reviewedAt           DateTime?
+  reviewedByUserId     String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  business             Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  subscription         BusinessSubscription? @relation(fields: [subscriptionId], references: [id])
+  paymentMethod        PaymentMethod         @relation(fields: [paymentMethodId], references: [id])
+  reviewedBy           User?                 @relation("PaymentReviewer", fields: [reviewedByUserId], references: [id])
+
+  @@index([businessId, submittedAt])
+  @@index([status, submittedAt])
+  @@index([transactionReference])
+  @@index([subscriptionId])
 }

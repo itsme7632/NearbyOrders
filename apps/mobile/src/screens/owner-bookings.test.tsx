@@ -3,6 +3,7 @@ import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/re
 import { OwnerBookingsScreen, OwnerBookingDetailScreen, customerName, durationMinutesLabel } from './OwnerBookings.js';
 import * as api from '../api.js';
 import type { Booking, Business } from '../api.js';
+import { addDays, todayPkt } from '../time.js';
 
 afterEach(cleanup);
 
@@ -43,9 +44,11 @@ const makeBooking = (overrides: Partial<Booking> = {}): Booking => ({
   ...overrides,
 });
 
+// Dates are relative to today (Pakistan time) so grouping never becomes a
+// date time-bomb: "upcoming" means CONFIRMED on/after today, always.
 const pending = makeBooking();
-const confirmed = makeBooking({ id: 'bk-2', status: 'CONFIRMED', bookingDate: '2026-09-11' });
-const completed = makeBooking({ id: 'bk-3', status: 'COMPLETED', bookingDate: '2026-09-09' });
+const confirmed = makeBooking({ id: 'bk-2', status: 'CONFIRMED', bookingDate: addDays(todayPkt(), 1) });
+const completed = makeBooking({ id: 'bk-3', status: 'COMPLETED', bookingDate: addDays(todayPkt(), -2) });
 
 function mockOwnerApis(bookings: Booking[]) {
   vi.spyOn(api, 'getMyBusinesses').mockResolvedValue([business]);

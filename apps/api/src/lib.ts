@@ -324,6 +324,61 @@ export const reviewCreateSchema = z
   });
 
 /* ------------------------------------------------------------------ */
+/* Manual subscription payments (Phase 7B)                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Body for creating a manual subscription payment request. The client sends
+ * only a payment method, a transaction reference and the receipt's storage
+ * key — never an amount, price or currency: the server computes the payable
+ * amount from the plan catalog so no client can manipulate the price.
+ */
+export const paymentRequestCreateSchema = z.object({
+  paymentMethodId: z.string().uuid(),
+  transactionReference: z
+    .string()
+    .transform((v) => v.trim())
+    .refine((v) => v.length >= 4, { message: 'Transaction reference must be at least 4 characters' })
+    .refine((v) => v.length <= 100, { message: 'Transaction reference must be at most 100 characters' }),
+  receiptStorageKey: z
+    .string()
+    .transform((v) => v.trim())
+    .refine((v) => v.length >= 1, { message: 'A payment receipt image is required' })
+    .refine((v) => v.length <= 512, { message: 'Receipt reference is too long' }),
+});
+
+/** Admin payment-method fields for create/edit. Everything but the type is editable later. */
+export const paymentMethodSchema = z.object({
+  name: z.string().trim().min(2).max(60),
+  type: z.enum(['EASYPAISA', 'JAZZCASH', 'BANK_TRANSFER']),
+  accountTitle: z.string().trim().min(2).max(120),
+  accountNumber: z.string().trim().min(4).max(40),
+  iban: z
+    .string()
+    .trim()
+    .max(34)
+    .optional()
+    .transform((v) => (v === undefined || v === '' ? null : v)),
+  instructions: optionalText(1000),
+  isActive: z.boolean().optional(),
+  displayOrder: z.number().int().min(0).max(1000).optional(),
+});
+
+export const paymentMethodUpdateSchema = paymentMethodSchema.partial().refine(
+  (data) => Object.keys(data).length > 0,
+  { message: 'No changes provided' },
+);
+
+/** Admin rejection must carry a meaningful, non-empty reason. */
+export const paymentRejectSchema = z.object({
+  reason: z
+    .string()
+    .transform((v) => v.trim())
+    .refine((v) => v.length >= 4, { message: 'A rejection reason is required' })
+    .refine((v) => v.length <= 500, { message: 'Reason must be at most 500 characters' }),
+});
+
+/* ------------------------------------------------------------------ */
 /* Notifications (Phase 5 foundation)                                  */
 /* ------------------------------------------------------------------ */
 
@@ -344,6 +399,9 @@ export const NOTIFICATION_TYPES = {
   ORDER_READY: 'ORDER_READY',
   ORDER_COMPLETED: 'ORDER_COMPLETED',
   ORDER_CANCELLED: 'ORDER_CANCELLED',
+  SUBSCRIPTION_PAYMENT_SUBMITTED: 'SUBSCRIPTION_PAYMENT_SUBMITTED',
+  SUBSCRIPTION_PAYMENT_APPROVED: 'SUBSCRIPTION_PAYMENT_APPROVED',
+  SUBSCRIPTION_PAYMENT_REJECTED: 'SUBSCRIPTION_PAYMENT_REJECTED',
 } as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
@@ -354,7 +412,7 @@ export type NotificationInput = {
   type: NotificationType;
   title: string;
   message: string;
-  entityType: 'Booking' | 'Order';
+  entityType: 'Booking' | 'Order' | 'SubscriptionPaymentRequest';
   entityId: string;
 };
 
@@ -527,6 +585,29 @@ export const PLAN_CATALOG = [
 
 /** The subscription states that grant live platform access. */
 export const LIVE_SUBSCRIPTION_STATUSES: readonly SubscriptionStatus[] = ['TRIAL', 'ACTIVE'];
+
+/**
+ * Adds one calendar month (Phase 7B renewal math). Calendar-accurate: Jan 31
+ * + 1 month is Feb 28/29, never Mar 2/3 — so a business paying on the 31st
+ * keeps the 31st (or the month's last day) as its renewal anchor.
+ */
+export const addCalendarMonths = (from: Date, months: number): Date => {
+  const year = from.getUTCFullYear();
+  const month = from.getUTCMonth() + months;
+  // Day 0 of the month after `month` = last day of `month` (clamps 31 → 30/28).
+  const lastDayOfTarget = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return new Date(
+    Date.UTC(
+      year,
+      month,
+      Math.min(from.getUTCDate(), lastDayOfTarget),
+      from.getUTCHours(),
+      from.getUTCMinutes(),
+      from.getUTCSeconds(),
+      from.getUTCMilliseconds(),
+    ),
+  );
+};
 
 /**
  * Server-authoritative access evaluation for one subscription row.
