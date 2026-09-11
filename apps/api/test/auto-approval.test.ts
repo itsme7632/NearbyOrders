@@ -122,7 +122,7 @@ describe('owner business update (Save profile contract)', () => {
 
   it('accepts cleared optional fields as "" and stores them as null', async () => {
     const owner = await registerAndLogin(app, 'BUSINESS_OWNER');
-    const cat = await ensureCategory('Save Profile Cat');
+    const cat = await ensureCategory();
     const created = await createViaApi(owner.token, {
       name: `Clearable Fields Biz ${Date.now()}`,
       address: '1 Test Street',
@@ -164,7 +164,7 @@ describe('owner business update (Save profile contract)', () => {
 
   it('preserves fields that were not part of the PATCH payload', async () => {
     const owner = await registerAndLogin(app, 'BUSINESS_OWNER');
-    const cat = await ensureCategory('Preserve Fields Cat');
+    const cat = await ensureCategory();
     const created = await createViaApi(owner.token, {
       name: `Preserve Biz ${Date.now()}`,
       address: '1 Test Street',
@@ -210,7 +210,7 @@ describe('owner business update (Save profile contract)', () => {
 
   it('rejects empty required fields but accepts cleared optional ones in one patch', async () => {
     const owner = await registerAndLogin(app, 'BUSINESS_OWNER');
-    const cat = await ensureCategory('Mixed Patch Cat');
+    const cat = await ensureCategory();
     const created = await createViaApi(owner.token, {
       name: `Mixed Patch Biz ${Date.now()}`,
       address: '1 Test Street',

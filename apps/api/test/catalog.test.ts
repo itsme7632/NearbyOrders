@@ -5,6 +5,10 @@ import { pruneStrayCategories, upsertCoreCategories } from '../prisma/seed.js';
 
 const app = await makeApp();
 
+// Guarantee the core catalog exists before any assertion, independent of
+// worker scheduling (CI provisions the DB with `migrate deploy` only).
+await upsertCoreCategories();
+
 /** The intentional, human-readable customer catalog (mirrors prisma/seed.ts). */
 const LEGITIMATE_SLUGS = [
   'food-restaurants',
@@ -41,17 +45,24 @@ describe('category catalog integrity', () => {
   it('seed prune removes stray test categories while upsert restores the core set', async () => {
     // Simulate exactly the pollution that used to reach the dev database:
     // test fixtures writing timestamped categories straight into the DB.
+    // Created *inactive* so a concurrent catalog-integrity scan (the suite
+    // shares one throwaway DB across parallel workers) never sees them in
+    // the public list; the prune deletes unreferenced rows regardless of
+    // their active state.
     const stamp = Date.now();
-    await prisma.category.create({ data: { name: `List Cat ${stamp}`, slug: `list-cat-${stamp}` } }).catch(() => undefined); // tolerate reruns
-    await prisma.category.create({ data: { name: `Helper Category ${stamp}`, slug: `helper-category-${stamp}` } }).catch(() => undefined);
+    await prisma.category
+      .create({ data: { name: `List Cat ${stamp}`, slug: `list-cat-${stamp}`, isActive: false } })
+      .catch(() => undefined); // tolerate reruns
+    await prisma.category
+      .create({ data: { name: `Helper Category ${stamp}`, slug: `helper-category-${stamp}`, isActive: false } })
+      .catch(() => undefined);
 
-    // Keep this heat-replay idempotent: the seed has already run and
-  // already pruned any strays created above by test helpers.
-  await pruneStrayCategories();
-  await upsertCoreCategories();
+    // Idempotent replay: the seed may have already run and pruned the strays.
+    await pruneStrayCategories();
+    await upsertCoreCategories();
 
-  const remaining = await prisma.category.findMany({ where: { slug: { in: [`list-cat-${stamp}`, `helper-category-${stamp}`] } } });
-  expect(remaining).toHaveLength(0);
+    const remaining = await prisma.category.findMany({ where: { slug: { in: [`list-cat-${stamp}`, `helper-category-${stamp}`] } } });
+    expect(remaining).toHaveLength(0);
 
     const cores = await prisma.category.findMany({ where: { slug: { in: LEGITIMATE_SLUGS } } });
     expect(cores.length).toBe(LEGITIMATE_SLUGS.length);
@@ -94,10 +105,14 @@ describe('category catalog integrity', () => {
       payload: { name: 'Agriculture' },
     });
     expect(res.statusCode).toBe(201);
-    const created = JSON.parse(res.body).data as { slug: string };
+    const created = JSON.parse(res.body).data as { id: string; slug: string };
     expect(created.slug).toBe('agriculture');
-
-    const pub = await app.inject({ method: 'GET', url: '/api/v1/categories' });
-    expect(JSON.parse(pub.body).data.some((c: { slug: string }) => c.slug === 'agriculture')).toBe(true);
+    try {
+      const pub = await app.inject({ method: 'GET', url: '/api/v1/categories' });
+      expect(JSON.parse(pub.body).data.some((c: { slug: string }) => c.slug === 'agriculture')).toBe(true);
+    } finally {
+      // Fixture cleanup: keeps reruns against a persisted test DB deterministic.
+      await prisma.category.deleteMany({ where: { id: created.id } });
+    }
   });
 });

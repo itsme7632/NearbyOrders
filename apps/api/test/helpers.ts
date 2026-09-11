@@ -49,13 +49,20 @@ async function login(app: FastifyInstance, email: string): Promise<{ token: stri
 
 export const authed = (token: string) => ({ authorization: `Bearer ${token}` });
 
-/** Creates (or reuses) a helper category directly in the database. */
-export async function ensureCategory(name = 'Helper Category'): Promise<{ id: string; slug: string }> {
-  const slug = 'helper-category';
+/**
+ * Test fixture category used by createBusiness when no categoryIds are given.
+ *
+ * Reuses the seeded core category (`food-restaurants`) instead of inventing a
+ * new one: a bespoke fixture row ("Helper Category") was referenced by every
+ * helper-created business, so the seed prune (which protects referenced
+ * categories) kept it and it leaked into the public, customer-facing catalog.
+ */
+const FIXTURE_CATEGORY_SLUG = 'food-restaurants';
+export async function ensureCategory(): Promise<{ id: string; slug: string }> {
   const category = await prisma.category.upsert({
-    where: { slug },
+    where: { slug: FIXTURE_CATEGORY_SLUG },
     update: { isActive: true },
-    create: { name, slug, isActive: true },
+    create: { name: 'Food & Restaurants', slug: FIXTURE_CATEGORY_SLUG, isActive: true },
   });
   return { id: category.id, slug: category.slug };
 }

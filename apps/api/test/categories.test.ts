@@ -1,16 +1,36 @@
 import { describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib.js';
-import { approveBusiness, authed, createBusiness, makeApp, registerAdminAndLogin, registerAndLogin } from './helpers.js';
+import {
+  approveBusiness,
+  authed,
+  createBusiness,
+  ensureCategory,
+  makeApp,
+  registerAdminAndLogin,
+  registerAndLogin,
+} from './helpers.js';
 
 const app = await makeApp();
 
+/**
+ * Short unique fixture suffix. Base36 (never 10+ consecutive digits), so a
+ * leftover fixture name can never match the timestamp-pollution pattern the
+ * catalog-integrity scan guards against.
+ */
+let fixtureCounter = 0;
+const fixtureSuffix = () => `${Date.now().toString(36)}-${++fixtureCounter}`;
+
 describe('categories', () => {
   it('lists active categories publicly', async () => {
-    await prisma.category.create({ data: { name: `List Cat ${Date.now()}`, slug: `list-cat-${Date.now()}` } });
+    // Reuse the shared core fixture instead of inventing a category: stray
+    // rows created here used to linger active in the shared test catalog and
+    // trip the catalog-integrity scan running in a parallel worker.
+    const cat = await ensureCategory();
     const res = await app.inject({ method: 'GET', url: '/api/v1/categories' });
     expect(res.statusCode).toBe(200);
     const list = JSON.parse(res.body).data as { id: string }[];
     expect(list.length).toBeGreaterThan(0);
+    expect(list.some((c) => c.id === cat.id)).toBe(true);
   });
 
   it('admin creates a category', async () => {
@@ -19,10 +39,13 @@ describe('categories', () => {
       method: 'POST',
       url: '/api/v1/admin/categories',
       headers: authed(token),
-      payload: { name: `Admin Cat ${Date.now()}` },
+      payload: { name: `Patio Furnishing ${fixtureSuffix()}` },
     });
     expect(res.statusCode).toBe(201);
-    expect(JSON.parse(res.body).data.slug).toBeTruthy();
+    const created = JSON.parse(res.body).data as { id: string; slug: string };
+    expect(created.slug).toBeTruthy();
+    // Fixture cleanup: don't leave the created category in the shared test catalog.
+    await prisma.category.deleteMany({ where: { id: created.id } });
   });
 
   it('unauthorized users cannot create categories', async () => {
@@ -47,26 +70,30 @@ describe('categories', () => {
       method: 'POST',
       url: '/api/v1/admin/categories',
       headers: authed(token),
-      payload: { name: `Toggle Cat ${Date.now()}` },
+      payload: { name: `Garden Supplies ${fixtureSuffix()}` },
     });
     const id = JSON.parse(created.body).data.id as string;
+    try {
+      const off = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/admin/categories/${id}`,
+        headers: authed(token),
+        payload: { isActive: false },
+      });
+      expect(off.statusCode).toBe(200);
+      expect(JSON.parse(off.body).data.isActive).toBe(false);
 
-    const off = await app.inject({
-      method: 'PATCH',
-      url: `/api/v1/admin/categories/${id}`,
-      headers: authed(token),
-      payload: { isActive: false },
-    });
-    expect(off.statusCode).toBe(200);
-    expect(JSON.parse(off.body).data.isActive).toBe(false);
-
-    const on = await app.inject({
-      method: 'PATCH',
-      url: `/api/v1/admin/categories/${id}`,
-      headers: authed(token),
-      payload: { isActive: true },
-    });
-    expect(JSON.parse(on.body).data.isActive).toBe(true);
+      const on = await app.inject({
+        method: 'PATCH',
+        url: `/api/v1/admin/categories/${id}`,
+        headers: authed(token),
+        payload: { isActive: true },
+      });
+      expect(JSON.parse(on.body).data.isActive).toBe(true);
+    } finally {
+      // Fixture cleanup: never leave the shared test catalog dirty.
+      await prisma.category.deleteMany({ where: { id } });
+    }
   });
 
   it('inactive categories disappear from the public list', async () => {
@@ -75,12 +102,16 @@ describe('categories', () => {
       method: 'POST',
       url: '/api/v1/admin/categories',
       headers: authed(token),
-      payload: { name: `Hide Cat ${Date.now()}` },
+      payload: { name: `Winter Storage ${fixtureSuffix()}` },
     });
     const id = JSON.parse(created.body).data.id as string;
-    await app.inject({ method: 'PATCH', url: `/api/v1/admin/categories/${id}`, headers: authed(token), payload: { isActive: false } });
-    const list = await app.inject({ method: 'GET', url: '/api/v1/categories' });
-    expect(JSON.parse(list.body).data.find((c: { id: string }) => c.id === id)).toBeUndefined();
+    try {
+      await app.inject({ method: 'PATCH', url: `/api/v1/admin/categories/${id}`, headers: authed(token), payload: { isActive: false } });
+      const list = await app.inject({ method: 'GET', url: '/api/v1/categories' });
+      expect(JSON.parse(list.body).data.find((c: { id: string }) => c.id === id)).toBeUndefined();
+    } finally {
+      await prisma.category.deleteMany({ where: { id } });
+    }
   });
 });
 
