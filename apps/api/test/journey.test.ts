@@ -15,11 +15,15 @@ import { authed, makeApp, registerAndLogin } from './helpers.js';
 
 const app = await makeApp();
 
+// All seven days open: the journey books "tomorrow" (PKT), which is a
+// different weekday depending on when CI runs — a closed Sunday here made
+// this suite a date time-bomb. Closed-day behavior is covered in
+// bookings.test.ts, which controls its own hours explicitly.
 const HOUR_ENTRIES = Array.from({ length: 7 }, (_, day) => ({
   dayOfWeek: day,
-  isClosed: day === 0,
-  opensAt: day === 0 ? undefined : '10:00',
-  closesAt: day === 0 ? undefined : '20:00',
+  isClosed: false,
+  opensAt: '10:00',
+  closesAt: '20:00',
 }));
 
 describe('onboarding → discovery → booking journey (auto-approved dev flow)', () => {
