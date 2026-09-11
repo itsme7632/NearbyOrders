@@ -12,6 +12,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import argon2 from 'argon2';
+import { PLAN_CATALOG } from '../src/lib.js';
 
 const prisma = new PrismaClient();
 
@@ -203,9 +204,26 @@ async function createDemoData() {
   console.log('Demo data ready (owner demo-owner@nearbyorders.test / DemoPassw0rd!2026 — DEV ONLY).');
 }
 
+/**
+ * Ensures the commercial plan catalog exists (Phase 7A). Idempotent upsert by
+ * slug; the update is a no-op so re-seeding never clobbers admin-edited
+ * prices. PLAN_CATALOG (src/lib.ts) is the single source of truth.
+ */
+export async function upsertPlans() {
+  for (const spec of PLAN_CATALOG) {
+    await prisma.plan.upsert({
+      where: { slug: spec.slug },
+      update: {},
+      create: { ...spec },
+    });
+  }
+  console.log(`Seeded ${PLAN_CATALOG.length} subscription plan(s).`);
+}
+
 async function main() {
   await pruneStrayCategories();
   await upsertCoreCategories();
+  await upsertPlans();
   if (process.env.SEED_DEMO_DATA === '1') {
     console.log('SEED_DEMO_DATA=1: creating clearly-marked demo data…');
     await createDemoData();

@@ -1,4 +1,4 @@
-import { PrismaClient, Role, type BookingStatus } from '@prisma/client';
+import { PrismaClient, Role, type BookingStatus, type SubscriptionStatus } from '@prisma/client';
 import { z } from 'zod';
 
 export const prisma = new PrismaClient();
@@ -503,5 +503,47 @@ export const distanceKm = (
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
 };
+
+/* ------------------------------------------------------------------ */
+/* Subscriptions (Phase 7A)                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The commercial plan catalog. Single source of truth for plan pricing —
+ * never hard-code a price (or 299900) anywhere else. The seed and the API's
+ * plan-ensure helper upsert these rows idempotently; re-seeding never
+ * clobbers admin-edited prices (the update is a no-op).
+ */
+export const PLAN_CATALOG = [
+  {
+    slug: 'nearbyorders-business',
+    name: 'NearbyOrders Business',
+    description: 'Everything a local business needs: appear in search, take bookings and orders, and manage your storefront.',
+    monthlyPriceMinor: 299900,
+    currency: 'PKR',
+    trialDays: 30,
+  },
+] as const;
+
+/** The subscription states that grant live platform access. */
+export const LIVE_SUBSCRIPTION_STATUSES: readonly SubscriptionStatus[] = ['TRIAL', 'ACTIVE'];
+
+/**
+ * Server-authoritative access evaluation for one subscription row.
+ *
+ * Lazy expiry: a TRIAL/ACTIVE row whose `currentPeriodEndAt` has passed is
+ * treated as EXPIRED by every caller (and normalized opportunistically in the
+ * endpoints). No cron is required for correct reads.
+ */
+export const evaluateSubscription = (
+  row: {
+    status: SubscriptionStatus;
+    currentPeriodEndAt: Date;
+  },
+  now: Date = new Date(),
+): SubscriptionStatus =>
+  LIVE_SUBSCRIPTION_STATUSES.includes(row.status) && row.currentPeriodEndAt.getTime() <= now.getTime()
+    ? 'EXPIRED'
+    : row.status;
 
 export type AuthUser = { id: string; role: Role };

@@ -47,8 +47,12 @@ import {
   pktMinutesOf,
   pktToUtc,
   pktDayWindowUtc,
+  PLAN_CATALOG,
+  LIVE_SUBSCRIPTION_STATUSES,
+  evaluateSubscription,
 } from './lib.js';
 import type { AuthUser } from './lib.js';
+import type { SubscriptionStatus } from '@prisma/client';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -434,6 +438,139 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
     if (!business) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Business not found' } });
     return { data: business.hours };
+  });
+
+  /* ------------------- Subscriptions (Phase 7A foundation) ---------- */
+
+  /**
+   * Ensures the seeded plan rows exist. Idempotent (upsert by slug); re-running
+   * never clobbers admin-edited prices (update is a no-op). Returns the plan
+   * requested by slug.
+   */
+  const ensurePlan = async (slug: string) => {
+    const spec = PLAN_CATALOG.find((p) => p.slug === slug);
+    if (!spec) throw Object.assign(new Error('Unknown plan'), { statusCode: 500 });
+    const existing = await prisma.plan.findUnique({ where: { slug } });
+    if (existing) return existing;
+    try {
+      return await prisma.plan.create({ data: { ...spec } });
+    } catch (e) {
+      // Fresh-DB race: a parallel worker created it between our read and write.
+      if ((e as { code?: string }).code !== 'P2002') throw e;
+      return await prisma.plan.findUniqueOrThrow({ where: { slug } });
+    }
+  };
+
+  /**
+   * Client-safe subscription DTO: includes the plan for display and the
+   * evaluated (lazily-expired) status. Historical rows are never returned.
+   */
+  const publicSubscription = (s: {
+    id: string;
+    status: SubscriptionStatus;
+    trialStartAt: Date | null;
+    trialEndAt: Date | null;
+    currentPeriodStartAt: Date;
+    currentPeriodEndAt: Date;
+    cancelledAt: Date | null;
+    plan: { slug: string; name: string; description: string | null; monthlyPriceMinor: number; currency: string; trialDays: number };
+  }) => ({
+    id: s.id,
+    status: evaluateSubscription(s),
+    trialStartAt: s.trialStartAt,
+    trialEndAt: s.trialEndAt,
+    currentPeriodStartAt: s.currentPeriodStartAt,
+    currentPeriodEndAt: s.currentPeriodEndAt,
+    cancelledAt: s.cancelledAt,
+    plan: s.plan,
+  });
+
+  /** Latest subscription row for a business (any status), plan included. */
+  const latestSubscription = (businessId: string) =>
+    prisma.businessSubscription.findFirst({
+      where: { businessId },
+      orderBy: { createdAt: 'desc' },
+      include: { plan: true },
+    });
+
+  app.get('/api/v1/businesses/:id/subscription', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    // Opportunistic lazy expiry: normalize a past-period TRIAL/ACTIVE row so
+    // reads are consistent even without a background job.
+    const current = await latestSubscription(id);
+    if (current && evaluateSubscription(current) === 'EXPIRED' && LIVE_SUBSCRIPTION_STATUSES.includes(current.status)) {
+      await prisma.businessSubscription.update({ where: { id: current.id }, data: { status: 'EXPIRED' } });
+      current.status = 'EXPIRED';
+    }
+    const sub = current ? publicSubscription(current) : null;
+    return { data: sub };
+  });
+
+  /**
+   * Starts the plan's free trial. One live (TRIAL/ACTIVE) subscription per
+   * business is enforced the same way double-booking is: a transaction-scoped
+   * advisory lock keyed on the business id, a re-check inside the lock, then
+   * insert. Dates are always server-generated; the client sends nothing.
+   */
+  app.post('/api/v1/businesses/:id/subscription/trial', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    const plan = await ensurePlan('nearbyorders-business');
+    const now = new Date();
+    const trialEnd = new Date(now.getTime() + plan.trialDays * 86_400_000);
+    try {
+      const created = await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${id}))`;
+        const existing = await tx.businessSubscription.findFirst({
+          where: { businessId: id, status: { in: [...LIVE_SUBSCRIPTION_STATUSES] } },
+          select: { id: true },
+        });
+        if (existing) throw Object.assign(new Error('already-live'), { code: 'ALREADY_SUBSCRIBED' });
+        return tx.businessSubscription.create({
+          data: {
+            businessId: id,
+            planId: plan.id,
+            status: 'TRIAL',
+            trialStartAt: now,
+            trialEndAt: trialEnd,
+            currentPeriodStartAt: now,
+            currentPeriodEndAt: trialEnd,
+          },
+          include: { plan: true },
+        });
+      });
+      await prisma.auditLog.create({
+        data: { actorId: currentUser(q).id, action: 'SUBSCRIPTION_TRIAL_STARTED', entityType: 'BusinessSubscription', entityId: created.id, metadata: { businessId: id, planSlug: plan.slug } },
+      });
+      return r.status(201).send({ data: publicSubscription(created) });
+    } catch (e) {
+      if ((e as { code?: string }).code === 'ALREADY_SUBSCRIBED')
+        return r.status(409).send({ error: { code: 'ALREADY_SUBSCRIBED', message: 'This business already has an active or trial subscription' } });
+      throw e;
+    }
+  });
+
+  /**
+   * Cancels the live subscription at period end: it stops renewing; access
+   * continues until currentPeriodEndAt, then lazy expiry marks it EXPIRED.
+   * Only the live row is cancellable — history stays immutable.
+   */
+  app.post('/api/v1/businesses/:id/subscription/cancel', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    const current = await latestSubscription(id);
+    if (!current || !LIVE_SUBSCRIPTION_STATUSES.includes(current.status))
+      return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'No active or trial subscription to cancel' } });
+    const cancelled = await prisma.businessSubscription.update({
+      where: { id: current.id },
+      data: { status: 'CANCELLED', cancelledAt: new Date() },
+      include: { plan: true },
+    });
+    await prisma.auditLog.create({
+      data: { actorId: currentUser(q).id, action: 'SUBSCRIPTION_CANCELLED', entityType: 'BusinessSubscription', entityId: cancelled.id, metadata: { businessId: id } },
+    });
+    return { data: publicSubscription(cancelled) };
   });
 
   /* --------------------------- Services ----------------------------- */

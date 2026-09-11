@@ -198,6 +198,45 @@ export const createCategory = (name: string) => request<Category>('/admin/catego
 export const updateCategory = (id: string, patch: { name?: string; isActive?: boolean }) =>
   request<Category>(`/admin/categories/${id}`, { method: 'PATCH', body: patch, auth: true });
 
+/* --------------------------- subscriptions ------------------------- */
+
+/** Mirrors the server's SubscriptionStatus enum (Phase 7A foundation). */
+export type SubscriptionStatus = 'TRIAL' | 'ACTIVE' | 'EXPIRED' | 'CANCELLED' | 'SUSPENDED';
+
+/** Plan as embedded in a subscription response (display only). */
+export type SubscriptionPlan = {
+  slug: string;
+  name: string;
+  description: string | null;
+  monthlyPriceMinor: number;
+  currency: string;
+  trialDays: number;
+};
+
+/** The business's current (latest) subscription, or null before first trial. */
+export type Subscription = {
+  id: string;
+  status: SubscriptionStatus;
+  trialStartAt: string | null;
+  trialEndAt: string | null;
+  currentPeriodStartAt: string;
+  currentPeriodEndAt: string;
+  cancelledAt: string | null;
+  plan: SubscriptionPlan;
+};
+
+/** Current subscription for an owned business (server evaluates expiry). */
+export const getBusinessSubscription = (businessId: string) =>
+  request<Subscription | null>(`/businesses/${businessId}/subscription`, { auth: true });
+
+/** Starts the plan's free trial; dates are server-generated, body is empty. */
+export const startBusinessTrial = (businessId: string) =>
+  request<Subscription>(`/businesses/${businessId}/subscription/trial`, { method: 'POST', auth: true });
+
+/** Cancels the live subscription; access continues until the period ends. */
+export const cancelBusinessSubscription = (businessId: string) =>
+  request<Subscription>(`/businesses/${businessId}/subscription/cancel`, { method: 'POST', auth: true });
+
 /* --------------------------- businesses ---------------------------- */
 
 export type BusinessQuery = {

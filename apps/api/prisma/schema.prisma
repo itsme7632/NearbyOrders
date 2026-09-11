@@ -39,24 +39,32 @@ enum OrderStatus {
   CANCELLED
 }
 
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  SUSPENDED
+}
+
 model User {
-  id           String         @id @default(uuid())
-  email        String         @unique
-  passwordHash String
-  role         Role           @default(CUSTOMER)
-  firstName    String?
-  lastName     String?
-  phone        String?
-  isSuspended  Boolean        @default(false)
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  businesses   Business[]     @relation("BusinessOwner")
-  bookings     Booking[]
-  orders       Order[]
-  sessions     RefreshToken[]
-  auditActions AuditLog[]     @relation("AuditActor")
+  id            String         @id @default(uuid())
+  email         String         @unique
+  passwordHash  String
+  role          Role           @default(CUSTOMER)
+  firstName     String?
+  lastName      String?
+  phone         String?
+  isSuspended   Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  businesses    Business[]     @relation("BusinessOwner")
+  bookings      Booking[]
+  orders        Order[]
+  sessions      RefreshToken[]
+  auditActions  AuditLog[]     @relation("AuditActor")
   notifications Notification[]
-  reviews      Review[]       @relation("ReviewCustomer")
+  reviews       Review[]       @relation("ReviewCustomer")
 
   @@index([role, isSuspended])
 }
@@ -72,33 +80,34 @@ model Category {
 }
 
 model Business {
-  id          String             @id @default(uuid())
-  ownerId     String
-  name        String
-  slug        String             @unique
-  description String?
-  phone       String?
-  email       String?
-  imageUrl    String?
-  isVerified  Boolean            @default(false)
-  status      BusinessStatus     @default(PENDING)
-  address     String
-  city        String
-  locality    String?
-  latitude    Decimal            @db.Decimal(10, 7)
-  longitude   Decimal            @db.Decimal(10, 7)
-  currency    String             @default("PKR")
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
-  archivedAt  DateTime?
-  owner       User               @relation("BusinessOwner", fields: [ownerId], references: [id])
-  categories  BusinessCategory[]
-  hours       BusinessHour[]
-  services    Service[]
-  products    Product[]
-  bookings    Booking[]
-  orders      Order[]
-  reviews     Review[]
+  id            String                 @id @default(uuid())
+  ownerId       String
+  name          String
+  slug          String                 @unique
+  description   String?
+  phone         String?
+  email         String?
+  imageUrl      String?
+  isVerified    Boolean                @default(false)
+  status        BusinessStatus         @default(PENDING)
+  address       String
+  city          String
+  locality      String?
+  latitude      Decimal                @db.Decimal(10, 7)
+  longitude     Decimal                @db.Decimal(10, 7)
+  currency      String                 @default("PKR")
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  archivedAt    DateTime?
+  owner         User                   @relation("BusinessOwner", fields: [ownerId], references: [id])
+  categories    BusinessCategory[]
+  hours         BusinessHour[]
+  services      Service[]
+  products      Product[]
+  bookings      Booking[]
+  orders        Order[]
+  reviews       Review[]
+  subscriptions BusinessSubscription[]
 
   @@index([ownerId])
   @@index([status, city])
@@ -259,6 +268,51 @@ model AuditLog {
   actor      User?    @relation("AuditActor", fields: [actorId], references: [id])
 
   @@index([entityType, entityId])
+}
+
+/// A configurable commercial plan. Prices are integer minor units (paisa) —
+/// never floating point. The catalog is seeded from `PLAN_CATALOG` in
+/// `src/lib.ts`; re-seeding never clobbers admin-edited prices (update is a no-op).
+model Plan {
+  id                String                 @id @default(uuid())
+  slug              String                 @unique
+  name              String                 @unique
+  description       String?
+  monthlyPriceMinor Int
+  currency          String                 @default("PKR")
+  trialDays         Int                    @default(0)
+  isActive          Boolean                @default(true)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  subscriptions     BusinessSubscription[]
+
+  @@index([isActive])
+}
+
+/// The commercial relationship between a business and a plan. A business has at
+/// most one live (TRIAL/ACTIVE) subscription at a time — enforced by the
+/// advisory-lock + re-check pattern in the start-trial handler (same approach
+/// as booking slot protection), not by a partial index. Ended rows are kept as
+/// history. No payment records exist in this phase: activation with real
+/// payments arrives later.
+model BusinessSubscription {
+  id                   String             @id @default(uuid())
+  businessId           String
+  planId               String
+  status               SubscriptionStatus @default(TRIAL)
+  trialStartAt         DateTime?
+  trialEndAt           DateTime?
+  currentPeriodStartAt DateTime
+  currentPeriodEndAt   DateTime
+  cancelledAt          DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  business             Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  plan                 Plan               @relation(fields: [planId], references: [id])
+
+  @@index([businessId, status])
+  @@index([planId])
+  @@index([status, currentPeriodEndAt])
 }
 
 /// A customer review backed by exactly one qualifying completed transaction.
