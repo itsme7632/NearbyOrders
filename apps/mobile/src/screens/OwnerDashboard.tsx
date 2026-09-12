@@ -2,25 +2,38 @@ import { useState } from 'react';
 import {
   cancelBusinessSubscription,
   cancelPaymentRequest,
+  collectOrderCash,
   createProduct,
+  createPayInMethod,
   createService,
+  deactivatePayInMethod,
   deleteProduct,
   deleteService,
   getBusinessSubscription,
+  getDeliverySettings,
   getMyBusinesses,
   listCategories,
+  listOrderPayments,
+  listOwnerPayInMethods,
+  listOwnerPayments,
   listPaymentMethods,
   listPaymentRequests,
+  putDeliverySettings,
   putHours,
+  rejectOwnerPayment,
   startBusinessTrial,
   submitPaymentRequest,
   updateBusiness,
   updateProduct,
   updateService,
   uploadPaymentReceipt,
+  verifyOwnerPayment,
   type Business,
   type BusinessHour,
+  type BusinessPayInMethod,
   type Category,
+  type CustomerPayment,
+  type DeliverySettings,
   type HourInput,
   type PaymentMethod,
   type PaymentRequest,
@@ -44,7 +57,7 @@ import { formatMoney } from '@nearbyorders/shared';
 import { ImageUploader, type ImageUploaderState, type PendingImage } from '../components/ImageUploader.js';
 import { OwnerOrders } from './OwnerOrders.js';
 
-type OwnerTab = 'orders' | 'profile' | 'services' | 'products' | 'hours' | 'reviews' | 'subscription';
+type OwnerTab = 'orders' | 'payments' | 'profile' | 'services' | 'products' | 'hours' | 'reviews' | 'subscription';
 
 export function OwnerDashboardScreen(props: {
   onBack: () => void;
@@ -129,6 +142,7 @@ export function OwnerDashboardScreen(props: {
         {(
           [
             ['orders', 'Orders'],
+            ['payments', 'Payments'],
             ['profile', 'Profile'],
             ['services', 'Services'],
             ['products', 'Products'],
@@ -144,7 +158,13 @@ export function OwnerDashboardScreen(props: {
       </nav>
 
       {tab === 'orders' ? <OwnerOrders businessId={active.id} /> : null}
-      {tab === 'profile' ? <OwnerProfile business={active} onSaved={businesses.reload} /> : null}
+      {tab === 'payments' ? <OwnerCustomerPayments businessId={active.id} /> : null}
+      {tab === 'profile' ? (
+        <>
+          <OwnerProfile business={active} onSaved={businesses.reload} />
+          <DeliverySettingsSection businessId={active.id} />
+        </>
+      ) : null}
       {tab === 'subscription' ? <OwnerSubscription businessId={active.id} businessName={active.name} /> : null}
       {tab === 'services' ? <OwnerServices businessId={active.id} /> : null}
       {tab === 'products' ? <OwnerProducts businessId={active.id} /> : null}
@@ -312,6 +332,108 @@ export function OwnerProfile(props: { business: Business; onSaved: () => void })
       <Button full disabled={saving || !form.name || categoryIds.size === 0 || Boolean(pendingImage)} onClick={save}>
         {saving ? 'Saving…' : 'Save profile'}
       </Button>
+    </section>
+  );
+}
+
+/* -------------------- Delivery / COD settings (Phase 7C) -------------------- */
+
+/** Exported for tests: owner toggle for own-rider delivery + COD + fee. */
+export function DeliverySettingsSection(props: { businessId: string }) {
+  const settings = useAsyncData<DeliverySettings>(() => getDeliverySettings(props.businessId), [props.businessId]);
+  const [deliveryEnabled, setDeliveryEnabled] = useState<boolean | null>(null);
+  const [codEnabled, setCodEnabled] = useState<boolean | null>(null);
+  const [fee, setFee] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const current = settings.data;
+  const model = {
+    deliveryEnabled: deliveryEnabled ?? current?.deliveryEnabled ?? false,
+    codEnabled: codEnabled ?? current?.codEnabled ?? false,
+    fee,
+  };
+
+  // Empty fee field means "keep the saved fee" — never silently reset it to 0.
+  const feeMinor = fee.trim() === '' ? current?.deliveryFeeMinor ?? 0 : parsePriceToMinor(fee);
+  const feeInvalid = model.deliveryEnabled && fee.trim() !== '' && feeMinor === null;
+
+  const save = async () => {
+    if (busy || feeInvalid) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await putDeliverySettings(props.businessId, {
+        deliveryEnabled: model.deliveryEnabled,
+        codEnabled: model.deliveryEnabled && model.codEnabled,
+        deliveryFeeMinor: model.deliveryEnabled ? feeMinor ?? 0 : 0,
+      });
+      setSaved(true);
+      setFee('');
+      setDeliveryEnabled(null);
+      setCodEnabled(null);
+      settings.reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="card" aria-label="Delivery settings">
+      <h2>Delivery &amp; cash on delivery</h2>
+      <p className="hint">
+        Offer delivery with your own rider. Customers pay the delivery fee to you — NearbyOrders never handles the money.
+      </p>
+      {settings.loading && !current ? (
+        <Loading label="Loading settings…" />
+      ) : settings.error && !current ? (
+        <ErrorState message={settings.error} onRetry={settings.reload} />
+      ) : (
+        <>
+          {error ? <ErrorState message={error} /> : null}
+          {saved ? <p className="save-ok">Saved ✓</p> : null}
+          <Toggle
+            checked={model.deliveryEnabled}
+            onChange={(v) => {
+              setSaved(false);
+              setDeliveryEnabled(v);
+              if (!v) setCodEnabled(false);
+            }}
+            label="Offer delivery (own rider)"
+          />
+          {model.deliveryEnabled ? (
+            <>
+              <Toggle
+                checked={model.codEnabled}
+                onChange={(v) => {
+                  setSaved(false);
+                  setCodEnabled(v);
+                }}
+                label="Cash on delivery"
+              />
+              <Field label="Delivery fee (PKR)" hint="Added to the order total for delivery orders only.">
+                <input
+                  value={model.fee}
+                  onChange={(e) => {
+                    setSaved(false);
+                    setFee(e.target.value);
+                  }}
+                  inputMode="decimal"
+                  placeholder={current ? String(current.deliveryFeeMinor / 100) : 'e.g. 200'}
+                  aria-invalid={feeInvalid}
+                />
+              </Field>
+              {feeInvalid ? <p className="form-error">Enter a valid fee in rupees, e.g. 200 or 200.50.</p> : null}
+            </>
+          ) : null}
+          <Button full onClick={save} disabled={busy || feeInvalid}>
+            {busy ? 'Saving…' : 'Save delivery settings'}
+          </Button>
+        </>
+      )}
     </section>
   );
 }
@@ -692,6 +814,11 @@ function OwnerServices(props: { businessId: string }) {
               </div>
               {s.description ? <p className="item-desc">{s.description}</p> : null}
               {s.durationMinutes ? <span className="pill">{s.durationMinutes} min</span> : null}
+              {s.advanceType && s.advanceType !== 'NONE' ? (
+                <span className="pill">
+                  Advance: {s.advanceType === 'FIXED' ? `Rs ${(s.advanceAmountMinor ?? 0) / 100}` : `${s.advancePercent ?? 0}%`}
+                </span>
+              ) : null}
               <ServiceRow service={s} onSaved={services.reload} />
             </li>
           ))}
@@ -710,6 +837,10 @@ function ServiceRow(props: { service: Service; onSaved: () => void }) {
     price: String(props.service.priceMinor / 100),
     duration: props.service.durationMinutes ? String(props.service.durationMinutes) : '',
   });
+  const [advance, setAdvance] = useState<AdvanceFormValue>({
+    type: props.service.advanceType ?? 'NONE',
+    value: props.service.advanceType === 'FIXED' && props.service.advanceAmountMinor ? String(props.service.advanceAmountMinor / 100) : props.service.advancePercent ? String(props.service.advancePercent) : '',
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -717,11 +848,16 @@ function ServiceRow(props: { service: Service; onSaved: () => void }) {
     setBusy(true);
     setError(null);
     try {
+      const priceMinor = parsePriceToMinor(form.price);
+      if (priceMinor === null) throw new Error('Enter a valid price in rupees, e.g. 450 or 450.50.');
+      const advanceBody = buildAdvanceBody(advance, priceMinor);
+      if ('error' in advanceBody) throw new Error(advanceBody.error);
       await updateService(props.service.id, {
         name: form.name,
         description: form.description || undefined,
-        priceMinor: Math.round(Number(form.price) * 100),
+        priceMinor,
         durationMinutes: form.duration ? Number(form.duration) : undefined,
+        ...advanceBody.advance,
       });
       setEditing(false);
       props.onSaved();
@@ -770,6 +906,7 @@ function ServiceRow(props: { service: Service; onSaved: () => void }) {
         <Field label="Description">
           <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
         </Field>
+        <ServiceAdvanceFields value={advance} onChange={setAdvance} priceMinor={parsePriceToMinor(form.price)} />
         <div className="btn-row">
           <Button sm onClick={save} disabled={busy || !form.name || !form.price}>
             Save
@@ -798,6 +935,10 @@ function ServiceRow(props: { service: Service; onSaved: () => void }) {
 function ServiceForm(props: { businessId: string; onCreated: () => void }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: '', price: '', duration: '', description: '' });
+  const [advance, setAdvance] = useState<{ type: 'NONE' | 'FIXED' | 'PERCENTAGE'; value: string }>({
+    type: 'NONE',
+    value: '',
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -805,13 +946,19 @@ function ServiceForm(props: { businessId: string; onCreated: () => void }) {
     setBusy(true);
     setError(null);
     try {
+      const priceMinor = parsePriceToMinor(form.price);
+      if (priceMinor === null) throw new Error('Enter a valid price in rupees, e.g. 450 or 450.50.');
+      const advanceBody = buildAdvanceBody(advance, priceMinor);
+      if ('error' in advanceBody) throw new Error(advanceBody.error);
       await createService(props.businessId, {
         name: form.name,
-        priceMinor: Math.round(Number(form.price) * 100),
+        priceMinor,
         durationMinutes: form.duration ? Number(form.duration) : undefined,
         description: form.description || undefined,
+        ...advanceBody.advance,
       });
       setForm({ name: '', price: '', duration: '', description: '' });
+      setAdvance({ type: 'NONE', value: '' });
       setOpen(false);
       props.onCreated();
     } catch (e) {
@@ -846,6 +993,7 @@ function ServiceForm(props: { businessId: string; onCreated: () => void }) {
       <Field label="Description">
         <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
       </Field>
+      <ServiceAdvanceFields value={advance} onChange={setAdvance} priceMinor={parsePriceToMinor(form.price)} />
       <div className="btn-row">
         <Button sm onClick={create} disabled={busy || !form.name || !form.price}>
           Create
@@ -855,6 +1003,66 @@ function ServiceForm(props: { businessId: string; onCreated: () => void }) {
         </Button>
       </div>
     </div>
+  );
+}
+
+/* ---------------------- Advance requirement (Phase 7C) ---------------------- */
+
+export type AdvanceFormValue = { type: 'NONE' | 'FIXED' | 'PERCENTAGE'; value: string };
+
+/**
+ * Builds the advance payload for create/update service calls. Pure and
+ * exported for tests; the server re-validates everything against priceMinor.
+ */
+export function buildAdvanceBody(
+  value: AdvanceFormValue,
+  priceMinor: number | null,
+): { advance: { advanceType: 'NONE' | 'FIXED' | 'PERCENTAGE'; advanceAmountMinor?: number; advancePercent?: number } } | { error: string } {
+  if (value.type === 'NONE') return { advance: { advanceType: 'NONE' } };
+  if (value.type === 'FIXED') {
+    const minor = priceMinor === null ? null : parsePriceToMinor(value.value);
+    if (minor === null)
+      return { error: priceMinor === null ? 'Enter a valid price before setting a fixed advance.' : 'Enter a valid advance amount in rupees, e.g. 200 or 200.50.' };
+    if (priceMinor !== null && minor > priceMinor) return { error: 'Fixed advance cannot exceed the service price.' };
+    return { advance: { advanceType: 'FIXED', advanceAmountMinor: minor } };
+  }
+  const percent = Number(value.value.trim().replace(/%$/, ''));
+  if (!Number.isInteger(percent) || percent < 1 || percent > 100) return { error: 'Percentage must be a whole number between 1 and 100.' };
+  return { advance: { advanceType: 'PERCENTAGE', advancePercent: percent } };
+}
+
+/** Advance type + value fields shared by the create and edit service forms. */
+function ServiceAdvanceFields(props: { value: AdvanceFormValue; onChange: (v: AdvanceFormValue) => void; priceMinor: number | null }) {
+  return (
+    <>
+      <Field label="Advance payment" hint="Optional amount the customer must pay before the booking is confirmed.">
+        <select value={props.value.type} onChange={(e) => props.onChange({ type: e.target.value as AdvanceFormValue['type'], value: '' })}>
+          <option value="NONE">No advance required</option>
+          <option value="FIXED">Fixed amount</option>
+          <option value="PERCENTAGE">Percentage of price</option>
+        </select>
+      </Field>
+      {props.value.type === 'FIXED' ? (
+        <Field label="Advance amount (PKR)">
+          <input
+            value={props.value.value}
+            onChange={(e) => props.onChange({ ...props.value, value: e.target.value })}
+            inputMode="decimal"
+            placeholder="e.g. 200"
+          />
+        </Field>
+      ) : null}
+      {props.value.type === 'PERCENTAGE' ? (
+        <Field label="Advance percentage (1–100%)">
+          <input
+            value={props.value.value}
+            onChange={(e) => props.onChange({ ...props.value, value: e.target.value })}
+            inputMode="numeric"
+            placeholder="e.g. 20"
+          />
+        </Field>
+      ) : null}
+    </>
   );
 }
 
@@ -1363,5 +1571,284 @@ export function OwnerReviews(props: { businessId: string }) {
         ))}
       </ul>
     </section>
+  );
+}
+
+/* ------------------- Phase 7C: owner payment verification ---------- */
+
+const CUSTOMER_PAYMENT_LABEL: Record<CustomerPayment['status'], string> = {
+  PENDING_VERIFICATION: 'Waiting for verification',
+  PAID: 'Paid',
+  FAILED: 'Rejected',
+  UNPAID: 'Unpaid',
+};
+
+/** Queue row shared by booking and order payments. */
+function OwnerPaymentRow(props: { payment: CustomerPayment; kind: 'booking' | 'order'; onChanged: () => void }) {
+  const { payment } = props;
+  const [busy, setBusy] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const act = async (fn: () => Promise<CustomerPayment>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+      props.onChanged();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Something went wrong. Please try again.');
+    } finally {
+      setBusy(false);
+      setRejecting(false);
+    }
+  };
+
+  return (
+    <li className="manage-item pay-owner-row">
+      <div className="pay-owner-head">
+        <strong>
+          <Money minor={payment.amountMinor} currency={payment.currency} />
+        </strong>
+        <span className={`pay-status pay-status-${payment.status === 'PAID' ? 'paid' : payment.status === 'FAILED' ? 'failed' : 'pending'}`}>
+          {CUSTOMER_PAYMENT_LABEL[payment.status]}
+        </span>
+      </div>
+      <p className="hint">
+        {payment.paymentMethod?.displayName ?? 'Payment'}
+        {payment.transactionReference ? (
+          <>
+            {' '}
+            · ref <span className="pay-ref">{payment.transactionReference}</span>
+          </>
+        ) : null}
+        {' '}
+        · {new Date(payment.submittedAt).toLocaleDateString()}
+      </p>
+      {payment.status === 'FAILED' && payment.rejectionReason ? <p className="hint">Reason: {payment.rejectionReason}</p> : null}
+      {error ? <ErrorState message={error} /> : null}
+      {payment.status === 'PENDING_VERIFICATION' ? (
+        rejecting ? (
+          <div className="confirm-cancel">
+            <label className="field">
+              <span className="label">Reason (required)</span>
+              <input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} placeholder="Why can't this be verified?" />
+            </label>
+            <div className="btn-row">
+              <Button
+                sm
+                variant="danger"
+                disabled={busy || reason.trim().length < 4}
+                onClick={() => void act(() => rejectOwnerPayment(payment.id, props.kind, reason.trim()))}
+              >
+                {busy ? 'Rejecting…' : 'Reject payment'}
+              </Button>
+              <Button sm variant="ghost" onClick={() => setRejecting(false)} disabled={busy}>
+                Back
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="btn-row">
+            <Button sm disabled={busy} onClick={() => void act(() => verifyOwnerPayment(payment.id, props.kind))}>
+              {busy ? 'Working…' : 'Verify payment'}
+            </Button>
+            <Button sm variant="ghost" disabled={busy} onClick={() => setRejecting(true)}>
+              Reject
+            </Button>
+          </div>
+        )
+      ) : null}
+    </li>
+  );
+}
+
+/**
+ * Payments tab: the owner's verification queue plus the pay-in channels
+ * customers see. Money never flows through NearbyOrders — the owner only
+ * confirms what they received.
+ */
+export function OwnerCustomerPayments(props: { businessId: string }) {
+  const [reloadKey, setReloadKey] = useState(0);
+  const [showMethodForm, setShowMethodForm] = useState(false);
+  const [mType, setMType] = useState<BusinessPayInMethod['type']>('EASYPAISA');
+  const [mName, setMName] = useState('');
+  const [mTitle, setMTitle] = useState('');
+  const [mNumber, setMNumber] = useState('');
+  const [mIban, setMIban] = useState('');
+  const [mInstructions, setMInstructions] = useState('');
+  const [mError, setMError] = useState<string | null>(null);
+  const [mBusy, setMBusy] = useState(false);
+
+  const queue = useAsyncData(
+    () => listOwnerPayments('PENDING_VERIFICATION'),
+    [props.businessId, reloadKey],
+  );
+  const methods = useAsyncData(() => listOwnerPayInMethods(props.businessId), [props.businessId, reloadKey]);
+
+  const bookingPayments = (queue.data?.bookingPayments ?? []).filter((p) => p.status === 'PENDING_VERIFICATION');
+  const orderPayments = (queue.data?.orderPayments ?? []).filter((p) => p.status === 'PENDING_VERIFICATION');
+  const reload = () => {
+    queue.reload();
+    methods.reload();
+    setReloadKey((k) => k + 1);
+  };
+
+  const addMethod = async () => {
+    if (mBusy) return;
+    setMBusy(true);
+    setMError(null);
+    try {
+      await createPayInMethod(props.businessId, {
+        type: mType,
+        displayName: mName.trim(),
+        ...(mType !== 'CASH' && mTitle.trim() ? { accountTitle: mTitle.trim() } : {}),
+        ...(mType !== 'CASH' && mNumber.trim() ? { accountNumber: mNumber.trim() } : {}),
+        ...(mType !== 'CASH' && mIban.trim() ? { iban: mIban.trim() } : {}),
+        ...(mInstructions.trim() ? { instructions: mInstructions.trim() } : {}),
+      });
+      setShowMethodForm(false);
+      setMName('');
+      setMTitle('');
+      setMNumber('');
+      setMIban('');
+      setMInstructions('');
+      reload();
+    } catch (e) {
+      setMError(e instanceof ApiError ? e.message : 'Could not add the payment method. Please try again.');
+    } finally {
+      setMBusy(false);
+    }
+  };
+
+  return (
+    <div className="owner-section">
+      <section className="card" aria-label="Payments awaiting verification">
+        <h2>Awaiting verification</h2>
+        {queue.loading ? (
+          <Loading label="Loading payments…" />
+        ) : queue.error ? (
+          <ErrorState message={queue.error} onRetry={queue.reload} />
+        ) : bookingPayments.length === 0 && orderPayments.length === 0 ? (
+          <EmptyState icon={<AlertIcon size={30} />} title="Nothing to verify" body="Customer payment proofs will appear here for you to verify." />
+        ) : (
+          <>
+            {bookingPayments.length > 0 ? (
+              <>
+                <h3 className="pay-section-title">Booking payments</h3>
+                <ul className="manage-list">
+                  {bookingPayments.map((p) => (
+                    <OwnerPaymentRow key={p.id} payment={p} kind="booking" onChanged={reload} />
+                  ))}
+                </ul>
+              </>
+            ) : null}
+            {orderPayments.length > 0 ? (
+              <>
+                <h3 className="pay-section-title">Order payments</h3>
+                <ul className="manage-list">
+                  {orderPayments.map((p) => (
+                    <OwnerPaymentRow key={p.id} payment={p} kind="order" onChanged={reload} />
+                  ))}
+                </ul>
+              </>
+            ) : null}
+          </>
+        )}
+      </section>
+
+      <section className="card" aria-label="Your payment methods">
+        <h2>How customers pay you</h2>
+        <p className="hint">
+          These channels are shown to customers at checkout. NearbyOrders never handles the money — customers pay you
+          directly.
+        </p>
+        {methods.loading ? (
+          <Loading label="Loading methods…" />
+        ) : methods.error ? (
+          <ErrorState message={methods.error} onRetry={methods.reload} />
+        ) : (
+          <ul className="manage-list">
+            {(methods.data ?? []).map((m) => (
+              <li key={m.id} className="manage-item">
+                <div className="pay-owner-head">
+                  <strong>{m.displayName}</strong>
+                  <span className={`badge ${m.isActive ? 'badge-open' : 'badge-closed'}`}>{m.isActive ? 'Active' : 'Inactive'}</span>
+                </div>
+                <p className="hint">
+                  {m.accountTitle ? `${m.accountTitle} · ` : ''}
+                  {m.accountNumber ?? m.iban ?? m.type}
+                </p>
+                {m.isActive ? (
+                  <Button
+                    sm
+                    variant="ghost"
+                    onClick={() =>
+                      void deactivatePayInMethod(props.businessId, m.id)
+                        .then(reload)
+                        .catch(() => undefined)
+                    }
+                  >
+                    Deactivate
+                  </Button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+        {showMethodForm ? (
+          <div className="pay-details">
+            <label className="field">
+              <span className="label">Type</span>
+              <select value={mType} onChange={(e) => setMType(e.target.value as BusinessPayInMethod['type'])}>
+                <option value="EASYPAISA">Easypaisa</option>
+                <option value="JAZZCASH">JazzCash</option>
+                <option value="BANK_TRANSFER">Bank transfer</option>
+                <option value="CASH">Cash</option>
+                <option value="OTHER">Other</option>
+              </select>
+            </label>
+            <label className="field">
+              <span className="label">Display name (required)</span>
+              <input value={mName} onChange={(e) => setMName(e.target.value)} maxLength={60} placeholder="e.g. Easypaisa" />
+            </label>
+            {mType !== 'CASH' ? (
+              <>
+                <label className="field">
+                  <span className="label">Account title</span>
+                  <input value={mTitle} onChange={(e) => setMTitle(e.target.value)} maxLength={80} />
+                </label>
+                <label className="field">
+                  <span className="label">Account number</span>
+                  <input value={mNumber} onChange={(e) => setMNumber(e.target.value)} maxLength={40} />
+                </label>
+                <label className="field">
+                  <span className="label">IBAN (optional)</span>
+                  <input value={mIban} onChange={(e) => setMIban(e.target.value)} maxLength={34} />
+                </label>
+              </>
+            ) : null}
+            <label className="field">
+              <span className="label">Instructions for customers</span>
+              <textarea value={mInstructions} onChange={(e) => setMInstructions(e.target.value)} rows={3} maxLength={500} />
+            </label>
+            {mError ? <ErrorState message={mError} /> : null}
+            <div className="btn-row">
+              <Button sm disabled={mBusy || !mName.trim()} onClick={() => void addMethod()}>
+                {mBusy ? 'Saving…' : 'Save method'}
+              </Button>
+              <Button sm variant="ghost" onClick={() => setShowMethodForm(false)} disabled={mBusy}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Button full variant="secondary" onClick={() => setShowMethodForm(true)}>
+            Add payment method
+          </Button>
+        )}
+      </section>
+    </div>
   );
 }

@@ -1298,6 +1298,39 @@ button.hub-row:active { background: var(--bg); }
 .pay-detail-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.02em; }
 .pay-ref { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .badge-neutral { background: rgba(100, 116, 139, 0.14); color: var(--muted); }
+
+/* Phase 7C — customer→business payments */
+.pay-methods { display: flex; flex-wrap: wrap; gap: 8px; }
+.pay-chip {
+  border: 1.5px solid var(--border);
+  background: #fff;
+  color: var(--ink, #1e293b);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pay-chip-active { border-color: var(--primary); background: var(--light); color: var(--primary); }
+.pay-account { margin: 8px 0 0; }
+.pay-account > div { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
+.pay-account dt { color: var(--muted); font-size: 12.5px; flex-shrink: 0; }
+.pay-account dd { margin: 0; font-weight: 600; font-size: 13.5px; text-align: right; overflow-wrap: anywhere; }
+.pay-iban { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+.pay-instructions { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+
+/* Phase 7C: inline form validation message (delivery fee, advance). */
+.form-error { color: #b91c1c; font-size: 12.5px; margin: 4px 0 0; }
+input[aria-invalid='true'] { border-color: #b91c1c; }
+.pay-status { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
+.pay-status-paid { color: #15803d; }
+.pay-status-pending { color: var(--secondary); }
+.pay-status-failed { color: #b91c1c; }
+@media (max-width: 359px) {
+  .pay-chip { padding: 7px 11px; font-size: 12.5px; }
+  .pay-account > div { flex-direction: column; gap: 1px; }
+  .pay-account dd { text-align: left; }
+}
 @media (max-width: 359px) {
   .pay-detail-row { flex-direction: column; gap: 1px; }
   .pay-detail-value { text-align: left; }

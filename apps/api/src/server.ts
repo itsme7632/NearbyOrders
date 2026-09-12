@@ -18,6 +18,14 @@ import {
   paymentMethodSchema,
   paymentMethodUpdateSchema,
   paymentRejectSchema,
+  bookingPaymentCreateSchema,
+  orderPaymentCreateSchema,
+  customerPaymentRejectSchema,
+  businessPaymentMethodSchema,
+  businessPaymentMethodUpdateSchema,
+  deliverySettingsSchema,
+  serviceAdvanceMinor,
+  resolveServiceAdvance,
   type NotificationType,
   registerSchema,
   profileUpdateSchema,
@@ -1106,6 +1114,624 @@ export async function buildApp(): Promise<FastifyInstance> {
     return r.status(204).send();
   });
 
+  /* ------------- Customer→business payments (Phase 7C) ---------------- */
+
+  /** Public DTO for a business pay-in channel shown to customers. */
+  const publicPayInMethod = (m: {
+    id: string;
+    type: string;
+    displayName: string;
+    accountTitle: string;
+    accountNumber: string | null;
+    iban: string | null;
+    instructions: string | null;
+  }) => ({
+    id: m.id,
+    type: m.type,
+    displayName: m.displayName,
+    accountTitle: m.accountTitle,
+    accountNumber: m.accountNumber,
+    iban: m.iban,
+    instructions: m.instructions,
+  });
+
+  /** Active pay-in channels for one business, in display order (customers). */
+  app.get('/api/v1/businesses/:id/payment-methods', async (q, r) => {
+    const key = (q.params as { id: string }).id;
+    const business = await prisma.business.findFirst({
+      where: { OR: [{ id: key }, { slug: key }], status: 'APPROVED', archivedAt: null },
+      select: { id: true },
+    });
+    if (!business) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Business not found' } });
+    const methods = await prisma.businessPaymentMethod.findMany({
+      where: { businessId: business.id, isActive: true },
+      orderBy: [{ displayOrder: 'asc' }, { displayName: 'asc' }],
+    });
+    return { data: methods.map(publicPayInMethod) };
+  });
+
+  /** Owner view of their pay-in channels, including inactive ones. */
+  app.get('/api/v1/owner/businesses/:id/payment-methods', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    const methods = await prisma.businessPaymentMethod.findMany({
+      where: { businessId: id },
+      orderBy: [{ displayOrder: 'asc' }, { displayName: 'asc' }],
+    });
+    return { data: methods };
+  });
+
+  app.post('/api/v1/owner/businesses/:id/payment-methods', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    const d = businessPaymentMethodSchema.parse(q.body);
+    if (d.type === 'CASH' && (d.accountNumber || d.iban))
+      return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Cash payments do not use account details' } });
+    if (d.type !== 'CASH' && !d.accountNumber && !d.iban)
+      return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Digital payment methods need an account number or IBAN' } });
+    const created = await prisma.businessPaymentMethod.create({ data: { ...d, businessId: id } });
+    await prisma.auditLog.create({
+      data: { actorId: currentUser(q).id, action: 'BUSINESS_PAYMENT_METHOD_CREATED', entityType: 'BusinessPaymentMethod', entityId: created.id, metadata: { businessId: id, type: d.type } },
+    });
+    return r.status(201).send({ data: created });
+  });
+
+  app.patch('/api/v1/owner/businesses/:id/payment-methods/:methodId', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const methodId = (q.params as { methodId: string }).methodId;
+    await ownedBusiness(q, id);
+    const existing = await prisma.businessPaymentMethod.findFirst({ where: { id: methodId, businessId: id } });
+    if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Payment method not found' } });
+    const d = businessPaymentMethodUpdateSchema.parse(q.body);
+    const updated = await prisma.businessPaymentMethod.update({ where: { id: existing.id }, data: d });
+    await prisma.auditLog.create({
+      data: { actorId: currentUser(q).id, action: 'BUSINESS_PAYMENT_METHOD_UPDATED', entityType: 'BusinessPaymentMethod', entityId: id, metadata: { businessId: id, keys: Object.keys(d) } },
+    });
+    return { data: updated };
+  });
+
+  /**
+   * Deactivate (never hard-delete) a channel: payment history must keep
+   * showing which account a customer paid to. Deletion is not offered.
+   */
+  app.delete('/api/v1/owner/businesses/:id/payment-methods/:methodId', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const methodId = (q.params as { methodId: string }).methodId;
+    await ownedBusiness(q, id);
+    const existing = await prisma.businessPaymentMethod.findFirst({ where: { id: methodId, businessId: id } });
+    if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Payment method not found' } });
+    const updated = await prisma.businessPaymentMethod.update({ where: { id: existing.id }, data: { isActive: false } });
+    await prisma.auditLog.create({
+      data: { actorId: currentUser(q).id, action: 'BUSINESS_PAYMENT_METHOD_DEACTIVATED', entityType: 'BusinessPaymentMethod', entityId: id, metadata: { businessId: id } },
+    });
+    return { data: updated };
+  });
+
+  /** Delivery / COD settings for one owned business. */
+  app.put('/api/v1/owner/businesses/:id/delivery-settings', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    const d = deliverySettingsSchema.parse(q.body);
+    const data: { deliveryEnabled: boolean; codEnabled?: boolean; deliveryFeeMinor?: number } = { deliveryEnabled: d.deliveryEnabled };
+    if (d.codEnabled !== undefined) data.codEnabled = d.codEnabled;
+    if (d.deliveryFeeMinor !== undefined) data.deliveryFeeMinor = d.deliveryFeeMinor;
+    if (d.deliveryEnabled) data.deliveryFeeMinor = d.deliveryFeeMinor ?? 0;
+    const updated = await prisma.business.update({ where: { id }, data });
+    await prisma.auditLog.create({
+      data: { actorId: currentUser(q).id, action: 'DELIVERY_SETTINGS_UPDATED', entityType: 'Business', entityId: id, metadata: { deliveryEnabled: updated.deliveryEnabled, codEnabled: updated.codEnabled, deliveryFeeMinor: updated.deliveryFeeMinor } },
+    });
+    return { data: { deliveryEnabled: updated.deliveryEnabled, codEnabled: updated.codEnabled, deliveryFeeMinor: updated.deliveryFeeMinor } };
+  });
+
+  app.get('/api/v1/owner/businesses/:id/delivery-settings', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    const b = await prisma.business.findUniqueOrThrow({ where: { id }, select: { deliveryEnabled: true, codEnabled: true, deliveryFeeMinor: true } });
+    return { data: b };
+  });
+
+  /** Payment DTO: owner/customer-safe fields, no internal reviewer columns. */
+  const publicCustomerPayment = (p: {
+    id: string;
+    amountMinor: number;
+    currency: string;
+    status: string;
+    transactionReference: string | null;
+    receiptStorageKey: string | null;
+    rejectionReason: string | null;
+    submittedAt: Date;
+    verifiedAt: Date | null;
+    /** OrderPayment rows additionally carry a denormalized method scalar. */
+    method?: string | null;
+    paymentMethod: { id: string; displayName: string; type: string } | null;
+  }) => ({
+    id: p.id,
+    amountMinor: p.amountMinor,
+    currency: p.currency,
+    status: p.status,
+    transactionReference: p.transactionReference,
+    receiptStorageKey: p.receiptStorageKey,
+    rejectionReason: p.rejectionReason,
+    submittedAt: p.submittedAt,
+    verifiedAt: p.verifiedAt,
+    // Cash records have no BusinessPaymentMethod row; fall back to the
+    // denormalized scalar so clients can still show Cash.
+    paymentMethod:
+      p.paymentMethod ?? (p.method ? { id: '', displayName: 'Cash', type: p.method } : null),
+  });
+
+  const PAYMENT_METHOD_SELECT = { select: { id: true, displayName: true, type: true } } as const;
+
+  /**
+   * Booking payments for one booking. Customers see their own; the business
+   * owner sees their business's bookings. Foreign users get 404.
+   */
+  app.get('/api/v1/bookings/:id/payments', { preHandler: auth }, async (q, r) => {
+    const booking = await loadVisibleBooking(q, (q.params as { id: string }).id);
+    const payments = await prisma.bookingPayment.findMany({
+      where: { bookingId: booking.id },
+      orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+      include: { paymentMethod: PAYMENT_METHOD_SELECT },
+    });
+    return { data: payments.map(publicCustomerPayment) };
+  });
+
+  /**
+   * Customer submits a booking payment (advance or outstanding balance).
+   * Amount must be positive and cannot exceed the booking's remaining
+   * requirement — for a booking with an advance, the first payment is capped
+   * at the advance; after that, at the outstanding balance. Cash methods
+   * skip reference/receipt; manual digital needs a reference. There is no
+   * "payment successful": the business verifies before anything is PAID.
+   */
+  app.post('/api/v1/bookings/:id/payments', { preHandler: roles('CUSTOMER') }, async (q, r) => {
+    const booking = await loadVisibleBooking(q, (q.params as { id: string }).id);
+    const user = currentUser(q);
+    if (booking.customerId !== user.id)
+      return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Booking not found' } });
+    if (booking.status === 'CANCELLED' || booking.status === 'REJECTED')
+      return r.status(409).send({ error: { code: 'BOOKING_CLOSED', message: `A ${booking.status.toLowerCase()} booking cannot be paid` } });
+    const d = bookingPaymentCreateSchema.parse(q.body);
+
+    const method = await prisma.businessPaymentMethod.findFirst({
+      where: { id: d.paymentMethodId, businessId: booking.businessId, isActive: true },
+    });
+    if (!method) return r.status(400).send({ error: { code: 'INVALID_PAYMENT_METHOD', message: 'Choose a valid payment method' } });
+
+    const isAdvanceOutstanding = booking.amountPaidMinor < booking.advanceRequiredMinor;
+    const cap = isAdvanceOutstanding
+      ? booking.advanceRequiredMinor - booking.amountPaidMinor
+      : booking.servicePriceMinor - booking.amountPaidMinor;
+    if (d.amountMinor > cap)
+      return r.status(400).send({
+        error: { code: 'AMOUNT_EXCEEDS_DUE', message: `Payment cannot exceed the amount due (Rs ${Math.round(cap / 100)})` },
+      });
+    if (cap <= 0)
+      return r.status(409).send({ error: { code: 'NOTHING_DUE', message: 'This booking is already fully paid' } });
+
+    // Manual digital proof needs a reference + receipt; cash needs neither.
+    if (method.type === 'CASH') {
+      if (d.transactionReference || d.receiptStorageKey)
+        return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Cash payments do not use references or receipts' } });
+    } else if (!d.transactionReference || !d.receiptStorageKey) {
+      return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'A transaction reference and receipt image are required' } });
+    }
+
+    const created = await prisma.bookingPayment.create({
+      data: {
+        bookingId: booking.id,
+        businessId: booking.businessId,
+        customerId: user.id,
+        amountMinor: d.amountMinor,
+        currency: booking.business.currency,
+        paymentMethodId: method.id,
+        status: 'PENDING_VERIFICATION',
+        transactionReference: d.transactionReference || null,
+        receiptStorageKey: d.receiptStorageKey || null,
+      },
+      include: { paymentMethod: PAYMENT_METHOD_SELECT },
+    });
+    await prisma.auditLog.create({
+      data: { actorId: user.id, action: 'BOOKING_PAYMENT_SUBMITTED', entityType: 'BookingPayment', entityId: created.id, metadata: { bookingId: booking.id, businessId: booking.businessId, amountMinor: d.amountMinor, method: method.type } },
+    });
+    await createNotifications(prisma, [
+      {
+        userId: booking.business.ownerId,
+        type: NOTIFICATION_TYPES.BOOKING_PAYMENT_SUBMITTED,
+        title: 'Payment proof submitted',
+        message: `${user.firstName ?? 'A customer'} submitted an advance payment (Rs ${Math.round(d.amountMinor / 100)}) for ${booking.service?.name ?? 'a booking'}. Verify it to mark the payment as received.`,
+        entityType: 'BookingPayment',
+        entityId: created.id,
+      },
+    ]);
+    return r.status(201).send({ data: publicCustomerPayment(created) });
+  });
+
+  /** Verification queue: pending payments across the owner's businesses. */
+  app.get('/api/v1/owner/payments', { preHandler: roles('BUSINESS_OWNER') }, async (q) => {
+    const query = z
+      .object({
+        status: z.enum(['UNPAID', 'PENDING_VERIFICATION', 'PAID', 'FAILED']).optional(),
+        kind: z.enum(['booking', 'order']).optional(),
+        limit: z.coerce.number().int().min(1).max(100).optional(),
+      })
+      .parse(q.query ?? {});
+    const status = query.status ?? 'PENDING_VERIFICATION';
+    const bookingPayments = query.kind && query.kind !== 'booking' ? [] : await prisma.bookingPayment.findMany({
+      where: { business: { ownerId: currentUser(q).id }, status },
+      orderBy: { submittedAt: 'desc' },
+      take: query.limit ?? 50,
+      include: {
+        paymentMethod: PAYMENT_METHOD_SELECT,
+        booking: { select: { id: true, service: { select: { name: true } }, startAt: true } },
+        customer: { select: { id: true, email: true, firstName: true, lastName: true } },
+      },
+    });
+    const orderPayments = query.kind && query.kind !== 'order' ? [] : await prisma.orderPayment.findMany({
+      where: { business: { ownerId: currentUser(q).id }, status },
+      orderBy: { submittedAt: 'desc' },
+      take: query.limit ?? 50,
+      include: {
+        paymentMethod: PAYMENT_METHOD_SELECT,
+        order: { select: { id: true, totalMinor: true } },
+        customer: { select: { id: true, email: true, firstName: true, lastName: true } },
+      },
+    });
+    return {
+      data: {
+        bookingPayments: bookingPayments.map((p) => ({
+          ...publicCustomerPayment(p),
+          booking: p.booking
+            ? { id: p.booking.id, serviceName: p.booking.service?.name ?? null, date: pktDateOf(p.booking.startAt) }
+            : null,
+          customer: { id: p.customer.id, email: p.customer.email, firstName: p.customer.firstName, lastName: p.customer.lastName },
+        })),
+        orderPayments: orderPayments.map((p) => ({
+          ...publicCustomerPayment(p),
+          order: p.order ? { id: p.order.id, totalMinor: p.order.totalMinor } : null,
+          customer: { id: p.customer.id, email: p.customer.email, firstName: p.customer.firstName, lastName: p.customer.lastName },
+        })),
+      },
+    };
+  });
+
+  /**
+   * Business verifies one of its own booking payments — atomically. The
+   * advisory lock (same pattern as Phase 7B) + PENDING re-check makes a
+   * double-verify impossible; the verified amount accumulates onto the
+   * booking's `amountPaidMinor` inside the same transaction.
+   */
+  app.post('/api/v1/owner/payments/:id/verify', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const paymentId = (q.params as { id: string }).id;
+    const owner = currentUser(q);
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const existing = await tx.bookingPayment.findUnique({ where: { id: paymentId }, select: { businessId: true } });
+        if (!existing) throw Object.assign(new Error('missing'), { code: 'NOT_FOUND' });
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${existing.businessId}))`;
+        const payment = await tx.bookingPayment.findUniqueOrThrow({
+          where: { id: paymentId },
+          include: { booking: { include: { business: { select: { ownerId: true, name: true } }, service: { select: { name: true } } } } },
+        });
+        // Ownership re-checked inside the lock: the payment's business must
+        // belong to the authenticated owner.
+        if (payment.booking.business.ownerId !== owner.id) throw Object.assign(new Error('own'), { code: 'NOT_FOUND' });
+        if (payment.status !== 'PENDING_VERIFICATION') throw Object.assign(new Error('dup'), { code: 'NOT_PENDING' });
+        // Amount sanity inside the lock: cannot verify more than is due.
+        const due = Math.max(payment.booking.servicePriceMinor - payment.booking.amountPaidMinor, 0);
+        if (payment.amountMinor <= 0 || payment.amountMinor > due)
+          throw Object.assign(new Error('amount'), { code: 'AMOUNT_INVALID' });
+
+        const verified = await tx.bookingPayment.update({
+          where: { id: payment.id },
+          data: { status: 'PAID', verifiedAt: new Date(), verifiedByUserId: owner.id },
+        });
+        await tx.booking.update({
+          where: { id: payment.bookingId },
+          data: { amountPaidMinor: { increment: payment.amountMinor } },
+        });
+        await createNotifications(prisma, [
+          {
+            userId: payment.customerId,
+            type: NOTIFICATION_TYPES.BOOKING_PAYMENT_VERIFIED,
+            title: 'Payment verified',
+            message: `Your payment of Rs ${Math.round(payment.amountMinor / 100)} for ${payment.booking.service?.name ?? 'your booking'} has been verified by ${payment.booking.business.name}.`,
+            entityType: 'BookingPayment',
+            entityId: payment.id,
+          },
+        ], tx);
+        return verified;
+      });
+      await prisma.auditLog.create({
+        data: { actorId: owner.id, action: 'BOOKING_PAYMENT_VERIFIED', entityType: 'BookingPayment', entityId: result.id, metadata: { businessId: result.businessId, amountMinor: result.amountMinor } },
+      });
+      const full = await prisma.bookingPayment.findUniqueOrThrow({ where: { id: paymentId }, include: { paymentMethod: PAYMENT_METHOD_SELECT } });
+      return { data: publicCustomerPayment(full) };
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === 'NOT_FOUND') return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Payment not found' } });
+      if (code === 'NOT_PENDING') return r.status(409).send({ error: { code: 'NOT_PENDING', message: 'This payment has already been reviewed' } });
+      if (code === 'AMOUNT_INVALID') return r.status(409).send({ error: { code: 'AMOUNT_INVALID', message: 'Payment amount is no longer valid for this booking' } });
+      throw e;
+    }
+  });
+
+  /** Business rejects one of its own booking payments with a reason. */
+  app.post('/api/v1/owner/payments/:id/reject', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const paymentId = (q.params as { id: string }).id;
+    const owner = currentUser(q);
+    const { reason } = customerPaymentRejectSchema.parse(q.body);
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const existing = await tx.bookingPayment.findUnique({ where: { id: paymentId }, select: { businessId: true } });
+        if (!existing) throw Object.assign(new Error('missing'), { code: 'NOT_FOUND' });
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${existing.businessId}))`;
+        const payment = await tx.bookingPayment.findUniqueOrThrow({
+          where: { id: paymentId },
+          include: { booking: { include: { business: { select: { ownerId: true, name: true } }, service: { select: { name: true } } } } },
+        });
+        if (payment.booking.business.ownerId !== owner.id) throw Object.assign(new Error('own'), { code: 'NOT_FOUND' });
+        if (payment.status !== 'PENDING_VERIFICATION') throw Object.assign(new Error('dup'), { code: 'NOT_PENDING' });
+        const rejected = await tx.bookingPayment.update({
+          where: { id: payment.id },
+          data: { status: 'FAILED', rejectionReason: reason, verifiedAt: new Date(), verifiedByUserId: owner.id },
+        });
+        await createNotifications(prisma, [
+          {
+            userId: payment.customerId,
+            type: NOTIFICATION_TYPES.BOOKING_PAYMENT_REJECTED,
+            title: 'Payment could not be verified',
+            message: `${payment.booking.business.name} could not verify your payment of Rs ${Math.round(payment.amountMinor / 100)}. Reason: ${reason} You can submit a new payment.`,
+            entityType: 'BookingPayment',
+            entityId: payment.id,
+          },
+        ], tx);
+        return rejected;
+      });
+      await prisma.auditLog.create({
+        data: { actorId: owner.id, action: 'BOOKING_PAYMENT_REJECTED', entityType: 'BookingPayment', entityId: result.id, metadata: { businessId: result.businessId, amountMinor: result.amountMinor } },
+      });
+      const full = await prisma.bookingPayment.findUniqueOrThrow({ where: { id: paymentId }, include: { paymentMethod: PAYMENT_METHOD_SELECT } });
+      return { data: publicCustomerPayment(full) };
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === 'NOT_FOUND') return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Payment not found' } });
+      if (code === 'NOT_PENDING') return r.status(409).send({ error: { code: 'NOT_PENDING', message: 'This payment has already been reviewed' } });
+      throw e;
+    }
+  });
+
+  /** Order payments for one order (customer or owning business). */
+  app.get('/api/v1/orders/:id/payments', { preHandler: auth }, async (q, r) => {
+    const u = currentUser(q);
+    const order = await prisma.order.findUnique({ where: { id: (q.params as { id: string }).id }, include: { business: { select: { ownerId: true } } } });
+    if (!order) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Order not found' } });
+    const isOwner = u.role === 'BUSINESS_OWNER' && order.business.ownerId === u.id;
+    const isCustomer = order.customerId === u.id;
+    if (!isOwner && !isCustomer) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Order not found' } });
+    const payments = await prisma.orderPayment.findMany({
+      where: { orderId: order.id },
+      orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+      include: { paymentMethod: PAYMENT_METHOD_SELECT },
+    });
+    return { data: payments.map(publicCustomerPayment) };
+  });
+
+  /**
+   * Customer submits manual digital payment proof for an order. Amount can
+   * never exceed the order's outstanding total (totalMinor minus verified
+   * payments). COD is recorded by the owner as a cash collection instead —
+   * selecting COD does NOT mark anything paid.
+   */
+  app.post('/api/v1/orders/:id/payments', { preHandler: roles('CUSTOMER') }, async (q, r) => {
+    const order = await prisma.order.findUnique({
+      where: { id: (q.params as { id: string }).id },
+      include: { business: { select: { ownerId: true, name: true } } },
+    });
+    if (!order) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Order not found' } });
+    const user = currentUser(q);
+    if (order.customerId !== user.id) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Order not found' } });
+    if (order.status === 'CANCELLED' || order.status === 'REJECTED')
+      return r.status(409).send({ error: { code: 'ORDER_CLOSED', message: `A ${order.status.toLowerCase()} order cannot be paid` } });
+    const d = orderPaymentCreateSchema.parse(q.body);
+
+    const method = await prisma.businessPaymentMethod.findFirst({
+      where: { id: d.paymentMethodId, businessId: order.businessId, isActive: true },
+    });
+    if (!method) return r.status(400).send({ error: { code: 'INVALID_PAYMENT_METHOD', message: 'Choose a valid payment method' } });
+    if (method.type === 'CASH')
+      return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Cash is collected by the business — submit a manual digital payment instead' } });
+    if (!d.transactionReference || !d.receiptStorageKey)
+      return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'A transaction reference and receipt image are required' } });
+
+    const verified = await prisma.orderPayment.aggregate({
+      where: { orderId: order.id, status: 'PAID' },
+      _sum: { amountMinor: true },
+    });
+    const due = order.totalMinor - (verified._sum.amountMinor ?? 0);
+    if (due <= 0)
+      return r.status(409).send({ error: { code: 'NOTHING_DUE', message: 'This order is already fully paid' } });
+    if (d.amountMinor > due)
+      return r.status(400).send({
+        error: { code: 'AMOUNT_EXCEEDS_DUE', message: `Payment cannot exceed the amount due (Rs ${Math.round(due / 100)})` },
+      });
+
+    const created = await prisma.orderPayment.create({
+      data: {
+        orderId: order.id,
+        businessId: order.businessId,
+        customerId: user.id,
+        amountMinor: d.amountMinor,
+        currency: order.currency,
+        method: method.type,
+        paymentMethodId: method.id,
+        status: 'PENDING_VERIFICATION',
+        transactionReference: d.transactionReference,
+        receiptStorageKey: d.receiptStorageKey,
+      },
+      include: { paymentMethod: PAYMENT_METHOD_SELECT },
+    });
+    await prisma.auditLog.create({
+      data: { actorId: user.id, action: 'ORDER_PAYMENT_SUBMITTED', entityType: 'OrderPayment', entityId: created.id, metadata: { orderId: order.id, businessId: order.businessId, amountMinor: d.amountMinor, method: method.type } },
+    });
+    await createNotifications(prisma, [
+      {
+        userId: order.business.ownerId,
+        type: NOTIFICATION_TYPES.ORDER_PAYMENT_SUBMITTED,
+        title: 'Order payment proof submitted',
+        message: `${user.firstName ?? 'A customer'} submitted a payment (Rs ${Math.round(d.amountMinor / 100)}) for their order. Verify it to mark the payment as received.`,
+        entityType: 'OrderPayment',
+        entityId: created.id,
+      },
+    ]);
+    return r.status(201).send({ data: publicCustomerPayment(created) });
+  });
+
+  /** Business verifies one of its own order payments — atomically. */
+  app.post('/api/v1/owner/order-payments/:id/verify', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const paymentId = (q.params as { id: string }).id;
+    const owner = currentUser(q);
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const existing = await tx.orderPayment.findUnique({ where: { id: paymentId }, select: { businessId: true } });
+        if (!existing) throw Object.assign(new Error('missing'), { code: 'NOT_FOUND' });
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${existing.businessId}))`;
+        const payment = await tx.orderPayment.findUniqueOrThrow({
+          where: { id: paymentId },
+          include: { order: { include: { business: { select: { ownerId: true, name: true } } } } },
+        });
+        if (payment.order.business.ownerId !== owner.id) throw Object.assign(new Error('own'), { code: 'NOT_FOUND' });
+        if (payment.status !== 'PENDING_VERIFICATION') throw Object.assign(new Error('dup'), { code: 'NOT_PENDING' });
+        const verifiedSum = await tx.orderPayment.aggregate({
+          where: { orderId: payment.orderId, status: 'PAID', id: { not: payment.id } },
+          _sum: { amountMinor: true },
+        });
+        const due = payment.order.totalMinor - (verifiedSum._sum.amountMinor ?? 0);
+        if (payment.amountMinor <= 0 || payment.amountMinor > due)
+          throw Object.assign(new Error('amount'), { code: 'AMOUNT_INVALID' });
+        const verified = await tx.orderPayment.update({
+          where: { id: payment.id },
+          data: { status: 'PAID', verifiedAt: new Date(), verifiedByUserId: owner.id },
+        });
+        await createNotifications(prisma, [
+          {
+            userId: payment.customerId,
+            type: NOTIFICATION_TYPES.ORDER_PAYMENT_VERIFIED,
+            title: 'Payment verified',
+            message: `Your payment of Rs ${Math.round(payment.amountMinor / 100)} for your ${payment.order.business.name} order has been verified.`,
+            entityType: 'OrderPayment',
+            entityId: payment.id,
+          },
+        ], tx);
+        return verified;
+      });
+      await prisma.auditLog.create({
+        data: { actorId: owner.id, action: 'ORDER_PAYMENT_VERIFIED', entityType: 'OrderPayment', entityId: result.id, metadata: { businessId: result.businessId, amountMinor: result.amountMinor } },
+      });
+      const full = await prisma.orderPayment.findUniqueOrThrow({ where: { id: paymentId }, include: { paymentMethod: PAYMENT_METHOD_SELECT } });
+      return { data: publicCustomerPayment(full) };
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === 'NOT_FOUND') return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Payment not found' } });
+      if (code === 'NOT_PENDING') return r.status(409).send({ error: { code: 'NOT_PENDING', message: 'This payment has already been reviewed' } });
+      if (code === 'AMOUNT_INVALID') return r.status(409).send({ error: { code: 'AMOUNT_INVALID', message: 'Payment amount is no longer valid for this order' } });
+      throw e;
+    }
+  });
+
+  /** Business rejects one of its own order payments with a reason. */
+  app.post('/api/v1/owner/order-payments/:id/reject', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const paymentId = (q.params as { id: string }).id;
+    const owner = currentUser(q);
+    const { reason } = customerPaymentRejectSchema.parse(q.body);
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const existing = await tx.orderPayment.findUnique({ where: { id: paymentId }, select: { businessId: true } });
+        if (!existing) throw Object.assign(new Error('missing'), { code: 'NOT_FOUND' });
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${existing.businessId}))`;
+        const payment = await tx.orderPayment.findUniqueOrThrow({
+          where: { id: paymentId },
+          include: { order: { include: { business: { select: { ownerId: true, name: true } } } } },
+        });
+        if (payment.order.business.ownerId !== owner.id) throw Object.assign(new Error('own'), { code: 'NOT_FOUND' });
+        if (payment.status !== 'PENDING_VERIFICATION') throw Object.assign(new Error('dup'), { code: 'NOT_PENDING' });
+        const rejected = await tx.orderPayment.update({
+          where: { id: payment.id },
+          data: { status: 'FAILED', rejectionReason: reason, verifiedAt: new Date(), verifiedByUserId: owner.id },
+        });
+        await createNotifications(prisma, [
+          {
+            userId: payment.customerId,
+            type: NOTIFICATION_TYPES.ORDER_PAYMENT_REJECTED,
+            title: 'Payment could not be verified',
+            message: `${payment.order.business.name} could not verify your payment of Rs ${Math.round(payment.amountMinor / 100)}. Reason: ${reason} You can submit a new payment.`,
+            entityType: 'OrderPayment',
+            entityId: payment.id,
+          },
+        ], tx);
+        return rejected;
+      });
+      await prisma.auditLog.create({
+        data: { actorId: owner.id, action: 'ORDER_PAYMENT_REJECTED', entityType: 'OrderPayment', entityId: result.id, metadata: { businessId: result.businessId, amountMinor: result.amountMinor } },
+      });
+      const full = await prisma.orderPayment.findUniqueOrThrow({ where: { id: paymentId }, include: { paymentMethod: PAYMENT_METHOD_SELECT } });
+      return { data: publicCustomerPayment(full) };
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === 'NOT_FOUND') return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Payment not found' } });
+      if (code === 'NOT_PENDING') return r.status(409).send({ error: { code: 'NOT_PENDING', message: 'This payment has already been reviewed' } });
+      throw e;
+    }
+  });
+
+  /**
+   * Owner records a cash collection (COD / cash on pickup) for one of their
+   * orders. This is the only way a cash order becomes PAID — never by the
+   * customer, and never merely because COD was selected at checkout.
+   */
+  app.post('/api/v1/owner/orders/:id/collect-cash', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const orderId = (q.params as { id: string }).id;
+    const owner = currentUser(q);
+    const order = await prisma.order.findUnique({ where: { id: orderId }, include: { business: { select: { ownerId: true, name: true } } } });
+    if (!order || order.business.ownerId !== owner.id)
+      return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Order not found' } });
+    const verifiedSum = await prisma.orderPayment.aggregate({
+      where: { orderId: order.id, status: 'PAID' },
+      _sum: { amountMinor: true },
+    });
+    const due = order.totalMinor - (verifiedSum._sum.amountMinor ?? 0);
+    if (due <= 0) return r.status(409).send({ error: { code: 'NOTHING_DUE', message: 'This order is already fully paid' } });
+    const record = await prisma.orderPayment.create({
+      data: {
+        orderId: order.id,
+        businessId: order.businessId,
+        customerId: order.customerId,
+        amountMinor: due,
+        currency: order.currency,
+        method: 'CASH',
+        status: 'PAID',
+        submittedAt: new Date(),
+        verifiedAt: new Date(),
+        verifiedByUserId: owner.id,
+      },
+    });
+    await prisma.auditLog.create({
+      data: { actorId: owner.id, action: 'ORDER_CASH_COLLECTED', entityType: 'OrderPayment', entityId: record.id, metadata: { orderId: order.id, businessId: order.businessId, amountMinor: due } },
+    });
+    await createNotifications(prisma, [
+      {
+        userId: order.customerId,
+        type: NOTIFICATION_TYPES.ORDER_PAYMENT_VERIFIED,
+        title: 'Payment received',
+        message: `${order.business.name} received your cash payment of Rs ${Math.round(due / 100)}. Thank you!`,
+        entityType: 'OrderPayment',
+        entityId: record.id,
+      },
+    ]);
+    const full = await prisma.orderPayment.findUniqueOrThrow({ where: { id: record.id }, include: { paymentMethod: PAYMENT_METHOD_SELECT } });
+    return r.status(201).send({ data: publicCustomerPayment(full) });
+  });
+
   /* --------------------------- Services ----------------------------- */
   app.get('/api/v1/businesses/:id/services', async (q, r) => {
     const key = (q.params as { id: string }).id;
@@ -1121,7 +1747,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     const id = (q.params as { id: string }).id;
     await ownedBusiness(q, id);
     const d = serviceSchema.parse(q.body);
-    return r.status(201).send({ data: await prisma.service.create({ data: { ...d, businessId: id } }) });
+    const advance = resolveServiceAdvance(d, d.priceMinor);
+    if ('error' in advance) return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: advance.error } });
+    return r.status(201).send({ data: await prisma.service.create({ data: { ...d, ...advance.advance, businessId: id } }) });
   });
 
   app.patch('/api/v1/services/:id', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
@@ -1129,7 +1757,18 @@ export async function buildApp(): Promise<FastifyInstance> {
     const service = await prisma.service.findUnique({ where: { id } });
     if (!service) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Service not found' } });
     await ownedBusiness(q, service.businessId);
-    return { data: await prisma.service.update({ where: { id: service.id }, data: serviceUpdateSchema.parse(q.body) }) };
+    const d = serviceUpdateSchema.parse(q.body);
+    // Validate the advance against the NEW effective price (patched price or
+    // the stored one) so a fixed advance can never exceed the service price.
+    const price = d.priceMinor ?? service.priceMinor;
+    const merged = {
+      advanceType: d.advanceType ?? service.advanceType,
+      advanceAmountMinor: d.advanceAmountMinor ?? (d.advanceType ? undefined : service.advanceAmountMinor ?? undefined),
+      advancePercent: d.advancePercent ?? (d.advanceType ? undefined : service.advancePercent ?? undefined),
+    };
+    const advance = resolveServiceAdvance(merged, price);
+    if ('error' in advance) return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: advance.error } });
+    return { data: await prisma.service.update({ where: { id: service.id }, data: { ...d, ...advance.advance } }) };
   });
 
   app.delete('/api/v1/services/:id', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
@@ -1237,6 +1876,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     notes: string | null;
     customerId: string;
     createdAt: Date;
+    servicePriceMinor?: number;
+    advanceRequiredMinor?: number;
+    amountPaidMinor?: number;
     business: { id: string; name: string; slug: string; ownerId: string };
     service: { id: string; name: string; durationMinutes: number | null; priceMinor: number; currency: string } | null | undefined;
   }) => ({
@@ -1248,6 +1890,15 @@ export async function buildApp(): Promise<FastifyInstance> {
     serviceName: booking.service?.name ?? null,
     priceMinor: booking.service?.priceMinor ?? null,
     currency: booking.service?.currency ?? 'PKR',
+    // Payment snapshot (Phase 7C) — the booking's own frozen amounts, never
+    // the service's current ones.
+    servicePriceMinor: booking.servicePriceMinor ?? 0,
+    advanceRequiredMinor: booking.advanceRequiredMinor ?? 0,
+    amountPaidMinor: booking.amountPaidMinor ?? 0,
+    amountDueMinor:
+      booking.servicePriceMinor !== undefined
+        ? Math.max(booking.servicePriceMinor - Math.max(booking.amountPaidMinor ?? 0, booking.advanceRequiredMinor ?? 0), 0)
+        : null,
     bookingDate: pktDateOf(booking.startAt),
     startTime: formatMinutes(pktMinutesOf(booking.startAt)),
     endTime: formatMinutes(pktMinutesOf(booking.endAt)),
@@ -1366,6 +2017,14 @@ export async function buildApp(): Promise<FastifyInstance> {
     // overlap inside the transaction and insert. Two overlapping requests can
     // never both pass the check because the second waits for the first to commit.
     const customer = currentUser(q);
+    // Payment snapshot (Phase 7C): the agreed amounts are frozen at booking
+    // time. Later service price/advance edits never rewrite existing bookings.
+    const advanceRequiredMinor = serviceAdvanceMinor({
+      advanceType: service.advanceType,
+      advanceAmountMinor: service.advanceAmountMinor,
+      advancePercent: service.advancePercent,
+      priceMinor: service.priceMinor,
+    });
     const booking = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${business.id}))`;
       const conflicting = await tx.booking.findFirst({
@@ -1387,6 +2046,9 @@ export async function buildApp(): Promise<FastifyInstance> {
           startAt,
           endAt,
           notes: d.notes,
+          servicePriceMinor: service.priceMinor,
+          advanceRequiredMinor,
+          amountPaidMinor: 0,
         },
       });
       // Owner notification commits atomically with the booking — a rolled-back
@@ -1528,12 +2190,19 @@ export async function buildApp(): Promise<FastifyInstance> {
    * rows carry the purchase-time name/unitPriceMinor, so history survives
    * later product edits or deletion of the underlying product.
    */
-  const publicOrder = (o: Prisma.OrderGetPayload<{ include: typeof ORDER_INCLUDE }>) => ({
+  const publicOrder = (o: Prisma.OrderGetPayload<{ include: typeof ORDER_INCLUDE }> & { deliveryFeeMinor?: number; totalMinor?: number; paymentMethodId?: string | null }) => ({
     id: o.id,
     status: o.status,
     subtotalMinor: o.subtotalMinor,
+    // Delivery fee + authoritative total (Phase 7C). Total = subtotal + fee,
+    // both server-computed; the client never sends money values.
+    deliveryFeeMinor: o.deliveryFeeMinor ?? 0,
+    totalMinor: o.totalMinor ?? o.subtotalMinor,
     currency: o.currency,
     fulfillmentType: o.fulfillmentType,
+    // Chosen manual digital channel (null = cash on delivery/pickup). The
+    // payment STATE lives on OrderPayment rows, never inferred from status.
+    paymentMethodId: o.paymentMethodId ?? null,
     notes: o.notes,
     createdAt: o.createdAt,
     business: { id: o.business.id, name: o.business.name, slug: o.business.slug },
@@ -1574,12 +2243,41 @@ export async function buildApp(): Promise<FastifyInstance> {
     );
     const customer = currentUser(q);
     const itemCount = d.items.reduce((sum, i) => sum + i.quantity, 0);
+    // Delivery fee + chosen payment channel come from BUSINESS settings and
+    // server-side validation only (Phase 7C). A DELIVERY order without the
+    // business's deliveryEnabled flag is rejected; the fee is never
+    // client-controlled and pickup/collection orders are never charged one.
+    const businessSettings = await prisma.business.findUniqueOrThrow({
+      where: { id: d.businessId },
+      select: { deliveryEnabled: true, codEnabled: true, deliveryFeeMinor: true },
+    });
+    if (d.fulfillmentType === 'DELIVERY' && !businessSettings.deliveryEnabled)
+      return r.status(400).send({ error: { code: 'DELIVERY_UNAVAILABLE', message: 'This business does not offer delivery' } });
+    const deliveryFeeMinor = d.fulfillmentType === 'DELIVERY' ? businessSettings.deliveryFeeMinor : 0;
+    // Manual digital channel (Easypaisa etc.): must be one of this business's
+    // ACTIVE pay-in methods. Cash flows (COD/pickup) omit it entirely.
+    let paymentMethodId: string | null = null;
+    if (d.paymentMethodId) {
+      const method = await prisma.businessPaymentMethod.findFirst({
+        where: { id: d.paymentMethodId, businessId: d.businessId, isActive: true },
+        select: { id: true, type: true },
+      });
+      if (!method || method.type === 'CASH')
+        return r.status(400).send({ error: { code: 'INVALID_PAYMENT_METHOD', message: 'Choose a valid payment method' } });
+      paymentMethodId = method.id;
+    } else if (d.fulfillmentType === 'DELIVERY' && !businessSettings.codEnabled) {
+      return r.status(400).send({ error: { code: 'COD_UNAVAILABLE', message: 'Cash on delivery is not available for this business — choose a payment method' } });
+    }
+    const totalMinor = subtotalMinor + deliveryFeeMinor;
     const created = await prisma.$transaction(async (tx) => {
       const order = await tx.order.create({
         data: {
           businessId: d.businessId,
           customerId: customer.id,
           subtotalMinor,
+          deliveryFeeMinor,
+          totalMinor,
+          paymentMethodId,
           notes: d.notes,
           fulfillmentType: d.fulfillmentType,
           items: {
@@ -1599,7 +2297,7 @@ export async function buildApp(): Promise<FastifyInstance> {
             userId: owner.ownerId,
             type: NOTIFICATION_TYPES.ORDER_CREATED,
             title: 'New order received',
-            message: `${customer.firstName ?? 'A customer'} placed an order (${itemCount} item${itemCount === 1 ? '' : 's'}, Rs ${Math.round(subtotalMinor / 100)}).`,
+            message: `${customer.firstName ?? 'A customer'} placed an order (${itemCount} item${itemCount === 1 ? '' : 's'}, Rs ${Math.round(totalMinor / 100)}${deliveryFeeMinor > 0 ? ' incl. delivery' : ''}).`,
             entityType: 'Order',
             entityId: order.id,
           },

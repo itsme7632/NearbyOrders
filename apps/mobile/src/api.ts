@@ -109,6 +109,10 @@ export type Service = {
   currency: string;
   durationMinutes: number | null;
   isActive: boolean;
+  /** Phase 7C advance requirement, always server-evaluated. */
+  advanceType?: 'NONE' | 'FIXED' | 'PERCENTAGE';
+  advanceAmountMinor?: number | null;
+  advancePercent?: number | null;
 };
 
 export type Product = {
@@ -139,8 +143,11 @@ export type Order = {
   subtotalMinor: number;
   currency: string;
   fulfillmentType: string;
-  notes: string | null;
   createdAt: string;
+  /** Phase 7C: server-computed; 0 for pickup/collection. */
+  deliveryFeeMinor?: number;
+  totalMinor?: number;
+  notes: string | null;
   business: { id: string; name: string; slug: string };
   /** First name / last name only — never email or credentials. */
   customer: { firstName: string | null; lastName: string | null } | null;
@@ -386,10 +393,33 @@ export const updateBusiness = (
 export const listServices = (businessId: string) => request<Service[]>(`/businesses/${businessId}/services`);
 export const createService = (
   businessId: string,
-  body: { name: string; description?: string; priceMinor: number; durationMinutes?: number },
+  body: {
+    name: string;
+    description?: string;
+    priceMinor: number;
+    durationMinutes?: number;
+    /** Phase 7C advance requirement — the server validates against priceMinor. */
+    advanceType?: 'NONE' | 'FIXED' | 'PERCENTAGE';
+    advanceAmountMinor?: number;
+    advancePercent?: number;
+  },
 ) => request<Service>(`/businesses/${businessId}/services`, { method: 'POST', body, auth: true });
-export const updateService = (id: string, patch: Partial<Pick<Service, 'name' | 'description' | 'priceMinor' | 'durationMinutes' | 'isActive'>>) =>
-  request<Service>(`/services/${id}`, { method: 'PATCH', body: patch, auth: true });
+export const updateService = (
+  id: string,
+  patch: Partial<
+    Pick<
+      Service,
+      | 'name'
+      | 'description'
+      | 'priceMinor'
+      | 'durationMinutes'
+      | 'isActive'
+      | 'advanceType'
+      | 'advanceAmountMinor'
+      | 'advancePercent'
+    >
+  >,
+) => request<Service>(`/services/${id}`, { method: 'PATCH', body: patch, auth: true });
 export const deleteService = (id: string) => request<void>(`/services/${id}`, { method: 'DELETE', auth: true });
 
 export const listProducts = (businessId: string) => request<Product[]>(`/businesses/${businessId}/products`);
@@ -432,6 +462,12 @@ export type Booking = {
   status: BookingStatus;
   notes: string | null;
   createdAt: string;
+  /** Phase 7C frozen snapshot — never recomputed from the service. */
+  servicePriceMinor?: number;
+  advanceRequiredMinor?: number;
+  amountPaidMinor?: number;
+  /** Remaining after the advance step: price − max(paid, advance). */
+  amountDueMinor?: number;
   /** Only present on list endpoints — safe subset, never credentials. */
   customer?: { id: string; email: string; firstName: string | null; lastName: string | null };
 };
@@ -459,11 +495,125 @@ export const listBusinessBookings = (businessId: string) =>
 export const setBookingStatus = (id: string, status: 'CONFIRMED' | 'REJECTED' | 'COMPLETED' | 'CANCELLED') =>
   request<Booking>(`/bookings/${id}/status`, { method: 'PATCH', body: { status }, auth: true });
 
+/* ---------------- customer→business payments (Phase 7C) ------------ */
+
+/** A pay-in channel a BUSINESS offers its customers (distinct from 7B admin channels). */
+export type BusinessPayInMethod = {
+  id: string;
+  type: 'CASH' | 'EASYPAISA' | 'JAZZCASH' | 'BANK_TRANSFER' | 'OTHER';
+  displayName: string;
+  accountTitle: string | null;
+  accountNumber: string | null;
+  iban: string | null;
+  instructions: string | null;
+  /** Present on owner endpoints (which include inactive channels); absent on the public list. */
+  isActive?: boolean;
+  displayOrder?: number;
+};
+
+/** Mirrors the server's CustomerPaymentStatus enum. */
+export type CustomerPaymentStatus = 'PENDING_VERIFICATION' | 'PAID' | 'FAILED' | 'UNPAID';
+
+/** One customer payment proof (booking or order), as seen by its parties. */
+export type CustomerPayment = {
+  id: string;
+  amountMinor: number;
+  currency: string;
+  status: CustomerPaymentStatus;
+  transactionReference: string | null;
+  receiptStorageKey: string | null;
+  rejectionReason: string | null;
+  submittedAt: string;
+  verifiedAt: string | null;
+  paymentMethod: { id: string; displayName: string; type: string } | null;
+};
+
+/** Active pay-in channels for an approved business, in display order. */
+export const listBusinessPayInMethods = (businessId: string) =>
+  request<BusinessPayInMethod[]>(`/businesses/${businessId}/payment-methods`);
+
+/** Payment proofs on one booking (own or owned business). */
+export const listBookingPayments = (bookingId: string) =>
+  request<CustomerPayment[]>(`/bookings/${bookingId}/payments`, { auth: true });
+
+/**
+ * Submits booking payment proof. The server caps the amount against the
+ * frozen booking snapshot; digital channels require a reference + receipt.
+ */
+export const submitBookingPayment = (
+  bookingId: string,
+  body: { amountMinor: number; paymentMethodId: string; transactionReference?: string; receiptStorageKey?: string },
+) => request<CustomerPayment>(`/bookings/${bookingId}/payments`, { method: 'POST', body, auth: true });
+
+/** Payment proofs on one order. */
+export const listOrderPayments = (orderId: string) =>
+  request<CustomerPayment[]>(`/orders/${orderId}/payments`, { auth: true });
+
+/** Submits order payment proof; the server caps the amount at the total. */
+export const submitOrderPayment = (
+  orderId: string,
+  body: { amountMinor: number; paymentMethodId: string; transactionReference?: string; receiptStorageKey?: string },
+) => request<CustomerPayment>(`/orders/${orderId}/payments`, { method: 'POST', body, auth: true });
+
+/** Owner's verification queue across their businesses (both kinds). */
+export type OwnerPaymentQueue = { bookingPayments: CustomerPayment[]; orderPayments: CustomerPayment[] };
+export const listOwnerPayments = (status: 'PENDING_VERIFICATION' | 'PAID' | 'FAILED' = 'PENDING_VERIFICATION') =>
+  request<OwnerPaymentQueue>(`/owner/payments?status=${status}`, { auth: true });
+
+/** Owner verifies a pending booking/order payment they own. */
+export const verifyOwnerPayment = (id: string, kind: 'booking' | 'order') =>
+  request<CustomerPayment>(kind === 'booking' ? `/owner/payments/${id}/verify` : `/owner/order-payments/${id}/verify`, {
+    method: 'POST',
+    auth: true,
+  });
+
+/** Owner rejects a pending payment; a reason is required by the server. */
+export const rejectOwnerPayment = (id: string, kind: 'booking' | 'order', reason: string) =>
+  request<CustomerPayment>(
+    kind === 'booking' ? `/owner/payments/${id}/reject` : `/owner/order-payments/${id}/reject`,
+    { method: 'POST', body: { reason }, auth: true },
+  );
+
+/** Owner marks cash collected on an order (remaining balance). */
+export const collectOrderCash = (orderId: string) =>
+  request<CustomerPayment>(`/owner/orders/${orderId}/collect-cash`, { method: 'POST', auth: true });
+
+/** Reads/updates delivery + COD settings for an owned business. */
+export type DeliverySettings = { deliveryEnabled: boolean; codEnabled: boolean; deliveryFeeMinor: number };
+export const getDeliverySettings = (businessId: string) =>
+  request<DeliverySettings>(`/owner/businesses/${businessId}/delivery-settings`, { auth: true });
+export const putDeliverySettings = (businessId: string, body: Partial<DeliverySettings> & { deliveryEnabled: boolean }) =>
+  request<DeliverySettings>(`/owner/businesses/${businessId}/delivery-settings`, { method: 'PUT', body, auth: true });
+
+/** Owner CRUD for their pay-in channels (deactivation only, never delete). */
+export const listOwnerPayInMethods = (businessId: string) =>
+  request<BusinessPayInMethod[]>(`/owner/businesses/${businessId}/payment-methods`, { auth: true });
+export const createPayInMethod = (
+  businessId: string,
+  body: {
+    type: BusinessPayInMethod['type'];
+    displayName: string;
+    accountTitle?: string;
+    accountNumber?: string;
+    iban?: string;
+    instructions?: string;
+  },
+) => request<BusinessPayInMethod>(`/owner/businesses/${businessId}/payment-methods`, { method: 'POST', body, auth: true });
+export const deactivatePayInMethod = (businessId: string, methodId: string) =>
+  request<BusinessPayInMethod>(`/owner/businesses/${businessId}/payment-methods/${methodId}`, { method: 'DELETE', auth: true });
+
 /* ------------------------------- orders ---------------------------- */
 
 /** Creates an order; the server re-prices everything from the database. */
-export const createOrder = (input: { businessId: string; items: { productId: string; quantity: number }[]; notes?: string }) =>
-  request<Order>('/orders', { method: 'POST', body: input, auth: true });
+export const createOrder = (input: {
+  businessId: string;
+  items: { productId: string; quantity: number }[];
+  notes?: string;
+  /** PICKUP (default) or DELIVERY; the fee always comes from business settings. */
+  fulfillmentType?: 'PICKUP' | 'DELIVERY' | 'COLLECTION';
+  /** Manual digital channel id; omit for COD / pickup-cash. */
+  paymentMethodId?: string;
+}) => request<Order>('/orders', { method: 'POST', body: input, auth: true });
 
 /** Orders visible to the current user (customer: own, owner: own businesses). */
 export const listOrders = () => request<Order[]>('/orders', { auth: true });

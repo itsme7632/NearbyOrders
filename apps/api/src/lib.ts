@@ -157,7 +157,57 @@ export const serviceSchema = z.object({
   priceMinor,
   durationMinutes: z.number().int().positive().max(1440).optional(),
   isActive: z.boolean().optional(),
+  // Advance requirement (Phase 7C). FIXED needs advanceAmountMinor;
+  // PERCENTAGE needs advancePercent (1–100); NONE needs neither. Cross-field
+  // rules (fixed ≤ price) are enforced in the route where price is known.
+  advanceType: z.enum(['NONE', 'FIXED', 'PERCENTAGE']).optional(),
+  advanceAmountMinor: z.number().int().positive().max(99_999_999).optional(),
+  advancePercent: z.number().int().min(1).max(100).optional(),
 });
+
+/**
+ * Validates the advance triplet against the service price. Returns the
+ * canonical fields (advanceType + the one relevant value) or an error message.
+ * Pure and shared by create/update routes — integer minor units only.
+ */
+export const resolveServiceAdvance = (
+  input: { advanceType?: 'NONE' | 'FIXED' | 'PERCENTAGE'; advanceAmountMinor?: number; advancePercent?: number },
+  priceMinor: number,
+): { advance: { advanceType: 'NONE' | 'FIXED' | 'PERCENTAGE'; advanceAmountMinor: number | null; advancePercent: number | null } } | { error: string } => {
+  const type = input.advanceType ?? 'NONE';
+  if (type === 'NONE') {
+    if (input.advanceAmountMinor !== undefined || input.advancePercent !== undefined)
+      return { error: 'advanceAmountMinor/advancePercent must not be set when advanceType is NONE' };
+    return { advance: { advanceType: 'NONE', advanceAmountMinor: null, advancePercent: null } };
+  }
+  if (type === 'FIXED') {
+    const amount = input.advanceAmountMinor;
+    if (amount === undefined) return { error: 'FIXED advance requires advanceAmountMinor' };
+    if (amount <= 0) return { error: 'FIXED advance must be greater than zero' };
+    if (amount > priceMinor) return { error: 'Fixed advance cannot exceed the service price' };
+    return { advance: { advanceType: 'FIXED', advanceAmountMinor: amount, advancePercent: null } };
+  }
+  const percent = input.advancePercent;
+  if (percent === undefined) return { error: 'PERCENTAGE advance requires advancePercent' };
+  if (percent < 1 || percent > 100) return { error: 'Percentage advance must be between 1 and 100' };
+  return { advance: { advanceType: 'PERCENTAGE', advanceAmountMinor: null, advancePercent: percent } };
+};
+
+/**
+ * The advance a service requires, in integer minor units. PERCENTAGE uses
+ * integer math (floor) so no floating point ever touches money; a 17%
+ * advance of 99999 minor is 16999 minor, exactly.
+ */
+export const serviceAdvanceMinor = (s: {
+  advanceType: 'NONE' | 'FIXED' | 'PERCENTAGE';
+  advanceAmountMinor: number | null;
+  advancePercent: number | null;
+  priceMinor: number;
+}): number => {
+  if (s.advanceType === 'FIXED') return s.advanceAmountMinor ?? 0;
+  if (s.advanceType === 'PERCENTAGE') return Math.floor((s.priceMinor * (s.advancePercent ?? 0)) / 100);
+  return 0;
+};
 
 export const serviceUpdateSchema = serviceSchema
   .partial()
@@ -292,6 +342,10 @@ export const orderSchema = z.object({
     .min(1),
   notes: z.string().max(1000).optional(),
   fulfillmentType: z.enum(['PICKUP', 'DELIVERY', 'COLLECTION']).default('PICKUP'),
+  // Optional selected business pay-in channel (manual digital only). Cash
+  // flows omit it; the server validates the method belongs to the business
+  // and is active. Never a money value — totals stay server-computed.
+  paymentMethodId: z.string().uuid().optional(),
 });
 
 /* ------------------------------------------------------------------ */
@@ -379,6 +433,80 @@ export const paymentRejectSchema = z.object({
 });
 
 /* ------------------------------------------------------------------ */
+/* Customer → business payments (Phase 7C)                             */
+/* ------------------------------------------------------------------ */
+
+/** Trimmed transaction reference for manual proofs; empty means "not provided". */
+const optionalReference = z
+  .string()
+  .transform((v) => v.trim())
+  .refine((v) => v.length === 0 || v.length >= 4, { message: 'Transaction reference must be at least 4 characters' })
+  .refine((v) => v.length <= 100, { message: 'Transaction reference must be at most 100 characters' });
+
+/**
+ * Body for submitting a booking payment (advance or outstanding balance).
+ * Cash methods skip reference/receipt; manual digital methods require a
+ * reference, and the receipt arrives as an opaque storage key from the
+ * existing upload endpoint — never a URL the client typed.
+ */
+export const bookingPaymentCreateSchema = z.object({
+  amountMinor: z.number().int().positive().max(99_999_999),
+  paymentMethodId: z.string().uuid(),
+  transactionReference: optionalReference.optional().default(''),
+  receiptStorageKey: z
+    .string()
+    .trim()
+    .max(512)
+    .refine((v) => v.length === 0 || /^receipts\//.test(v), { message: 'Invalid receipt reference' })
+    .optional()
+    .default(''),
+});
+
+/** Same shape for order payments (manual digital proof of the order total). */
+export const orderPaymentCreateSchema = bookingPaymentCreateSchema;
+
+/** Business rejection of a customer payment — same rule as admin rejection. */
+export const customerPaymentRejectSchema = paymentRejectSchema;
+
+/** Owner fields for a business pay-in channel. CASH needs no account details. */
+export const businessPaymentMethodSchema = z.object({
+  type: z.enum(['CASH', 'EASYPAISA', 'JAZZCASH', 'BANK_TRANSFER', 'OTHER']),
+  displayName: z.string().trim().min(2).max(60),
+  accountTitle: z.string().trim().min(2).max(120),
+  accountNumber: z
+    .string()
+    .trim()
+    .max(40)
+    .optional()
+    .transform((v) => (v === undefined || v === '' ? null : v)),
+  iban: z
+    .string()
+    .trim()
+    .max(34)
+    .optional()
+    .transform((v) => (v === undefined || v === '' ? null : v)),
+  instructions: optionalText(1000),
+  isActive: z.boolean().optional(),
+  displayOrder: z.number().int().min(0).max(1000).optional(),
+});
+
+export const businessPaymentMethodUpdateSchema = businessPaymentMethodSchema.partial().refine(
+  (data) => Object.keys(data).length > 0,
+  { message: 'No changes provided' },
+);
+
+/** Business delivery settings (Phase 7C). Fee is integer minor units. */
+export const deliverySettingsSchema = z
+  .object({
+    deliveryEnabled: z.boolean(),
+    codEnabled: z.boolean().optional(),
+    deliveryFeeMinor: z.number().int().min(0).max(99_999_999).optional(),
+  })
+  .refine((d) => !d.deliveryEnabled || (d.deliveryFeeMinor !== undefined && d.deliveryFeeMinor > 0), {
+    message: 'Enable delivery with a delivery fee greater than zero',
+  });
+
+/* ------------------------------------------------------------------ */
 /* Notifications (Phase 5 foundation)                                  */
 /* ------------------------------------------------------------------ */
 
@@ -402,6 +530,12 @@ export const NOTIFICATION_TYPES = {
   SUBSCRIPTION_PAYMENT_SUBMITTED: 'SUBSCRIPTION_PAYMENT_SUBMITTED',
   SUBSCRIPTION_PAYMENT_APPROVED: 'SUBSCRIPTION_PAYMENT_APPROVED',
   SUBSCRIPTION_PAYMENT_REJECTED: 'SUBSCRIPTION_PAYMENT_REJECTED',
+  BOOKING_PAYMENT_SUBMITTED: 'BOOKING_PAYMENT_SUBMITTED',
+  BOOKING_PAYMENT_VERIFIED: 'BOOKING_PAYMENT_VERIFIED',
+  BOOKING_PAYMENT_REJECTED: 'BOOKING_PAYMENT_REJECTED',
+  ORDER_PAYMENT_SUBMITTED: 'ORDER_PAYMENT_SUBMITTED',
+  ORDER_PAYMENT_VERIFIED: 'ORDER_PAYMENT_VERIFIED',
+  ORDER_PAYMENT_REJECTED: 'ORDER_PAYMENT_REJECTED',
 } as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
@@ -412,7 +546,7 @@ export type NotificationInput = {
   type: NotificationType;
   title: string;
   message: string;
-  entityType: 'Booking' | 'Order' | 'SubscriptionPaymentRequest';
+  entityType: 'Booking' | 'Order' | 'SubscriptionPaymentRequest' | 'BookingPayment' | 'OrderPayment';
   entityId: string;
 };
 

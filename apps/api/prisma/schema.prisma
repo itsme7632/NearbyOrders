@@ -47,6 +47,37 @@ enum SubscriptionStatus {
   SUSPENDED
 }
 
+/// How a service requires money up front. NONE = pay at the business; FIXED =
+/// a set advance in minor units; PERCENTAGE = a share of the service price.
+/// The advance is owed to the BUSINESS — NearbyOrders never holds it.
+enum ServiceAdvanceType {
+  NONE
+  FIXED
+  PERCENTAGE
+}
+
+/// Manual payment channels a BUSINESS accepts from its customers. CASH needs
+/// no account details; the digital ones are paid externally and verified by
+/// the business. This is customer→business money — deliberately separate
+/// from the Phase 7B `PaymentMethodType`, which is business→NearbyOrders.
+enum CustomerPaymentMethodType {
+  CASH
+  EASYPAISA
+  JAZZCASH
+  BANK_TRANSFER
+  OTHER
+}
+
+/// Payment state for customer→business money. Kept deliberately separate
+/// from BookingStatus/OrderStatus: a booking can be CONFIRMED while its
+/// advance is PENDING_VERIFICATION, and a READY order can be UNPAID (COD).
+enum CustomerPaymentStatus {
+  UNPAID
+  PENDING_VERIFICATION
+  PAID
+  FAILED
+}
+
 model User {
   id               String                       @id @default(uuid())
   email            String                       @unique
@@ -64,8 +95,12 @@ model User {
   sessions         RefreshToken[]
   auditActions     AuditLog[]                   @relation("AuditActor")
   notifications    Notification[]
-  reviews          Review[]                     @relation("ReviewCustomer")
-  reviewedPayments SubscriptionPaymentRequest[] @relation("PaymentReviewer")
+  reviews             Review[]                     @relation("ReviewCustomer")
+  reviewedPayments    SubscriptionPaymentRequest[] @relation("PaymentReviewer")
+  bookingPayments     BookingPayment[]             @relation("BookingPaymentCustomer")
+  orderPayments       OrderPayment[]               @relation("OrderPaymentCustomer")
+  verifiedBookingPays BookingPayment[]             @relation("BookingPaymentVerifier")
+  verifiedOrderPays   OrderPayment[]               @relation("OrderPaymentVerifier")
 
   @@index([role, isSuspended])
 }
@@ -110,6 +145,15 @@ model Business {
   reviews         Review[]
   subscriptions   BusinessSubscription[]
   paymentRequests SubscriptionPaymentRequest[]
+  payInMethods    BusinessPaymentMethod[]
+  bookingPayments BookingPayment[]
+  orderPayments   OrderPayment[]
+
+  // Delivery / cash-on-delivery settings (Phase 7C). The fee belongs to the
+  // business — NearbyOrders takes no cut and never holds the money.
+  deliveryEnabled Boolean @default(false)
+  codEnabled      Boolean @default(false)
+  deliveryFeeMinor Int    @default(0)
 
   @@index([ownerId])
   @@index([status, city])
@@ -139,18 +183,24 @@ model BusinessHour {
 }
 
 model Service {
-  id              String    @id @default(uuid())
-  businessId      String
-  name            String
-  description     String?
-  priceMinor      Int
-  currency        String    @default("PKR")
-  durationMinutes Int?
-  isActive        Boolean   @default(true)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  business        Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  bookings        Booking[]
+  id                String            @id @default(uuid())
+  businessId        String
+  name              String
+  description       String?
+  priceMinor        Int
+  currency          String            @default("PKR")
+  durationMinutes   Int?
+  isActive          Boolean           @default(true)
+  // Optional advance requirement (Phase 7C). FIXED uses advanceAmountMinor;
+  // PERCENTAGE uses advancePercent (0–100). The exact advance owed is always
+  // recomputed server-side and snapshotted onto each booking at creation.
+  advanceType       ServiceAdvanceType @default(NONE)
+  advanceAmountMinor Int?
+  advancePercent    Int?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  business          Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  bookings          Booking[]
 
   @@index([businessId, isActive])
 }
@@ -182,11 +232,19 @@ model Booking {
   endAt       DateTime
   status      BookingStatus @default(PENDING)
   notes       String?
+  // Payment snapshot taken at booking creation (Phase 7C). Later service
+  // edits never rewrite these — the agreed amounts stay historically correct.
+  // `servicePriceMinor` is null for legacy rows / no-service bookings;
+  // `amountPaidMinor` accumulates VERIFIED BookingPayment amounts.
+  servicePriceMinor    Int @default(0)
+  advanceRequiredMinor Int @default(0)
+  amountPaidMinor      Int @default(0)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   customer    User          @relation(fields: [customerId], references: [id])
   business    Business      @relation(fields: [businessId], references: [id])
   service     Service?      @relation(fields: [serviceId], references: [id])
+  payments    BookingPayment[]
   review      Review?
 
   @@index([businessId, status])
@@ -200,14 +258,23 @@ model Order {
   businessId      String
   status          OrderStatus @default(PENDING)
   subtotalMinor   Int
+  // Delivery fee (DELIVERY only — 0 for pickup/dine-in) and the authoritative
+  // order total, both computed server-side at creation. Never client-sent.
+  deliveryFeeMinor Int        @default(0)
+  totalMinor      Int         @default(0)
   currency        String      @default("PKR")
   fulfillmentType String      @default("PICKUP")
+  // The manual digital pay-in channel the customer chose (null = cash on
+  // delivery / cash on pickup). Payment STATE lives on OrderPayment rows.
+  paymentMethodId String?
   notes           String?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   customer        User        @relation(fields: [customerId], references: [id])
   business        Business    @relation(fields: [businessId], references: [id])
+  paymentMethod   BusinessPaymentMethod? @relation(fields: [paymentMethodId], references: [id])
   items           OrderItem[]
+  payments        OrderPayment[]
   review          Review?
 
   @@index([businessId, status])
@@ -422,3 +489,107 @@ model SubscriptionPaymentRequest {
   @@index([transactionReference])
   @@index([subscriptionId])
 }
+
+/**
+ * ------------------------------------------------------------------
+ */
+/**
+ * Customer → business payments (Phase 7C)
+ */
+/**
+ * ------------------------------------------------------------------
+ */
+
+/// A manual pay-in channel a BUSINESS accepts from its customers (cash on
+/// delivery/pickup, Easypaisa, JazzCash, bank transfer, other). Owned and
+/// configured by the business owner — deliberately separate from the Phase
+/// 7B `PaymentMethod`, which models business→NearbyOrders subscription
+/// pay-ins. Inactive rows are hidden from customers but kept for history.
+model BusinessPaymentMethod {
+  id              String                     @id @default(uuid())
+  businessId      String
+  type            CustomerPaymentMethodType
+  displayName     String
+  accountTitle    String
+  accountNumber   String?
+  iban            String?
+  instructions    String?
+  isActive        Boolean                    @default(true)
+  displayOrder    Int                        @default(0)
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+  business        Business                   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  bookings        BookingPayment[]
+  orders          Order[]
+  orderPayments   OrderPayment[]             @relation("OrderPaymentMethod")
+
+  @@index([businessId, isActive, displayOrder])
+}
+
+/// A customer's booking payment (typically a service advance). One row per
+/// submitted attempt; the booking's `amountPaidMinor` accumulates only VERIFIED
+/// rows. Business owners verify their own business's payments — NearbyOrders
+/// records state but never holds the money. Verification follows the Phase
+/// 7B advisory-lock pattern so a payment can only ever be processed once.
+model BookingPayment {
+  id                   String                  @id @default(uuid())
+  bookingId            String
+  businessId           String
+  customerId           String
+  amountMinor          Int
+  currency             String                  @default("PKR")
+  paymentMethodId      String?
+  status               CustomerPaymentStatus   @default(PENDING_VERIFICATION)
+  transactionReference String?
+  receiptStorageKey    String?
+  rejectionReason      String?
+  submittedAt          DateTime                @default(now())
+  verifiedAt           DateTime?
+  verifiedByUserId     String?
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  booking              Booking                 @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  business             Business                @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer             User                    @relation("BookingPaymentCustomer", fields: [customerId], references: [id])
+  paymentMethod        BusinessPaymentMethod?  @relation(fields: [paymentMethodId], references: [id])
+  verifiedBy           User?                   @relation("BookingPaymentVerifier", fields: [verifiedByUserId], references: [id])
+
+  @@index([businessId, status, submittedAt])
+  @@index([bookingId, submittedAt])
+  @@index([customerId, createdAt])
+}
+
+/// A customer's order payment attempt (manual digital proof, or the eventual
+/// cash-collection record for COD). Order totals live on the Order row;
+/// summing this table's VERIFIED rows is always safe to recompute.
+model OrderPayment {
+  id                   String                @id @default(uuid())
+  orderId              String
+  businessId           String
+  customerId           String
+  amountMinor          Int
+  currency             String                @default("PKR")
+  method               CustomerPaymentMethodType
+  paymentMethodId      String?
+  status               CustomerPaymentStatus @default(PENDING_VERIFICATION)
+  transactionReference String?
+  receiptStorageKey    String?
+  rejectionReason      String?
+  submittedAt          DateTime              @default(now())
+  verifiedAt           DateTime?
+  verifiedByUserId     String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  order                Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  business             Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer             User                  @relation("OrderPaymentCustomer", fields: [customerId], references: [id])
+  paymentMethod        BusinessPaymentMethod? @relation("OrderPaymentMethod", fields: [paymentMethodId], references: [id])
+  verifiedBy           User?                 @relation("OrderPaymentVerifier", fields: [verifiedByUserId], references: [id])
+
+  @@index([businessId, status, submittedAt])
+  @@index([orderId, submittedAt])
+  @@index([customerId, createdAt])
+}
+
+/// Opposite side of Order.paymentMethod — a convenience pointer to the
+/// business pay-in channel the customer selected at checkout.

@@ -82,6 +82,7 @@ describe('cart screen', () => {
     expect(api.createOrder).toHaveBeenCalledWith({
       businessId: 'biz-1',
       items: [{ productId: 'p1', quantity: 1 }],
+      fulfillmentType: 'PICKUP',
     });
     // Cart is emptied after a successful placement.
     expect(getCart()).toBeNull();
