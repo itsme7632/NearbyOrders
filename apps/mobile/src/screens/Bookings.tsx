@@ -279,7 +279,7 @@ function BookingReviewPanel(props: { booking: Booking }) {
   if (reviewed)
     return (
       <p className="review-done" role="status">
-        ★ Reviewed — thank you for your feedback.
+        ★ Reviewed: thank you for your feedback.
       </p>
     );
   if (!showForm)
@@ -318,7 +318,7 @@ const advanceOf = (booking: Booking) => {
 /**
  * Phase 7C advance-payment section for one booking. Shows the frozen
  * snapshot (total / advance / remaining), existing payment proofs with
- * honest statuses, and — while an advance is outstanding — the business's
+ * honest statuses, and (while an advance is outstanding) the business's
  * configured pay-in channels so the customer can submit proof. Cash
  * settlement happens in person; there is no gateway and no self-attestation.
  */
@@ -447,7 +447,7 @@ export function BookingPaymentSection(props: { booking: Booking }) {
 
       {advancePaid ? (
         <p className="pay-pending" role="status">
-          Advance paid — pay the remaining <Money minor={due} currency={booking.currency} /> directly to the business.
+          Advance paid: pay the remaining <Money minor={due} currency={booking.currency} /> directly to the business.
         </p>
       ) : open ? (
         <>
@@ -467,7 +467,7 @@ export function BookingPaymentSection(props: { booking: Booking }) {
               ))}
             </div>
           ) : (
-            <p className="hint">This business has no digital pay-in channels yet — ask them how to pay the advance.</p>
+            <p className="hint">This business has no digital pay-in channels yet: ask them how to pay the advance.</p>
           )}
           {selected ? (
             <div className="pay-details">

@@ -43,7 +43,8 @@ function OwnerBookingCard(props: { booking: Booking; onOpen: () => void }) {
   );
 }
 
-function BookingGroup(props: { label: string; hint?: string; bookings: Booking[]; onOpenBooking: (id: string) => void }) {
+/** Exported for the dedicated Business Bookings dashboard screen. */
+export function BookingGroup(props: { label: string; hint?: string; bookings: Booking[]; onOpenBooking: (id: string) => void }) {
   return (
     <section aria-label={`${props.label} section`}>
       <div className="section-head">
@@ -122,8 +123,8 @@ function OwnerBookingList(props: { businessId: string; switcher: React.ReactNode
       {!bookings.data?.length ? (
         <EmptyState
           icon={<BookingsIcon size={30} />}
-          title="No bookings yet"
-          body="When customers book your services, their requests will appear here."
+          title="No customer bookings yet"
+          body="Bookings made with your business will appear here."
         />
       ) : (
         <>

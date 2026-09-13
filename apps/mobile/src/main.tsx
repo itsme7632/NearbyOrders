@@ -1,34 +1,48 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
-import { navigationTabs, type Tab } from './navigation.js';
+import { businessTabs, navigationTabs, type BusinessTab, type Tab } from './navigation.js';
 import { getSession, onSessionChange, type Session } from './api.js';
 import { useRoute } from './hooks.js';
-import { BellIcon, BookingsIcon, ExploreIcon, HomeIcon, OrdersIcon, ProfileIcon } from './components/icons.js';
+import { initModeSessionSync, setAppMode, useAppMode } from './mode.js';
+import { BellIcon, BookingsIcon, ExploreIcon, HomeIcon, OrdersIcon, ProfileIcon, StoreIcon } from './components/icons.js';
 import { EmptyState, Loading } from './components/ui.js';
 import { HomeScreen } from './screens/Home.js';
 import { ExploreScreen } from './screens/Explore.js';
 import { BusinessDetailScreen } from './screens/BusinessDetail.js';
 import { BookServiceScreen } from './screens/BookService.js';
 import { BookingsScreen, BookingDetailScreen } from './screens/Bookings.js';
-import { OwnerBookingsScreen, OwnerBookingDetailScreen } from './screens/OwnerBookings.js';
 import { ProfileScreen, EditProfileScreen, ChangePasswordScreen } from './screens/Profile.js';
 import { OwnerDashboardScreen } from './screens/OwnerDashboard.js';
+import { OwnerScreen } from './screens/OwnerScreen.js';
+import { OwnerBookingDetailScreen } from './screens/OwnerBookings.js';
+import { OwnerBusinessHome } from './screens/OwnerBusinessHome.js';
+import { OwnerBusinessOrders } from './screens/OwnerBusinessOrders.js';
+import { OwnerBusinessBookings } from './screens/OwnerBusinessBookings.js';
+import { OwnerEarnings } from './screens/OwnerEarnings.js';
+import { OwnerBusinessProfile } from './screens/OwnerBusinessProfile.js';
 import { CreateBusinessScreen } from './screens/CreateBusiness.js';
 import { CartScreen } from './screens/Cart.js';
 import { OrdersScreen, OrderDetailScreen } from './screens/Orders.js';
 import { NotificationsScreen } from './screens/Notifications.js';
 import { useUnreadNotifications } from './useUnreadNotifications.js';
 
+initModeSessionSync();
+
 /** Exported (besides self-mounting below) so tests can render the full app shell. */
 export function App() {
   const [tab, setTab] = useState<Tab>('Home');
+  const [businessTab, setBusinessTab] = useState<BusinessTab>('Overview');
   const [route, push, back] = useRoute();
   const [session, setSession] = useState<Session | null>(getSession());
   const [exploreSeed, setExploreSeed] = useState<{ category?: string; query?: string; nonce: number }>({ nonce: 0 });
   const [justCreatedName, setJustCreatedName] = useState<string | null>(null);
   const [justCreatedStatus, setJustCreatedStatus] = useState<string | null>(null);
+  const { mode } = useAppMode();
   useEffect(() => onSessionChange(setSession), []);
+
+  const isOwner = session?.user.role === 'BUSINESS_OWNER';
+  const businessMode = Boolean(isOwner && mode === 'BUSINESS');
 
   const openBusiness = (id: string) => push(`/business/${id}`);
 
@@ -37,7 +51,10 @@ export function App() {
   /** Signed-out fallback: ProfileScreen doubles as the auth screen. */
   const profileAuthScreen = (
     <ProfileScreen
-      onOwnerDashboard={() => push('/owner')}
+      onOwnerDashboard={() => {
+        setAppMode('BUSINESS');
+        push('/owner');
+      }}
       onEditProfile={() => push('/edit-profile')}
       onChangePassword={() => push('/change-password')}
       onOpenOrders={() => {
@@ -52,10 +69,13 @@ export function App() {
     />
   );
 
-  /** Signed-in Profile tab: the account & settings hub. */
+  /** Signed-in Profile tab: the account & settings hub (customer identity). */
   const profileHubScreen = (
     <ProfileScreen
-      onOwnerDashboard={() => push('/owner')}
+      onOwnerDashboard={() => {
+        setAppMode('BUSINESS');
+        push('/owner');
+      }}
       onEditProfile={() => push('/edit-profile')}
       onChangePassword={() => push('/change-password')}
       onOpenOrders={() => {
@@ -93,6 +113,13 @@ export function App() {
     push('/');
   };
 
+  /** Leaves Business mode and returns to the customer experience. */
+  const switchToCustomer = () => {
+    setAppMode('CUSTOMER');
+    setTab('Home');
+    push('/');
+  };
+
   let content: React.ReactNode;
   if (route.name === 'business') {
     content = (
@@ -100,7 +127,7 @@ export function App() {
         idOrSlug={route.idOrSlug}
         onBack={back}
         onBook={(serviceId) => push(`/book/${route.idOrSlug}${serviceId ? `/${serviceId}` : ''}`)}
-        canOrder={session?.user.role === 'CUSTOMER'}
+        canOrder={Boolean(session)}
         onOpenCart={session ? openCart : undefined}
       />
     );
@@ -119,6 +146,8 @@ export function App() {
       />
     ) : null;
   } else if (route.name === 'order') {
+    // Both roles open order detail here: a customer sees their order; the
+    // owning business is authorized server-side for the same endpoint.
     content = session ? <OrderDetailScreen orderId={route.orderId} onBack={back} /> : null;
   } else if (route.name === 'notifications') {
     content = session ? (
@@ -129,34 +158,20 @@ export function App() {
   } else if (route.name === 'change-password') {
     content = session ? <ChangePasswordScreen onBack={back} /> : null;
   } else if (route.name === 'book') {
-    // The hash already carries the destination, so after sign-in this same
-    // route renders the booking flow again — no separate return logic needed.
-    content = session
-      ? session.user.role === 'CUSTOMER'
-        ? (
-            <BookServiceScreen
-              businessId={route.businessId}
-              preselectedServiceId={route.serviceId}
-              onBack={back}
-              onDone={() => {
-                setTab('Bookings');
-                push('/');
-              }}
-            />
-          )
-        : (
-            <div className="screen">
-              <button className="back-link" onClick={back}>
-                ‹ Back
-              </button>
-              <EmptyState
-                icon={<BookingsIcon size={30} />}
-                title="Booking is for customer accounts"
-                body="This account is a business account, so it cannot book services. Use a customer account to book."
-              />
-            </div>
-          )
-      : null;
+    // Both customers and business owners book through the same flow; the
+    // identity is the signed-in person either way. Booking your own business
+    // is blocked server-side.
+    content = session ? (
+      <BookServiceScreen
+        businessId={route.businessId}
+        preselectedServiceId={route.serviceId}
+        onBack={back}
+        onDone={() => {
+          setTab('Bookings');
+          push('/');
+        }}
+      />
+    ) : null;
   } else if (route.name === 'booking') {
     // Same detail route for both roles; each gets their own view (owner view
     // includes lifecycle actions; customer view includes cancellation).
@@ -168,13 +183,20 @@ export function App() {
       )
     ) : null;
   } else if (route.name === 'owner-dashboard') {
-    content = session ? (
-      <OwnerDashboardScreen
-        onBack={back}
-        onListBusiness={session.user.role === 'BUSINESS_OWNER' ? () => push('/create-business') : undefined}
-        justCreatedName={route.justCreated ? route.justCreatedName : null}
-        justCreatedStatus={route.justCreated ? route.justCreatedStatus ?? null : null}
+    // /owner: Business-mode Overview hub.
+    content = session && session.user.role === 'BUSINESS_OWNER' ? (
+      <OwnerBusinessHome
+        onOpen={(path) => push(path)}
+        onListBusiness={() => push('/create-business')}
+        onOpenOrder={(id) => push(`/order/${id}`)}
+        onOpenBooking={(id) => push(`/booking/${id}`)}
       />
+    ) : (
+      profileAuthScreen
+    );
+  } else if (route.name === 'owner-screen') {
+    content = session && session.user.role === 'BUSINESS_OWNER' ? (
+      <OwnerScreen screen={route.screen} businessId={route.businessId} onBack={() => push('/owner')} />
     ) : (
       profileAuthScreen
     );
@@ -193,6 +215,42 @@ export function App() {
       ) : (
         profileAuthScreen
       );
+  } else if (businessMode && route.name === 'tabs') {
+    // BUSINESS MODE: its own tab set and screens. Customer navigation and
+    // customer-only content (Home, Explore, My Orders, My Bookings) never
+    // render here.
+    if (businessTab === 'Overview') {
+      content = (
+        <OwnerBusinessHome
+          onOpen={(path) => push(path)}
+          onListBusiness={() => push('/create-business')}
+          onOpenOrder={(id) => push(`/order/${id}`)}
+          onOpenBooking={(id) => push(`/booking/${id}`)}
+        />
+      );
+    } else if (businessTab === 'Orders') {
+      content = <OwnerBusinessOrders onListBusiness={() => push('/create-business')} />;
+    } else if (businessTab === 'Bookings') {
+      content = (
+        <OwnerBusinessBookings
+          onOpenBooking={(id) => push(`/booking/${id}`)}
+          onListBusiness={() => push('/create-business')}
+        />
+      );
+    } else if (businessTab === 'Earnings') {
+      content = <OwnerEarnings onListBusiness={() => push('/create-business')} />;
+    } else {
+      content = (
+        <OwnerBusinessProfile
+          onOpenDashboard={() => push('/owner')}
+          onEditProfile={() => push('/edit-profile')}
+          onChangePassword={() => push('/change-password')}
+          onOpenNotifications={() => push('/notifications')}
+          onSwitchToCustomer={switchToCustomer}
+          onListBusiness={() => push('/create-business')}
+        />
+      );
+    }
   } else if (tab === 'Home') {
     content = (
       <HomeScreen
@@ -205,44 +263,33 @@ export function App() {
   } else if (tab === 'Explore') {
     content = <ExploreScreen key={exploreSeed.nonce} initialCategory={exploreSeed.category} initialQuery={exploreSeed.query} onOpenBusiness={openBusiness} />;
   } else if (tab === 'Orders') {
-    content =
-      session && session.user.role === 'CUSTOMER' ? (
-        <OrdersScreen
-          onOpenOrder={(id) => push(`/order/${id}`)}
-          onBrowse={() => {
-            setTab('Explore');
-            push('/');
-          }}
+    // Customer mode only: the person's own placed orders, whatever their role.
+    content = session ? (
+      <OrdersScreen
+        onOpenOrder={(id) => push(`/order/${id}`)}
+        onBrowse={() => {
+          setTab('Explore');
+          push('/');
+        }}
+      />
+    ) : (
+      <div className="screen">
+        <EmptyState
+          icon={<OrdersIcon size={30} />}
+          title="Your orders"
+          body="Sign in to place orders and track them here."
         />
-      ) : session && session.user.role === 'BUSINESS_OWNER' ? (
-        // Owners get incoming orders inside My business → Orders; the Orders
-        // tab routes them there instead of a second dashboard.
-        <OwnerOrdersRedirect onOwnerDashboard={() => push('/owner')} />
-      ) : (
-        <div className="screen">
-          <EmptyState
-            icon={<OrdersIcon size={30} />}
-            title="Your orders"
-            body="Sign in as a customer to place orders and track them here."
-          />
-        </div>
-      );
+      </div>
+    );
   } else if (tab === 'Bookings') {
     content = session ? (
-      session.user.role === 'BUSINESS_OWNER' ? (
-        <OwnerBookingsScreen
-          onOpenBooking={(id) => push(`/booking/${id}`)}
-          onListBusiness={session.user.role === 'BUSINESS_OWNER' ? () => push('/create-business') : undefined}
-        />
-      ) : (
-        <BookingsScreen
-          onOpenBooking={(id) => push(`/booking/${id}`)}
-          onExplore={() => {
-            setTab('Explore');
-            push('/');
-          }}
-        />
-      )
+      <BookingsScreen
+        onOpenBooking={(id) => push(`/booking/${id}`)}
+        onExplore={() => {
+          setTab('Explore');
+          push('/');
+        }}
+      />
     ) : null;
   } else {
     content = session ? profileHubScreen : profileAuthScreen;
@@ -264,12 +311,20 @@ export function App() {
     <main className={authFlow ? 'auth-mode' : undefined}>
       {!authFlow ? (
         <header className="app-header">
-          <button className="logo" onClick={() => { setTab('Home'); push('/'); }} aria-label="NearbyOrders home">
+          <button className="logo" onClick={() => { setTab('Home'); setBusinessTab('Overview'); push('/'); }} aria-label="NearbyOrders home">
             NearbyOrders
           </button>
-          {session?.user.role === 'BUSINESS_OWNER' ? (
-            <button className="header-link" onClick={() => push('/owner')}>
-              My business
+          {isOwner ? (
+            <button
+              className="header-link"
+              onClick={() => {
+                // Enters Business mode (idempotent) and shows the Overview.
+                setAppMode('BUSINESS');
+                setBusinessTab('Overview');
+                push('/owner');
+              }}
+            >
+              {businessMode ? 'Overview' : 'My business'}
             </button>
           ) : null}
           {session ? (
@@ -287,37 +342,54 @@ export function App() {
       ) : null}
       {content}
       {!authFlow ? (
-        <nav aria-label="Primary">
-          {navigationTabs.map((t) => {
-            const active = t === tab && route.name === 'tabs';
-            const IconCmp =
-              t === 'Home' ? HomeIcon : t === 'Explore' ? ExploreIcon : t === 'Orders' ? OrdersIcon : t === 'Bookings' ? BookingsIcon : ProfileIcon;
-            return (
-              <button
-                key={t}
-                className={active ? 'nav-item active' : 'nav-item'}
-                aria-current={active ? 'page' : undefined}
-                onClick={() => {
-                  setTab(t);
-                  push('/');
-                }}
-              >
-                <IconCmp size={22} />
-                <span>{t}</span>
-              </button>
-            );
-          })}
-        </nav>
+        businessMode ? (
+          <nav aria-label="Business" className="business-nav">
+            {businessTabs.map((t) => {
+              const active = t === businessTab && route.name === 'tabs';
+              const IconCmp =
+                t === 'Overview' ? HomeIcon : t === 'Orders' ? OrdersIcon : t === 'Bookings' ? BookingsIcon : t === 'Earnings' ? StoreIcon : ProfileIcon;
+              return (
+                <button
+                  key={t}
+                  className={active ? 'nav-item active' : 'nav-item'}
+                  aria-current={active ? 'page' : undefined}
+                  onClick={() => {
+                    setBusinessTab(t);
+                    push('/');
+                  }}
+                >
+                  <IconCmp size={22} />
+                  <span>{t}</span>
+                </button>
+              );
+            })}
+          </nav>
+        ) : (
+          <nav aria-label="Primary">
+            {navigationTabs.map((t) => {
+              const active = t === tab && route.name === 'tabs';
+              const IconCmp =
+                t === 'Home' ? HomeIcon : t === 'Explore' ? ExploreIcon : t === 'Orders' ? OrdersIcon : t === 'Bookings' ? BookingsIcon : ProfileIcon;
+              return (
+                <button
+                  key={t}
+                  className={active ? 'nav-item active' : 'nav-item'}
+                  aria-current={active ? 'page' : undefined}
+                  onClick={() => {
+                    setTab(t);
+                    push('/');
+                  }}
+                >
+                  <IconCmp size={22} />
+                  <span>{t}</span>
+                </button>
+              );
+            })}
+          </nav>
+        )
       ) : null}
     </main>
   );
-}
-
-function OwnerOrdersRedirect(props: { onOwnerDashboard: () => void }) {
-  useEffect(() => {
-    props.onOwnerDashboard();
-  });
-  return <Loading label="Opening your business…" />;
 }
 
 const mountPoint = document.getElementById('root');

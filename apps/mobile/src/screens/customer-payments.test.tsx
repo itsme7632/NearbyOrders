@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import { buildAdvanceBody, DeliverySettingsSection } from './OwnerDashboard.js';
+import { buildAdvanceBody } from './OwnerCatalog.js';
+import { DeliverySettingsSection } from './OwnerDeliverySettings.js';
 import { OrderPaymentPanel } from './Orders.js';
 import * as api from '../api.js';
 import type { CustomerPayment, Order } from '../api.js';

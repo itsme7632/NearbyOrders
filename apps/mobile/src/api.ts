@@ -84,6 +84,8 @@ export type Business = {
   name: string;
   slug: string;
   status?: string;
+  /** Average rating shown to owners on their business profile (may be null). */
+  averageRating?: number | null;
   description: string | null;
   imageUrl: string | null;
   isVerified: boolean;
@@ -554,6 +556,13 @@ export const submitOrderPayment = (
   orderId: string,
   body: { amountMinor: number; paymentMethodId: string; transactionReference?: string; receiptStorageKey?: string },
 ) => request<CustomerPayment>(`/orders/${orderId}/payments`, { method: 'POST', body, auth: true });
+
+/**
+ * Incoming orders for ONE owned business (Business-mode listing).
+ * Distinct from listOrders, which is always the caller's own placed orders.
+ */
+export const listBusinessOrders = (businessId: string) =>
+  request<Order[]>(`/owner/businesses/${businessId}/orders`, { auth: true });
 
 /** Owner's verification queue across their businesses (both kinds). */
 export type OwnerPaymentQueue = { bookingPayments: CustomerPayment[]; orderPayments: CustomerPayment[] };

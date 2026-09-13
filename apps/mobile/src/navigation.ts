@@ -1,5 +1,14 @@
 export type Tab = 'Home' | 'Explore' | 'Orders' | 'Bookings' | 'Profile';
 
+/** Tab set for Business mode: its own navigation, never the customer one. */
+export const businessTabs = ['Overview', 'Orders', 'Bookings', 'Earnings', 'Profile'] as const;
+export type BusinessTab = (typeof businessTabs)[number];
+
+/** Dedicated Business Dashboard management screens (each its own route). */
+export const ownerScreens = ['profile', 'hours', 'delivery', 'services', 'products', 'bookings', 'orders', 'payments', 'payment-methods', 'advances', 'reviews', 'subscription', 'settings'] as const;
+export type OwnerScreenName = (typeof ownerScreens)[number];
+
+/** Customer-mode bottom navigation. */
 export const navigationTabs: Tab[] = ['Home', 'Explore', 'Orders', 'Bookings', 'Profile'];
 
 export type Route =
@@ -11,6 +20,7 @@ export type Route =
   | { name: 'order'; orderId: string }
   | { name: 'notifications' }
   | { name: 'owner-dashboard'; justCreated?: boolean; justCreatedName?: string; justCreatedStatus?: string }
+  | { name: 'owner-screen'; screen: OwnerScreenName; businessId: string }
   | { name: 'create-business' }
   | { name: 'edit-profile' }
   | { name: 'change-password' };
@@ -49,6 +59,13 @@ export function parseHash(hash: string): Route {
     return created
       ? { name: 'owner-dashboard', justCreated: true, justCreatedName: created, justCreatedStatus: status }
       : { name: 'owner-dashboard' };
+  }
+  // Business Dashboard sub-screens: /owner/<businessId>/<screen>.
+  if (clean.startsWith('owner/')) {
+    const [, businessId, screen] = clean.split('/');
+    if (businessId && screen && (ownerScreens as readonly string[]).includes(screen)) {
+      return { name: 'owner-screen', screen: screen as OwnerScreenName, businessId };
+    }
   }
   return { name: 'tabs' };
 }

@@ -194,15 +194,44 @@ describe('booking creation', () => {
     expect(JSON.parse(res.body).error.code).toBe('INVALID_SERVICE');
   });
 
-  it('customers only; owners cannot create customer bookings', async () => {
+  it('owners can book OTHER businesses as customers but not their own', async () => {
     const { owner, businessId, serviceId } = await bookableFixture();
-    const res = await createBooking(owner.token, { businessId, serviceId, date: tomorrowPkt(), startTime: '10:00' });
-    expect(res.statusCode).toBe(403);
+    // Booking their own business is rejected (would manufacture booking history).
+    const own = await createBooking(owner.token, { businessId, serviceId, date: tomorrowPkt(), startTime: '10:00' });
+    expect(own.statusCode).toBe(400);
+    expect(JSON.parse(own.body).error.code).toBe('SELF_BOOKING');
+
+    // Booking another owner's business as a customer works.
+    const otherOwner = await registerAndLogin(app, 'BUSINESS_OWNER');
+    const { id: otherBusinessId } = await createBusiness(app, otherOwner.token);
+    await app.inject({
+      method: 'PUT',
+      url: `/api/v1/businesses/${otherBusinessId}/hours`,
+      headers: authed(otherOwner.token),
+      payload: Array.from({ length: 7 }, (_, dayOfWeek) => ({ dayOfWeek, isClosed: false, opensAt: '09:00', closesAt: '21:00' })),
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/api/v1/businesses/${otherBusinessId}/services`,
+      headers: authed(otherOwner.token),
+      payload: { name: 'Other Service', priceMinor: 15000, durationMinutes: 60 },
+    });
+    await approveBusiness(otherBusinessId);
+    const otherServiceId = (
+      await prisma.service.findFirstOrThrow({ where: { businessId: otherBusinessId, name: 'Other Service' } })
+    ).id;
+    const other = await createBooking(owner.token, {
+      businessId: otherBusinessId,
+      serviceId: otherServiceId,
+      date: tomorrowPkt(),
+      startTime: '11:00',
+    });
+    expect(other.statusCode).toBe(201);
   });
 });
 
 describe('booking listing and visibility', () => {
-  it('customer sees only their own bookings; owner sees bookings for their businesses', async () => {
+  it('/bookings is personal: customer sees their own, owner sees none (business list is separate)', async () => {
     const { customer, owner, businessId, serviceId } = await bookableFixture();
     await createBooking(customer.token, { businessId, serviceId, date: tomorrowPkt(), startTime: '10:00' });
 
@@ -211,11 +240,21 @@ describe('booking listing and visibility', () => {
     const mineData = JSON.parse(mine.body).data as { customerId: string }[];
     expect(mineData).toHaveLength(1);
 
+    // /bookings is ALWAYS the caller's personal bookings. The owner made none,
+    // so their list is empty even though a booking exists for their business.
     const ownerList = await app.inject({ method: 'GET', url: `/api/v1/bookings`, headers: authed(owner.token) });
-    const ownerData = JSON.parse(ownerList.body).data as { businessId: string; customer: { id: string } }[];
-    expect(ownerData).toHaveLength(1);
-    expect(ownerData[0].businessId).toBe(businessId);
-    expect(ownerData[0].customer.id).toBe(customer.userId);
+    expect(JSON.parse(ownerList.body).data).toHaveLength(0);
+
+    // The owner sees the incoming booking through the business-mode listing.
+    const ownerBusiness = await app.inject({
+      method: 'GET',
+      url: `/api/v1/businesses/${businessId}/bookings`,
+      headers: authed(owner.token),
+    });
+    const ownerBusinessData = JSON.parse(ownerBusiness.body).data as { businessId: string; customer: { id: string } }[];
+    expect(ownerBusinessData).toHaveLength(1);
+    expect(ownerBusinessData[0].businessId).toBe(businessId);
+    expect(ownerBusinessData[0].customer.id).toBe(customer.userId);
 
     const stranger = await registerAndLogin(app, 'CUSTOMER');
     const strangerList = await app.inject({ method: 'GET', url: '/api/v1/bookings', headers: authed(stranger.token) });

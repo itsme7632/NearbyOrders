@@ -26,7 +26,7 @@ describe('ReviewForm', () => {
     const onSubmitted = vi.fn();
     render(<ReviewForm businessId="b1" source={{ orderId: 'o1' }} onSubmitted={onSubmitted} />);
 
-    fireEvent.click(screen.getByRole('radio', { name: /5 stars — Excellent/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /5 stars: Excellent/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Submit review' }));
 
     await waitFor(() => expect(onSubmitted).toHaveBeenCalled());
@@ -193,7 +193,7 @@ describe('OrderDetail review CTA', () => {
     ]);
 
     render(<OrderDetailScreen orderId="o1" onBack={() => {}} />);
-    expect(await screen.findByText('★ Reviewed — thank you for your feedback.')).toBeTruthy();
+    expect(await screen.findByText('★ Reviewed: thank you for your feedback.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Leave a review' })).toBeNull();
   });
 

@@ -153,12 +153,16 @@ describe('order creation (customer)', () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it('orders via a BUSINESS_OWNER account are rejected (role enforcement)', async () => {
+  it('owners can order from OTHER businesses as customers; never their own', async () => {
     const { owner, businessId } = await shopFixture();
-    const p = await createProduct(owner.token, businessId, 'Owner Food', 10000);
+    const p = await createProduct(owner.token, businessId, 'Own Item', 10000);
     const otherOwner = await registerAndLogin(app, 'BUSINESS_OWNER');
+    // Ordering from their OWN business is rejected (would manufacture order history).
+    const own = await placeOrder(owner.token, businessId, [{ productId: p.id, quantity: 1 }]);
+    expect(JSON.parse(own.body).error.code).toBe('SELF_ORDER');
+    // Ordering from another owner's business as a customer works.
     const res = await placeOrder(otherOwner.token, businessId, [{ productId: p.id, quantity: 1 }]);
-    expect([401, 403]).toContain(res.statusCode);
+    expect(res.statusCode).toBe(201);
   });
 });
 
@@ -226,7 +230,7 @@ describe('order visibility & security', () => {
     expect(direct.statusCode).toBe(404);
   });
 
-  it('owner sees own-business orders and order detail; another owner gets 404', async () => {
+  it('owner sees own-business orders via the business listing and detail; another owner gets 404', async () => {
     const a = await shopFixture();
     const b = await shopFixture();
     const pa = await createProduct(a.owner.token, a.businessId, 'A Item', 30000);
@@ -234,11 +238,20 @@ describe('order visibility & security', () => {
     const placed = await placeOrder(c.token, a.businessId, [{ productId: pa.id, quantity: 3 }]);
     const orderId = JSON.parse(placed.body).data.id as string;
 
-    const ownerList = await app.inject({ method: 'GET', url: '/api/v1/orders', headers: authed(a.owner.token) });
+    // Business-mode listing: incoming orders for the owned business.
+    const ownerList = await app.inject({
+      method: 'GET',
+      url: `/api/v1/owner/businesses/${a.businessId}/orders`,
+      headers: authed(a.owner.token),
+    });
     const ownerData = JSON.parse(ownerList.body).data as { id: string }[];
     expect(ownerData.some((o) => o.id === orderId)).toBe(true);
     // Owner view carries safe customer fields for fulfillment, never credentials.
     expect(JSON.stringify(ownerData).toLowerCase()).not.toContain('passwordhash');
+
+    // The personal /orders listing stays customer-scoped: the owner placed none.
+    const personalList = await app.inject({ method: 'GET', url: '/api/v1/orders', headers: authed(a.owner.token) });
+    expect(JSON.parse(personalList.body).data).toHaveLength(0);
 
     const detail = await app.inject({ method: 'GET', url: `/api/v1/orders/${orderId}`, headers: authed(a.owner.token) });
     expect(detail.statusCode).toBe(200);
@@ -247,7 +260,11 @@ describe('order visibility & security', () => {
     const foreign = await app.inject({ method: 'GET', url: `/api/v1/orders/${orderId}`, headers: authed(b.owner.token) });
     expect(foreign.statusCode).toBe(404);
 
-    const foreignList = await app.inject({ method: 'GET', url: '/api/v1/orders', headers: authed(b.owner.token) });
+    const foreignList = await app.inject({
+      method: 'GET',
+      url: `/api/v1/owner/businesses/${b.businessId}/orders`,
+      headers: authed(b.owner.token),
+    });
     expect(JSON.parse(foreignList.body).data.some((o: { id: string }) => o.id === orderId)).toBe(false);
   });
 

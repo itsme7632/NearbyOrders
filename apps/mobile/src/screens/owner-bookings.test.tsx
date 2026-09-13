@@ -79,8 +79,8 @@ describe('OwnerBookingsScreen', () => {
     mockOwnerApis([]);
     render(<OwnerBookingsScreen onOpenBooking={() => {}} />);
 
-    expect(await screen.findByText('No bookings yet')).toBeTruthy();
-    expect(screen.getByText(/When customers book your services/)).toBeTruthy();
+    expect(await screen.findByText('No customer bookings yet')).toBeTruthy();
+    expect(screen.getByText(/Bookings made with your business will appear here/)).toBeTruthy();
   });
 
   it('opens the booking detail when a card is tapped', async () => {

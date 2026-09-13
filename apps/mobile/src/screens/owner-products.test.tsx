@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
-import { OwnerProducts, parsePriceToMinor, validateProductForm } from './OwnerDashboard.js';
+import { OwnerProducts, parsePriceToMinor, validateProductForm } from './OwnerCatalog.js';
 import * as api from '../api.js';
 import type { Product } from '../api.js';
 

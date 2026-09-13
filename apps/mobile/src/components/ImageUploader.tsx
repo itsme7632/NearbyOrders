@@ -123,7 +123,7 @@ export function ImageUploader(props: {
           )}
           <div className="image-preview-meta">
             <span className="image-preview-name">{pending.name}</span>
-            <span className="image-preview-note">Preview only — not saved yet.</span>
+            <span className="image-preview-note">Preview only. Not saved yet.</span>
           </div>
         </div>
       ) : hasCurrent ? (

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
-import { OwnerSubscription } from './OwnerDashboard.js';
+import { OwnerSubscription } from './OwnerSubscriptionScreen.js';
 import * as api from '../api.js';
 import type { Subscription } from '../api.js';
 

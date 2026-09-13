@@ -1,6 +1,8 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
-import { OwnerDashboardScreen, OwnerProfile, validateHours } from './OwnerDashboard.js';
+import { OwnerDashboardScreen } from './OwnerDashboard.js';
+import { OwnerProfile } from './OwnerProfile.js';
+import { validateHours } from './OwnerHours.js';
 import * as api from '../api.js';
 import type { Business, HourInput } from '../api.js';
 import type { ImageUploaderState } from '../components/ImageUploader.js';
@@ -226,7 +228,7 @@ describe('post-creation banner reflects the server status', () => {
   ])('shows the %s wording', async (status, expected) => {
     vi.spyOn(api, 'getMyBusinesses').mockResolvedValue([{ ...baseBusiness, status }]);
     render(
-      <OwnerDashboardScreen onBack={() => {}} justCreatedName="Butt Spices" justCreatedStatus={status} />,
+      <OwnerDashboardScreen onBack={() => {}} onOpen={() => {}} justCreatedName="Butt Spices" justCreatedStatus={status} />,
     );
     // The banner only renders after the business list has loaded, so awaiting
     // its unique text avoids racing the loading spinner.

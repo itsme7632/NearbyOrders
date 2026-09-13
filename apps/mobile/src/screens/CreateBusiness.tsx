@@ -123,7 +123,7 @@ export function CreateBusinessScreen(props: {
         </Field>
         {err('categoryId')}
 
-        <Field label="Description" hint="Optional — tell customers what makes your business special.">
+        <Field label="Description" hint="Optional: tell customers what makes your business special.">
           <textarea
             value={form.description}
             onChange={(e) => set('description')(e.target.value)}
@@ -134,7 +134,7 @@ export function CreateBusinessScreen(props: {
         </Field>
         {err('description')}
 
-        <Field label="Phone" hint="Optional — shown to customers so they can reach you.">
+        <Field label="Phone" hint="Optional: shown to customers so they can reach you.">
           <input
             type="tel"
             value={form.phone}

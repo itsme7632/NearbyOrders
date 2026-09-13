@@ -91,7 +91,7 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
       else if (e instanceof ApiError && e.code === 'DELIVERY_UNAVAILABLE')
         setError('This business does not offer delivery. Choose pickup instead.');
       else if (e instanceof ApiError && e.code === 'COD_UNAVAILABLE')
-        setError('Cash on delivery is not available here — choose a payment method or pickup.');
+        setError('Cash on delivery is not available here: choose a payment method or pickup.');
       else if (e instanceof ApiError) setError(e.message);
       else setError('Could not place the order');
     } finally {
@@ -299,7 +299,7 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
         </section>
       ) : (
         <p className="hint">
-          {methodsError ? 'Payment options could not be loaded — you will pay cash.' : 'You will pay cash when you receive the order.'}
+          {methodsError ? 'Payment options could not be loaded: you will pay cash.' : 'You will pay cash when you receive the order.'}
         </p>
       )}
 

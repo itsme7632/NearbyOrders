@@ -49,7 +49,7 @@ export function ReviewForm(props: {
             type="button"
             role="radio"
             aria-checked={rating === value}
-            aria-label={`${value} star${value > 1 ? 's' : ''} — ${RATING_LABELS[value - 1]}`}
+            aria-label={`${value} star${value > 1 ? 's' : ''}: ${RATING_LABELS[value - 1]}`}
             className={`star-btn${shown >= value ? ' star-on' : ''}`}
             onMouseEnter={() => setHovered(value)}
             onMouseLeave={() => setHovered(0)}

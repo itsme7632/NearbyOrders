@@ -40,7 +40,7 @@ export function BusinessDetailScreen(props: {
     const b = business.data;
     if (!b || !pendingProduct) return;
     replaceWith({ businessId: b.id, businessName: b.name, product: pendingProduct });
-    setCartNotice(`Cart updated — now showing items from ${b.name}.`);
+    setCartNotice(`Cart updated: now showing items from ${b.name}.`);
     setPendingProduct(null);
   };
 

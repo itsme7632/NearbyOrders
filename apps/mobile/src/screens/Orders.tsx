@@ -154,7 +154,7 @@ export function OrderDetailScreen(props: { orderId: string; onBack: () => void }
         </div>
       </section>
       <p className="hint">
-        Purchase-time prices are shown — later menu changes never alter your order.
+        Purchase-time prices are shown: later menu changes never alter your order.
         {o.fulfillmentType === 'DELIVERY' ? ' Delivered by the business’s own rider.' : ''}
       </p>
 
@@ -353,7 +353,7 @@ export function OrderPaymentPanel(props: { order: Order; onChanged: () => void }
           </div>
         ) : (
           <Button full variant="secondary" onClick={() => setFormOpen(true)}>
-            Pay Rs {due / 100} online — submit proof
+            Pay Rs {due / 100} online: submit proof
           </Button>
         )
       ) : null}
@@ -384,7 +384,7 @@ function OrderReviewPanel(props: { order: Order }) {
   if (reviewed)
     return (
       <p className="review-done" role="status">
-        ★ Reviewed — thank you for your feedback.
+        ★ Reviewed: thank you for your feedback.
       </p>
     );
   if (!showForm)

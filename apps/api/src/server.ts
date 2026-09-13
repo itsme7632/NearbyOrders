@@ -1284,7 +1284,7 @@ export async function buildApp(): Promise<FastifyInstance> {
    * skip reference/receipt; manual digital needs a reference. There is no
    * "payment successful": the business verifies before anything is PAID.
    */
-  app.post('/api/v1/bookings/:id/payments', { preHandler: roles('CUSTOMER') }, async (q, r) => {
+  app.post('/api/v1/bookings/:id/payments', { preHandler: roles('CUSTOMER', 'BUSINESS_OWNER') }, async (q, r) => {
     const booking = await loadVisibleBooking(q, (q.params as { id: string }).id);
     const user = currentUser(q);
     if (booking.customerId !== user.id)
@@ -1348,6 +1348,19 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   /** Verification queue: pending payments across the owner's businesses. */
+  /** Orders for ONE owned business (Business-mode listing). Ownership enforced server-side. */
+  app.get('/api/v1/owner/businesses/:id/orders', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    const rows = await prisma.order.findMany({
+      where: { businessId: id },
+      include: ORDER_INCLUDE,
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    return { data: rows.map(publicOrder) };
+  });
+
   app.get('/api/v1/owner/payments', { preHandler: roles('BUSINESS_OWNER') }, async (q) => {
     const query = z
       .object({
@@ -1523,7 +1536,7 @@ export async function buildApp(): Promise<FastifyInstance> {
    * payments). COD is recorded by the owner as a cash collection instead —
    * selecting COD does NOT mark anything paid.
    */
-  app.post('/api/v1/orders/:id/payments', { preHandler: roles('CUSTOMER') }, async (q, r) => {
+  app.post('/api/v1/orders/:id/payments', { preHandler: roles('CUSTOMER', 'BUSINESS_OWNER') }, async (q, r) => {
     const order = await prisma.order.findUnique({
       where: { id: (q.params as { id: string }).id },
       include: { business: { select: { ownerId: true, name: true } } },
@@ -1983,7 +1996,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     };
   });
 
-  app.post('/api/v1/bookings', { preHandler: roles('CUSTOMER') }, async (q, r) => {
+  app.post('/api/v1/bookings', { preHandler: roles('CUSTOMER', 'BUSINESS_OWNER') }, async (q, r) => {
     const d = bookingCreateSchema.parse(q.body);
 
     const business = await prisma.business.findFirst({
@@ -1991,6 +2004,10 @@ export async function buildApp(): Promise<FastifyInstance> {
       include: { hours: true },
     });
     if (!business) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Business not found' } });
+    // Business owners may book OTHER businesses as customers, never their own
+    // (a self-booking would let them manufacture booking history).
+    if (business.ownerId === currentUser(q).id)
+      return r.status(400).send({ error: { code: 'SELF_BOOKING', message: 'You cannot book your own business' } });
 
     const service = await prisma.service.findFirst({ where: { id: d.serviceId, businessId: business.id } });
     if (!service || !service.isActive || service.durationMinutes === null)
@@ -2079,9 +2096,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (Object.keys(dateFilter).length > 0) where.bookingDate = dateFilter;
     if (filters.status) where.status = filters.status;
 
-    if (u.role === 'BUSINESS_OWNER') {
-      where.business = { ownerId: u.id };
-    } else if (u.role === 'CUSTOMER') {
+    // /bookings is always the CALLER'S OWN bookings (customer identity).
+    // Business-mode listing uses /businesses/:id/bookings.
+    if (u.role !== 'ADMIN') {
       where.customerId = u.id;
     }
     const bookings = await prisma.booking.findMany({
@@ -2117,7 +2134,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     return { data: bookings.map((b) => ({ ...publicBooking(b), customer: b.customer })) };
   });
 
-  app.post('/api/v1/bookings/:id/cancel', { preHandler: roles('CUSTOMER') }, async (q, r) => {
+  app.post('/api/v1/bookings/:id/cancel', { preHandler: roles('CUSTOMER', 'BUSINESS_OWNER') }, async (q, r) => {
     const booking = await loadVisibleBooking(q, (q.params as { id: string }).id);
     if (booking.customerId !== currentUser(q).id)
       return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Booking not found' } });
@@ -2217,14 +2234,18 @@ export async function buildApp(): Promise<FastifyInstance> {
     })),
   });
 
-  app.post('/api/v1/orders', { preHandler: roles('CUSTOMER') }, async (q, r) => {
+  app.post('/api/v1/orders', { preHandler: roles('CUSTOMER', 'BUSINESS_OWNER') }, async (q, r) => {
     const d = orderSchema.parse(q.body);
     // Orders may only be placed with approved, visible businesses.
     const business = await prisma.business.findFirst({
       where: { id: d.businessId, status: 'APPROVED', archivedAt: null },
-      select: { id: true },
+      select: { id: true, ownerId: true },
     });
     if (!business) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Business not found' } });
+    // Business owners may order from OTHER businesses as customers, never from
+    // their own (a self-order would let them manufacture order history).
+    if (business.ownerId === currentUser(q).id)
+      return r.status(400).send({ error: { code: 'SELF_ORDER', message: 'You cannot order from your own business' } });
     // Reject duplicate product lines up front instead of silently merging.
     const requestedIds = d.items.map((i) => i.productId);
     if (new Set(requestedIds).size !== requestedIds.length)
@@ -2310,10 +2331,9 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   app.get('/api/v1/orders', { preHandler: auth }, async (q) => {
     const u = currentUser(q);
-    // Customers see their own orders; owners see orders for businesses they own
-    // (all their businesses — the dashboard filters per business client-side).
-    // Admins are not a delivery surface for orders; keep the scope explicit.
-    const where = u.role === 'BUSINESS_OWNER' ? { business: { ownerId: u.id } } : { customerId: u.id };
+    // /orders is always the CALLER'S OWN placed orders (customer identity).
+    // Business-mode listing uses /owner/orders; admins never see a mixed feed.
+    const where = { customerId: u.id };
     const rows = await prisma.order.findMany({
       where,
       include: ORDER_INCLUDE,
@@ -2453,7 +2473,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     };
   };
 
-  app.post('/api/v1/businesses/:businessId/reviews', { preHandler: roles('CUSTOMER') }, async (q, r) => {
+  app.post('/api/v1/businesses/:businessId/reviews', { preHandler: roles('CUSTOMER', 'BUSINESS_OWNER') }, async (q, r) => {
     const u = currentUser(q);
     const businessId = (q.params as { businessId: string }).businessId;
     const d = reviewCreateSchema.parse(q.body);
@@ -2535,7 +2555,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // The customer's own reviews: lets detail screens show "Reviewed" instead of
   // a second review CTA, and doubles as a simple review history.
-  app.get('/api/v1/my-reviews', { preHandler: roles('CUSTOMER') }, async (q) => {
+  app.get('/api/v1/my-reviews', { preHandler: roles('CUSTOMER', 'BUSINESS_OWNER') }, async (q) => {
     const rows = await prisma.review.findMany({
       where: { customerId: currentUser(q).id },
       select: {

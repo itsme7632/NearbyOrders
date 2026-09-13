@@ -47,8 +47,15 @@ const customerName = (o: Order) => [o.customer?.firstName, o.customer?.lastName]
 const formatWhen = (iso: string) =>
   new Date(iso).toLocaleString('en-PK', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 
-export function OwnerOrders(props: { businessId: string }) {
-  const orders = useAsyncData<Order[]>(() => listOrders(), []);
+/**
+ * Owner order management for one business. When `orders` is provided (the
+ * Business-mode tab already fetched the scoped list) it is used directly;
+ * otherwise the component fetches and filters itself (management screens).
+ */
+export function OwnerOrders(props: { businessId: string; orders?: Order[] }) {
+  const selfFetched = useAsyncData<Order[]>(() => listOrders(), []);
+  const orders = props.orders ? { data: props.orders, loading: false, error: null, reload: selfFetched.reload } : selfFetched;
+  const list = (orders.data ?? []).filter((o) => o.business.id === props.businessId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +70,7 @@ export function OwnerOrders(props: { businessId: string }) {
       // Someone else (or the other side) changed it first — surface and refresh.
       setError(
         e instanceof ApiError && e.code === 'INVALID_TRANSITION'
-          ? 'That action is no longer available — the order status already changed.'
+          ? 'That action is no longer available: the order status already changed.'
           : e instanceof Error
             ? e.message
             : 'Could not update the order',
@@ -77,9 +84,9 @@ export function OwnerOrders(props: { businessId: string }) {
   if (orders.loading) return <Loading label="Loading orders…" />;
   if (orders.error) return <ErrorState message={orders.error} onRetry={orders.reload} />;
 
-  // The list endpoint already scopes to the owner's businesses; filter here to
-  // the one being managed. (Owner detail isolation is enforced server-side.)
-  const mine = (orders.data ?? []).filter((o) => o.business.id === props.businessId);
+  // Scoped to the one business being managed. (Owner detail isolation is
+  // enforced server-side.)
+  const mine = list;
 
   if (selectedId) {
     const o = mine.find((x) => x.id === selectedId);
@@ -151,7 +158,7 @@ export function OwnerOrders(props: { businessId: string }) {
             ))}
           </div>
         ) : (
-          <p className="hint">No further actions — this order is {STATUS_LABEL[o.status].toLowerCase()}.</p>
+          <p className="hint">No further actions: this order is {STATUS_LABEL[o.status].toLowerCase()}.</p>
         )}
       </section>
     );
@@ -164,8 +171,8 @@ export function OwnerOrders(props: { businessId: string }) {
       {!mine.length ? (
         <EmptyState
           icon={<OrdersIcon size={28} />}
-          title="No orders yet"
-          body="Customer orders for this business will appear here."
+          title="No customer orders yet"
+          body="Orders placed with your business will appear here."
         />
       ) : (
         <ul className="order-list">
@@ -263,7 +270,7 @@ export function OrderPaymentBlock(props: { orderId: string; onChanged: () => voi
       <h3 className="pay-section-title">Payment</h3>
       {error ? <ErrorState message={error} /> : null}
       {payments.data.length === 0 ? (
-        <p className="hint">No payment proof yet — the customer will pay cash or submit proof for verification.</p>
+        <p className="hint">No payment proof yet: the customer will pay cash or submit proof for verification.</p>
       ) : (
         <ul className="manage-list">
           {payments.data.map((p) => (

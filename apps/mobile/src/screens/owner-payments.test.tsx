@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
-import { OwnerPayments, validatePaymentForm } from './OwnerDashboard.js';
+import { OwnerPayments, validatePaymentForm } from './OwnerSubscriptionPayments.js';
 import * as api from '../api.js';
 import type { PaymentMethod, PaymentRequest } from '../api.js';
 
@@ -48,7 +48,7 @@ beforeEach(() => {
 });
 
 const openForm = async () => {
-  fireEvent.click(await screen.findByRole('button', { name: "I've paid — submit proof" }));
+  fireEvent.click(await screen.findByRole('button', { name: "I've paid: submit proof" }));
 };
 
 const setReceipt = () =>
@@ -91,7 +91,7 @@ describe('OwnerPayments (submitting proof)', () => {
 
   it('blocks submission without a receipt pick', async () => {
     render(<OwnerPayments businessId="biz-1" />);
-    fireEvent.click(await screen.findByRole('button', { name: "I've paid — submit proof" }));
+    fireEvent.click(await screen.findByRole('button', { name: "I've paid: submit proof" }));
     const submit = screen.getByRole('button', { name: 'Submit for verification' });
     expect(submit.hasAttribute('disabled')).toBe(true);
   });
@@ -185,6 +185,6 @@ describe('OwnerPayments (history)', () => {
     render(<OwnerPayments businessId="biz-1" />);
     expect(await screen.findByText(/Awaiting verification\./)).toBeTruthy();
     // The submit CTA is hidden while a request is pending.
-    expect(screen.queryByRole('button', { name: "I've paid — submit proof" })).toBeNull();
+    expect(screen.queryByRole('button', { name: "I've paid: submit proof" })).toBeNull();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { navigationTabs, parseHash } from './navigation.js';
+import { businessTabs, navigationTabs, ownerScreens, parseHash } from './navigation.js';
 
 describe('customer navigation', () => {
   it('exposes the required V1 destinations in order', () => {
@@ -48,5 +48,36 @@ describe('hash routing', () => {
   it('parses single booking detail routes', () => {
     expect(parseHash('#/booking/bk-42')).toEqual({ name: 'booking', bookingId: 'bk-42' });
     expect(parseHash('#/booking/')).toEqual({ name: 'tabs' });
+  });
+});
+
+describe('business navigation', () => {
+  it('has its own tab set, distinct from the customer set', () => {
+    expect(businessTabs).toEqual(['Overview', 'Orders', 'Bookings', 'Earnings', 'Profile']);
+    // Business-only destinations never appear in customer navigation.
+    expect(navigationTabs).not.toContain('Overview');
+    expect(navigationTabs).not.toContain('Earnings');
+    // And customer-only destinations never appear in business navigation.
+    expect(businessTabs).not.toContain('Home');
+    expect(businessTabs).not.toContain('Explore');
+  });
+});
+
+describe('dedicated owner management screens', () => {
+  it('parses /owner/<businessId>/<screen> for every management screen', () => {
+    for (const screen of ownerScreens) {
+      expect(parseHash(`#/owner/biz-1/${screen}`)).toEqual({ name: 'owner-screen', screen, businessId: 'biz-1' });
+    }
+  });
+
+  it('falls back to tabs for unknown screens or missing business id', () => {
+    expect(parseHash('#/owner/biz-1/nope')).toEqual({ name: 'tabs' });
+    expect(parseHash('#/owner//profile')).toEqual({ name: 'tabs' });
+    expect(parseHash('#/owner/biz-1')).toEqual({ name: 'tabs' });
+  });
+
+  it('requires the exact dedicated route format (never a payments hub)', () => {
+    expect(parseHash('#/owner/biz-1/payments')).toEqual({ name: 'owner-screen', screen: 'payments', businessId: 'biz-1' });
+    expect(parseHash('#/owner/payments-hub')).toEqual({ name: 'tabs' });
   });
 });

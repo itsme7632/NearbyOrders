@@ -515,12 +515,51 @@ p { overflow-wrap: break-word; }
 
 /* ---------------- owner dashboard ---------------- */
 .owner-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.owner-tabs { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; background: var(--light); padding: 6px 4px; border-radius: 12px; }
-.owner-tab-group { display: flex; flex-direction: column; gap: 3px; }
-.owner-tab-group-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); padding: 4px 8px 0; }
-.owner-tab-group-row { display: flex; gap: 4px; }
-.owner-tab { flex: 1; padding: 9px 6px; border-radius: 9px; font-size: 13.5px; font-weight: 600; color: var(--muted); }
-.owner-tab-active { background: var(--card); color: var(--primary); box-shadow: var(--shadow); }
+/* Dedicated owner screens: normal document flow, no fixed/overlay bars.
+   The hub navigation (hub-*) lives below with the account hub styles. */
+.owner-screen { display: flex; flex-direction: column; gap: 14px; }
+.owner-screen .manage-list { margin-top: 4px; }
+.owner-quick {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 14px;
+}
+.owner-quick-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px;
+  min-width: 0;
+}
+.owner-quick-num { font-size: 22px; font-weight: 800; color: var(--primary); }
+.owner-quick-label { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.hub-manage-title { font-size: 17px; font-weight: 800; color: var(--navy); margin: 6px 0 2px; }
+.sub-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--light);
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+.sub-badge-icon { flex: 0 0 auto; }
+.sub-badge[data-status='TRIAL'] { background: #ecfdf5; color: #047857; }
+.sub-badge[data-status='EXPIRED'],
+.sub-badge[data-status='CANCELLED'] { background: #fef2f2; color: #b91c1c; }
+.badge-badge-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.business-nav nav,
+nav.business-nav { background: var(--navy); }
+nav.business-nav .nav-item { color: rgba(238, 242, 255, 0.72); }
+nav.business-nav .nav-item.active { color: #fff; background: rgba(79, 70, 229, 0.35); }
 .manage-list { list-style: none; margin: 0 0 8px; padding: 0; }
 .manage-item { padding: 12px 0; border-bottom: 1px solid var(--border); }
 .manage-item:last-child { border-bottom: 0; }

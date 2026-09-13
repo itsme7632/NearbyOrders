@@ -464,13 +464,46 @@ describe('public reviews & rating summary', () => {
 });
 
 describe('security & role boundaries', () => {
-  it('a business owner cannot create reviews (only customers)', async () => {
-    const { owner, businessId } = await bookableFixture();
-    const res = await postReview(owner.token, businessId, {
+  it('owners can review OTHER businesses; the review is customer-scoped', async () => {
+    const { owner, businessId, serviceId, customer } = await bookableFixture();
+    const otherOwner = await registerAndLogin(app, 'BUSINESS_OWNER');
+    const { id: otherBusinessId } = await createBusiness(app, otherOwner.token);
+    await approveBusiness(otherBusinessId);
+
+    // Reviewing their own business is rejected.
+    const own = await postReview(owner.token, businessId, {
       bookingId: '00000000-0000-4000-8000-000000000004',
       rating: 5,
     });
-    expect([401, 403]).toContain(res.statusCode);
+    expect([400, 403, 404]).toContain(own.statusCode);
+
+    // A completed booking at the other business lets the owner review it as a customer.
+    await app.inject({
+      method: 'PUT',
+      url: `/api/v1/businesses/${otherBusinessId}/hours`,
+      headers: authed(otherOwner.token),
+      payload: Array.from({ length: 7 }, (_, dayOfWeek) => ({ dayOfWeek, isClosed: false, opensAt: '09:00', closesAt: '21:00' })),
+    });
+    const created = await app.inject({
+      method: 'POST',
+      url: `/api/v1/businesses/${otherBusinessId}/services`,
+      headers: authed(otherOwner.token),
+      payload: { name: 'Reviewable Service', priceMinor: 12000, durationMinutes: 60 },
+    });
+    const otherServiceId = JSON.parse(created.body).data.id as string;
+    const booked = await app.inject({
+      method: 'POST',
+      url: '/api/v1/bookings',
+      headers: authed(owner.token),
+      payload: { businessId: otherBusinessId, serviceId: otherServiceId, date: tomorrowPkt(), startTime: '10:00' },
+    });
+    expect(booked.statusCode).toBe(201);
+    const bookingId = JSON.parse(booked.body).data.id as string;
+    await prisma.booking.update({ where: { id: bookingId }, data: { status: 'COMPLETED' } });
+    const res = await postReview(owner.token, otherBusinessId, { bookingId, rating: 5 });
+    expect(res.statusCode).toBe(201);
+    expect(customer).toBeDefined();
+    expect(serviceId).toBeDefined();
   });
 
   it('an unrelated owner sees only their own businesses’ reviews', async () => {
