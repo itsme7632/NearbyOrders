@@ -2696,12 +2696,164 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   /* ------------------------------ Admin ------------------------------ */
+  /**
+   * Admin list endpoints for the web panel. Every route here requires the
+   * ADMIN role server-side; customer/owner tokens get 403 at the preHandler.
+   * User listings never expose passwordHash: only safe identity fields.
+   */
+  const ADMIN_USER_SELECT = {
+    id: true,
+    email: true,
+    role: true,
+    firstName: true,
+    lastName: true,
+    phone: true,
+    isSuspended: true,
+    createdAt: true,
+  } as const;
+
+  app.get('/api/v1/admin/users', { preHandler: roles('ADMIN') }, async (q) => {
+    const query = z.object({ q: z.string().trim().max(120).optional(), role: z.enum(['CUSTOMER', 'BUSINESS_OWNER', 'ADMIN']).optional(), suspended: z.enum(['true', 'false']).optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }).parse(q.query);
+    const where: Record<string, unknown> = {};
+    if (query.q) where.OR = [{ email: { contains: query.q, mode: 'insensitive' } }, { firstName: { contains: query.q, mode: 'insensitive' } }, { lastName: { contains: query.q, mode: 'insensitive' } }];
+    if (query.role) where.role = query.role;
+    if (query.suspended) where.isSuspended = query.suspended === 'true';
+    const users = await prisma.user.findMany({ where, select: ADMIN_USER_SELECT, orderBy: { createdAt: 'desc' }, take: query.limit });
+    return { data: users };
+  });
+
+  /** One user plus counts of their platform relationships (no credentials). */
+  app.get('/api/v1/admin/users/:id', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const user = await prisma.user.findUnique({
+      where: { id: (q.params as { id: string }).id },
+      select: { ...ADMIN_USER_SELECT, _count: { select: { businesses: true, bookings: true, orders: true, reviews: true } } },
+    });
+    if (!user) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'User not found' } });
+    const { _count, ...rest } = user;
+    return { data: { ...rest, counts: _count } };
+  });
+
+  /** Suspend or reinstate a user. Admins cannot suspend other admins. */
+  app.patch('/api/v1/admin/users/:id/suspension', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const { suspended } = z.object({ suspended: z.boolean() }).parse(q.body);
+    const target = await prisma.user.findUnique({ where: { id: (q.params as { id: string }).id }, select: { id: true, role: true } });
+    if (!target) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'User not found' } });
+    if (target.role === 'ADMIN') return r.status(409).send({ error: { code: 'ADMIN_IMMUTABLE', message: 'Administrator accounts cannot be suspended' } });
+    const user = await prisma.user.update({ where: { id: target.id }, data: { isSuspended: suspended }, select: ADMIN_USER_SELECT });
+    await prisma.auditLog.create({
+      data: { actorId: currentUser(q).id, action: suspended ? 'USER_SUSPENDED' : 'USER_REINSTATED', entityType: 'User', entityId: user.id, metadata: { email: user.email } },
+    });
+    return { data: user };
+  });
+
+  /** Full business list across all statuses, with owner identity. */
+  app.get('/api/v1/admin/businesses', { preHandler: roles('ADMIN') }, async (q) => {
+    const query = z.object({ q: z.string().trim().max(120).optional(), status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'SUSPENDED', 'ARCHIVED']).optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }).parse(q.query);
+    const where: Record<string, unknown> = {};
+    if (query.q) where.OR = [{ name: { contains: query.q, mode: 'insensitive' } }, { city: { contains: query.q, mode: 'insensitive' } }];
+    if (query.status) where.status = query.status;
+    const businesses = await prisma.business.findMany({
+      where,
+      select: { id: true, name: true, slug: true, status: true, isVerified: true, city: true, address: true, createdAt: true, owner: { select: { id: true, email: true, firstName: true, lastName: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: query.limit,
+    });
+    return { data: businesses };
+  });
+
+  /** Verify/unverify a business (trust badge), separate from approval status. */
+  app.patch('/api/v1/admin/businesses/:id/verification', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const { verified } = z.object({ verified: z.boolean() }).parse(q.body);
+    const id = (q.params as { id: string }).id;
+    const existing = await prisma.business.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Business not found' } });
+    const business = await prisma.business.update({ where: { id }, data: { isVerified: verified } });
+    await prisma.auditLog.create({
+      data: { actorId: currentUser(q).id, action: verified ? 'BUSINESS_VERIFIED' : 'BUSINESS_UNVERIFIED', entityType: 'Business', entityId: id, metadata: { name: business.name } },
+    });
+    return { data: { id: business.id, isVerified: business.isVerified } };
+  });
+
+  /** Orders across all businesses with business + customer identity. */
+  app.get('/api/v1/admin/orders', { preHandler: roles('ADMIN') }, async (q) => {
+    const query = z.object({ q: z.string().trim().max(120).optional(), status: z.enum(['PENDING', 'ACCEPTED', 'REJECTED', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED']).optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }).parse(q.query);
+    const where: Record<string, unknown> = {};
+    if (query.status) where.status = query.status;
+    if (query.q) where.business = { name: { contains: query.q, mode: 'insensitive' } };
+    const orders = await prisma.order.findMany({
+      where,
+      include: { ...ORDER_INCLUDE, customer: { select: { id: true, email: true, firstName: true, lastName: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: query.limit,
+    });
+    return { data: orders.map(publicOrder) };
+  });
+
+  /** Bookings across all businesses with business + customer identity. */
+  app.get('/api/v1/admin/bookings', { preHandler: roles('ADMIN') }, async (q) => {
+    const query = z.object({ status: z.enum(['PENDING', 'CONFIRMED', 'REJECTED', 'CANCELLED', 'COMPLETED']).optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }).parse(q.query);
+    const where: Record<string, unknown> = {};
+    if (query.status) where.status = query.status;
+    const bookings = await prisma.booking.findMany({
+      where,
+      include: { business: { select: { id: true, name: true, slug: true, ownerId: true } }, service: { select: { id: true, name: true, durationMinutes: true, priceMinor: true, currency: true } }, customer: { select: { id: true, email: true, firstName: true, lastName: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: query.limit,
+    });
+    return { data: bookings.map(publicBooking) };
+  });
+
+  /** All reviews for moderation, newest first. */
+  app.get('/api/v1/admin/reviews', { preHandler: roles('ADMIN') }, async () => {
+    const reviews = await prisma.review.findMany({
+      include: { business: { select: { id: true, name: true } }, customer: { select: { id: true, email: true, firstName: true, lastName: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    return { data: reviews };
+  });
+
+  /** Subscriptions across the platform with business identity. */
+  app.get('/api/v1/admin/subscriptions', { preHandler: roles('ADMIN') }, async (q) => {
+    const query = z.object({ status: z.enum(['TRIAL', 'ACTIVE', 'EXPIRED', 'CANCELLED', 'SUSPENDED']).optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }).parse(q.query);
+    const where: Record<string, unknown> = {};
+    if (query.status) where.status = query.status;
+    const subscriptions = await prisma.businessSubscription.findMany({
+      where,
+      include: { business: { select: { id: true, name: true } }, plan: { select: { id: true, name: true, monthlyPriceMinor: true, currency: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: query.limit,
+    });
+    return { data: subscriptions };
+  });
+
+  /** Recent audit entries (actor, action, target) for the panel's audit page. */
+  app.get('/api/v1/admin/audit-log', { preHandler: roles('ADMIN') }, async (q) => {
+    const query = z.object({ action: z.string().trim().max(80).optional(), limit: z.coerce.number().int().min(1).max(200).default(100) }).parse(q.query);
+    const where: Record<string, unknown> = {};
+    if (query.action) where.action = query.action;
+    const entries = await prisma.auditLog.findMany({
+      where,
+      include: { actor: { select: { id: true, email: true, role: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: query.limit,
+    });
+    return { data: entries };
+  });
+
   app.get('/api/v1/admin/dashboard', { preHandler: roles('ADMIN') }, async () => ({
     data: {
       users: await prisma.user.count(),
       businesses: await prisma.business.count(),
+      activeBusinesses: await prisma.business.count({ where: { status: 'APPROVED' } }),
+      pendingBusinesses: await prisma.business.count({ where: { status: 'PENDING' } }),
+      suspendedBusinesses: await prisma.business.count({ where: { status: 'SUSPENDED' } }),
       bookings: await prisma.booking.count(),
+      pendingBookings: await prisma.booking.count({ where: { status: 'PENDING' } }),
       orders: await prisma.order.count(),
+      pendingOrders: await prisma.order.count({ where: { status: 'PENDING' } }),
+      pendingSubscriptionPayments: await prisma.subscriptionPaymentRequest.count({ where: { status: 'PENDING' } }),
+      reviews: await prisma.review.count(),
     },
   }));
 
