@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getSession, onSessionChange, type Session } from './api.js';
+import { getMyBusinesses, getSession, onSessionChange, type Session } from './api.js';
 
 /**
  * App context: CUSTOMER or BUSINESS.
@@ -70,4 +70,41 @@ export function useAppMode(): { mode: AppMode; setMode: (m: AppMode) => void } {
 /** Registers session sync once for the app (idempotent). */
 export function initModeSessionSync(): () => void {
   return onSessionChange((session) => syncModeWithSession(session));
+}
+
+/**
+ * Resolves the mode a signed-in user should open in.
+ *
+ * Business owners land directly in BUSINESS mode: their business IS their app,
+ * and requiring an extra "Manage my business" tap buried their work behind the
+ * customer home. Everyone else (and owners with no businesses at all) gets the
+ * customer experience. Ownership is whatever the server currently returns, so
+ * an owner whose businesses were all removed falls back to Customer mode.
+ * Explicit in-session switches still work: the default only applies when a
+ * session starts (login), never mid-session.
+ */
+export async function resolveDefaultMode(session: Session | null): Promise<AppMode> {
+  if (!session) return 'CUSTOMER';
+  if (session.user.role !== 'BUSINESS_OWNER') return 'CUSTOMER';
+  try {
+    const businesses = await getMyBusinesses();
+    return businesses.length > 0 ? 'BUSINESS' : 'CUSTOMER';
+  } catch {
+    // Ownership check failed (offline, 401, etc.): open the customer app; the
+    // header's "My business" button still reaches Business mode in one tap.
+    return 'CUSTOMER';
+  }
+}
+
+/**
+ * Applies the ownership-aware default when a session starts (login or app
+ * mount with a live session). Deliberately unconditional: a stale stored
+ * choice from a PREVIOUS session must never override the fresh default, so an
+ * owner always opens in Business mode after logging in. Switching modes after
+ * that is an explicit in-session action and stays sticky until the next
+ * login. Callers show a neutral loading state until this settles so an owner
+ * never glimpses the customer home before their business dashboard appears.
+ */
+export async function applyDefaultModeForSession(session: Session | null): Promise<void> {
+  setAppMode(await resolveDefaultMode(session), session);
 }

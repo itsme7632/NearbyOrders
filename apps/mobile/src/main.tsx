@@ -4,7 +4,7 @@ import './styles.css';
 import { businessTabs, navigationTabs, type BusinessTab, type Tab } from './navigation.js';
 import { getSession, onSessionChange, type Session } from './api.js';
 import { useRoute } from './hooks.js';
-import { initModeSessionSync, setAppMode, useAppMode } from './mode.js';
+import { applyDefaultModeForSession, initModeSessionSync, setAppMode, useAppMode } from './mode.js';
 import { BellIcon, BookingsIcon, ExploreIcon, HomeIcon, OrdersIcon, ProfileIcon, StoreIcon } from './components/icons.js';
 import { EmptyState, Loading } from './components/ui.js';
 import { HomeScreen } from './screens/Home.js';
@@ -41,8 +41,23 @@ export function App() {
   const { mode } = useAppMode();
   useEffect(() => onSessionChange(setSession), []);
 
-  const isOwner = session?.user.role === 'BUSINESS_OWNER';
+  // Session bootstrap: each new session resolves its default mode (does this
+  // owner still own businesses?) before any mode-sensitive content paints, so
+  // an owner logging in never glimpses the customer home before their
+  // business dashboard appears. Customers resolve instantly (no fetch).
+  const [modeResolvedFor, setModeResolvedFor] = useState<string | null | 'pending'>(() => (getSession() ? 'pending' : null));
+  useEffect(() => {
+    if (!session) {
+      setModeResolvedFor(null);
+      return;
+    }
+    if (modeResolvedFor === session.user.id) return;
+    applyDefaultModeForSession(session).then(() => setModeResolvedFor(session.user.id));
+  }, [session, modeResolvedFor]);
+  const bootstrapping = session !== null && modeResolvedFor !== session.user.id;  const isOwner = session?.user.role === 'BUSINESS_OWNER';
   const businessMode = Boolean(isOwner && mode === 'BUSINESS');
+
+
 
   const openBusiness = (id: string) => push(`/business/${id}`);
 
@@ -121,7 +136,11 @@ export function App() {
   };
 
   let content: React.ReactNode;
-  if (route.name === 'business') {
+  if (bootstrapping) {
+    // Neutral placeholder while a fresh session's default mode resolves; all
+    // hooks above have already run, so hook order stays stable.
+    content = <Loading label="Loading NearbyOrders…" />;
+  } else if (route.name === 'business') {
     content = (
       <BusinessDetailScreen
         idOrSlug={route.idOrSlug}
