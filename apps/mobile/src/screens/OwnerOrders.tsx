@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { listOrders, setOrderStatus, ApiError, type Order, type OrderStatus } from '../api.js';
+import { collectOrderCash, listOrders, listOrderPayments, setOrderStatus, ApiError, type CustomerPayment, type Order, type OrderStatus } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, Loading, Money } from '../components/ui.js';
-import { OrdersIcon } from '../components/icons.js';
+import { AlertIcon, OrdersIcon } from '../components/icons.js';
 
 const ORDER_TRANSITIONS: Partial<Record<OrderStatus, { status: OrderStatus; label: string; variant: 'primary' | 'secondary' | 'danger' }[]>> = {
   PENDING: [
@@ -124,11 +124,24 @@ export function OwnerOrders(props: { businessId: string }) {
           ))}
         </ul>
         <div className="cart-summary">
-          <div className="cart-line cart-total">
-            <span>Total</span>
+          <div className="cart-line">
+            <span>Subtotal</span>
             <Money minor={o.subtotalMinor} currency={o.currency} />
           </div>
+          {o.fulfillmentType === 'DELIVERY' ? (
+            <div className="cart-line">
+              <span>Delivery fee</span>
+              <Money minor={o.deliveryFeeMinor ?? 0} currency={o.currency} />
+            </div>
+          ) : null}
+          <div className="cart-line">
+            <span>{o.fulfillmentType === 'DELIVERY' ? 'Delivery' : 'Pickup'} · total</span>
+            <Money minor={o.totalMinor ?? o.subtotalMinor} currency={o.currency} />
+          </div>
         </div>
+
+        <OrderPaymentBlock orderId={o.id} onChanged={orders.reload} />
+
         {actions.length ? (
           <div className="btn-row">
             {actions.map((a) => (
@@ -201,5 +214,83 @@ export function OwnerOrders(props: { businessId: string }) {
         </ul>
       )}
     </section>
+  );
+}
+
+/* ------------------ Owner view of one order's payment ------------------ */
+
+const OWNER_ORDER_PAYMENT_LABEL: Record<CustomerPayment['status'], string> = {
+  PENDING_VERIFICATION: 'Waiting for your verification',
+  PAID: 'Paid',
+  FAILED: 'Rejected',
+  UNPAID: 'Unpaid',
+};
+
+/**
+ * Payment block inside the owner's order detail: the chosen channel (or
+ * cash), existing payment proofs with honest statuses, and — for cash flows
+ * with money still due — a Collect cash action. COD stays UNPAID until the
+ * owner confirms the cash was received in person; NearbyOrders never holds it.
+ */
+export function OrderPaymentBlock(props: { orderId: string; onChanged: () => void }) {
+  const payments = useAsyncData<CustomerPayment[]>(() => listOrderPayments(props.orderId), [props.orderId]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (payments.loading) return <Loading label="Loading payment…" />;
+  if (payments.error || !payments.data) return null; // Non-critical; order still shows.
+
+  const collect = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await collectOrderCash(props.orderId);
+      payments.reload();
+      props.onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not record the cash collection');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const paid = payments.data.filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amountMinor, 0);
+  const pending = payments.data.filter((p) => p.status === 'PENDING_VERIFICATION').reduce((s, p) => s + p.amountMinor, 0);
+
+  return (
+    <div className="pay-details">
+      <h3 className="pay-section-title">Payment</h3>
+      {error ? <ErrorState message={error} /> : null}
+      {payments.data.length === 0 ? (
+        <p className="hint">No payment proof yet — the customer will pay cash or submit proof for verification.</p>
+      ) : (
+        <ul className="manage-list">
+          {payments.data.map((p) => (
+            <li key={p.id} className="manage-item">
+              <div className="item-row">
+                <span className="item-name">
+                  {p.paymentMethod?.displayName ?? 'Cash'} · <Money minor={p.amountMinor} currency={p.currency} />
+                </span>
+                <span className={`pay-status pay-status-${p.status === 'PAID' ? 'paid' : p.status === 'FAILED' ? 'failed' : 'pending'}`}>
+                  {OWNER_ORDER_PAYMENT_LABEL[p.status]}
+                </span>
+              </div>
+              {p.transactionReference ? <p className="item-desc pay-ref">Ref {p.transactionReference}</p> : null}
+              {p.status === 'FAILED' && p.rejectionReason ? (
+                <p className="item-desc">
+                  <AlertIcon size={12} /> Reason: {p.rejectionReason}
+                </p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+      {paid + pending === 0 ? (
+        <Button sm variant="secondary" disabled={busy} onClick={() => void collect()}>
+          {busy ? 'Recording…' : 'Collect cash'}
+        </Button>
+      ) : null}
+    </div>
   );
 }

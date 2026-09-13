@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   cancelBusinessSubscription,
   cancelPaymentRequest,
-  collectOrderCash,
   createProduct,
   createPayInMethod,
   createService,
@@ -13,7 +12,6 @@ import {
   getDeliverySettings,
   getMyBusinesses,
   listCategories,
-  listOrderPayments,
   listOwnerPayInMethods,
   listOwnerPayments,
   listPaymentMethods,
@@ -58,6 +56,41 @@ import { ImageUploader, type ImageUploaderState, type PendingImage } from '../co
 import { OwnerOrders } from './OwnerOrders.js';
 
 type OwnerTab = 'orders' | 'payments' | 'profile' | 'services' | 'products' | 'hours' | 'reviews' | 'subscription';
+
+/**
+ * Dashboard navigation, grouped the way an owner thinks about their business.
+ * Labels stay short so two tabs fit per row on a 360px phone.
+ */
+const OWNER_TAB_GROUPS: { group: string; tabs: readonly (readonly [OwnerTab, string])[] }[] = [
+  {
+    group: 'Business',
+    tabs: [
+      ['profile', 'Profile'],
+      ['hours', 'Hours'],
+    ],
+  },
+  {
+    group: 'Catalog',
+    tabs: [
+      ['services', 'Services'],
+      ['products', 'Products'],
+    ],
+  },
+  {
+    group: 'Operations',
+    tabs: [
+      ['orders', 'Orders'],
+      ['payments', 'Payments'],
+    ],
+  },
+  {
+    group: 'Trust & account',
+    tabs: [
+      ['reviews', 'Reviews'],
+      ['subscription', 'Subscription'],
+    ],
+  },
+];
 
 export function OwnerDashboardScreen(props: {
   onBack: () => void;
@@ -139,21 +172,19 @@ export function OwnerDashboardScreen(props: {
         ) : null}
       </div>
       <nav className="owner-tabs" aria-label="Management sections">
-        {(
-          [
-            ['orders', 'Orders'],
-            ['payments', 'Payments'],
-            ['profile', 'Profile'],
-            ['services', 'Services'],
-            ['products', 'Products'],
-            ['hours', 'Hours'],
-            ['reviews', 'Reviews'],
-            ['subscription', 'Subscription'],
-          ] as const
-        ).map(([key, label]) => (
-          <button key={key} className={`owner-tab${tab === key ? ' owner-tab-active' : ''}`} onClick={() => setTab(key)}>
-            {label}
-          </button>
+        {OWNER_TAB_GROUPS.map(({ group, tabs }) => (
+          <div key={group} className="owner-tab-group">
+            <span className="owner-tab-group-label" aria-hidden>
+              {group}
+            </span>
+            <div className="owner-tab-group-row">
+              {tabs.map(([key, label]) => (
+                <button key={key} className={`owner-tab${tab === key ? ' owner-tab-active' : ''}`} onClick={() => setTab(key)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
         ))}
       </nav>
 

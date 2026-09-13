@@ -250,6 +250,23 @@ export function OwnerBookingDetailScreen(props: { bookingId: string; onBack: () 
               </dd>
             </div>
           ) : null}
+          {(data.advanceRequiredMinor ?? 0) > 0 ? (
+            <div>
+              <dt>Advance required</dt>
+              <dd>
+                <Money minor={data.advanceRequiredMinor ?? 0} currency={data.currency} />
+              </dd>
+            </div>
+          ) : null}
+          {(data.advanceRequiredMinor ?? 0) > 0 ? (
+            <div>
+              <dt>Advance paid</dt>
+              <dd>
+                <Money minor={data.amountPaidMinor ?? 0} currency={data.currency} />
+                {(data.amountPaidMinor ?? 0) >= (data.advanceRequiredMinor ?? 0) ? ' ✓' : ''}
+              </dd>
+            </div>
+          ) : null}
           {data.notes ? (
             <div>
               <dt>Customer note</dt>
