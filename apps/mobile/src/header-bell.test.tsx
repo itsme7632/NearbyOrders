@@ -38,7 +38,8 @@ describe('header notification bell', () => {
     expect(container.textContent).not.toContain('99+');
 
     fireEvent.click(bell);
-    await screen.findByText(/Mark all read|No notifications|notifications/i);
+    // The redesigned screen shows both the heading and the empty state.
+    await screen.findAllByText(/Mark all read|No notifications|notifications/i);
     expect(window.location.hash).toContain('/notifications');
   });
 

@@ -1,23 +1,46 @@
+/* ------------------------------------------------------------------
+   NearbyOrders design tokens (v2 visual system)
+   Single source of truth for color, radius, shadow and spacing.
+   Screens consume tokens via CSS variables; hard-coded values in
+   screens are visual bugs.
+------------------------------------------------------------------- */
 :root {
+  /* Brand */
   --primary: #4f46e5;
   --secondary: #2563eb;
   --navy: #1e1b4b;
   --light: #eef2ff;
-  --bg: #f8fafc;
+
+  /* Surfaces */
+  --ink: #111827;
+  --bg: #f8f9ff;
+  --card: #ffffff;
+  --border: #e5e7eb;
+
+  /* Semantic */
   --success: #16a34a;
   --warning: #f59e0b;
   --error: #ef4444;
+  --star: #f59e0b;
   --muted: #64748b;
-  --border: #e2e8f0;
-  --card: #ffffff;
+
+  /* Radius scale */
+  --radius-sm: 10px;
   --radius: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 26px;
+
+  /* Elevation scale */
+  --shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.05);
   --shadow: 0 1px 3px rgba(30, 27, 75, 0.08), 0 4px 14px rgba(30, 27, 75, 0.06);
+  --shadow-lg: 0 6px 24px rgba(30, 27, 75, 0.12);
+
   color-scheme: light;
 }
 
 :root {
   font-family: Inter, system-ui, sans-serif;
-  color: var(--navy);
+  color: var(--ink);
   background: var(--bg);
 }
 * { box-sizing: border-box; }
@@ -62,9 +85,10 @@ button {
 }
 button:disabled { opacity: 0.55; cursor: not-allowed; }
 
+/* Legacy gradient hero kept only for screens still using it. */
 .hero {
   background: linear-gradient(135deg, var(--primary), var(--secondary));
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
   padding: 20px;
   color: white;
   margin: 25px 0;
@@ -76,7 +100,7 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 .search-row input {
   width: 100%;
   border: 0;
-  border-radius: 12px;
+  border-radius: 999px;
   padding: 14px;
   font: inherit;
 }
@@ -84,6 +108,7 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 .search-row input {
   border: 1px solid var(--border);
   background: var(--card);
+  box-shadow: var(--shadow-sm);
 }
 
 nav {
@@ -125,11 +150,318 @@ nav button.active { color: var(--primary); font-weight: 800; }
 .section-head { display: flex; align-items: baseline; justify-content: space-between; margin: 20px 0 10px; }
 .section-head h2, .card h2 { font-size: 17px; margin: 0; }
 h1 {
-  font-size: clamp(20px, 5.5vw, 24px);
+  font-size: clamp(20px, 5.5vw, 23px);
   line-height: 1.25;
   margin: 6px 0;
+  font-weight: 800;
+  letter-spacing: -0.01em;
   overflow-wrap: break-word;
 }
+
+/* ---------------- skeletons (calm, layout-matching loading) ------------- */
+.skeleton {
+  background: linear-gradient(100deg, #eceefc 40%, #f6f7ff 50%, #eceefc 60%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease infinite;
+  border-radius: var(--radius-sm);
+}
+@keyframes shimmer {
+  to { background-position: -200% 0; }
+}
+.skeleton-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  box-shadow: var(--shadow-sm);
+}
+.skeleton-row { display: flex; align-items: center; gap: 12px; }
+.skeleton-line { height: 12px; }
+.skeleton-line.w-60 { width: 60%; }
+.skeleton-line.w-40 { width: 40%; }
+.skeleton-line.w-25 { width: 25%; }
+.skeleton-img { height: 92px; border-radius: 12px; }
+.skeleton-thumb { width: 44px; height: 44px; border-radius: 12px; flex: 0 0 auto; }
+.skeleton-stack { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+
+/* ---------------- marketplace home ---------------- */
+.home-top {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 10px 0 4px;
+}
+.home-tagline {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.search-hero {
+  position: relative;
+  margin: 12px 0 4px;
+}
+.search-hero input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 14px 16px 14px 44px;
+  font: inherit;
+  font-size: 15px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+.search-hero input:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+  border-color: var(--primary);
+}
+.search-hero-icon {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  display: inline-flex;
+  pointer-events: none;
+}
+
+/* Rounded icon category cards (2 rows of 4 on most phones). */
+.category-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.category-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 12px 4px 10px;
+  min-height: 84px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.06s ease, border-color 0.06s ease;
+  min-width: 0;
+}
+.category-tile:active { transform: scale(0.96); border-color: var(--primary); }
+.category-tile-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--light);
+  color: var(--primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.category-tile-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 4px;
+}
+@media (max-width: 359px) {
+  .category-tile-grid { gap: 6px; }
+  .category-tile { padding: 10px 2px 8px; min-height: 76px; }
+  .category-tile-name { font-size: 10px; }
+}
+
+/* ---------------- business image cards ---------------- */
+.biz-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 0;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  transition: transform 0.06s ease, border-color 0.06s ease;
+}
+.biz-card:active { transform: scale(0.985); border-color: var(--primary); }
+.biz-card-imgwrap {
+  position: relative;
+  display: block;
+  height: 132px;
+  background: linear-gradient(135deg, var(--light), #e0e7ff);
+}
+.biz-card-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.biz-card-cat {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 3px 10px;
+  box-shadow: var(--shadow-sm);
+}
+/* Compact media band used by the business-identity card on the dashboard. */
+.biz-card-imgwrap-sm { height: 96px; }
+.biz-card-body { padding: 12px 14px 13px; }
+.biz-card-titlerow { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.biz-card-name {
+  font-weight: 700;
+  font-size: 15.5px;
+  color: var(--ink);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.biz-card-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.biz-card-rating svg { color: var(--star); }
+.biz-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-top: 6px;
+}
+.biz-card-desc {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.biz-distance { color: var(--muted); font-size: 12.5px; font-weight: 600; }
+
+/* ---------------- metric cards (business dashboard) ---------------- */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 14px;
+  min-width: 0;
+}
+.metric-card-wide {
+  width: 100%;
+  margin-top: 10px;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.metric-num {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.metric-label { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+
+/* ---------------- section headers ---------------- */
+.section-head h2, .card h2 {
+  font-size: 17px;
+  margin: 0;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+/* ---------------- detail hero (business profile) ---------------- */
+.detail-hero-media {
+  height: 190px;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--light), #e0e7ff);
+  box-shadow: var(--shadow);
+  margin-top: 8px;
+}
+.detail-hero-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.detail-hero-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+}
+.detail-quick {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+.quick-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 11px 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+.quick-action:active { background: var(--light); }
+
+/* Service/product cards on the business profile */
+.svc-card {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.svc-card:last-child { border-bottom: 0; }
+.svc-card-row { display: flex; align-items: flex-start; gap: 12px; }
+.svc-thumb {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  object-fit: cover;
+  flex: 0 0 auto;
+  background: var(--light);
+}
+.svc-main { flex: 1; min-width: 0; }
+.svc-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .muted { color: var(--muted); }
 p { overflow-wrap: break-word; }
 

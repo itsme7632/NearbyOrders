@@ -9,7 +9,7 @@ import {
   type Order,
 } from '../api.js';
 import { useAsyncData } from '../hooks.js';
-import { Button, EmptyState, ErrorState, Loading } from '../components/ui.js';
+import { Button, EmptyState, ErrorState, ListSkeleton, Loading } from '../components/ui.js';
 import { AlertIcon, BookingsIcon, CheckIcon, OrdersIcon, StoreIcon } from '../components/icons.js';
 import { OwnerHubRow, OwnerHubSection } from './owner-ui.js';
 import { SubscriptionBadge } from './subscription-badge.js';
@@ -28,7 +28,7 @@ export function OwnerBusinessHome(props: {
   const businesses = useAsyncData<Business[]>(() => getMyBusinesses(), []);
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
 
-  if (businesses.loading) return <Loading label="Loading your businesses…" />;
+  if (businesses.loading) return <ListSkeleton count={3} />;
   if (businesses.error) return <ErrorState message={businesses.error} onRetry={businesses.reload} />;
   if (!businesses.data?.length) {
     return (
@@ -47,20 +47,34 @@ export function OwnerBusinessHome(props: {
   // every stat and management link below (server ownership still enforced).
   const active = businesses.data.find((b) => b.id === selectedId) ?? businesses.data[0];
   const base = `/owner/${active.id}`;
+  const place = [active.locality, active.city].filter(Boolean).join(', ');
 
   return (
     <div className="screen">
       <header className="owner-head">
         <h1>Business Overview</h1>
       </header>
-      <div className="owner-biz-card" aria-label="Selected business">
-        <span className="owner-biz-name">{active.name}</span>
-        <span className={`badge ${active.status === 'APPROVED' ? 'badge-open' : 'badge-closed'}`}>
-          {active.status ?? 'PENDING'}
+
+      {/* Selected business identity: image, name, place, status. */}
+      <div className="biz-card" aria-label="Selected business">
+        <span className="biz-card-imgwrap biz-card-imgwrap-sm">
+          {active.imageUrl ? (
+            <img className="biz-card-img" src={active.imageUrl} alt="" />
+          ) : (
+            <span className="detail-hero-fallback" aria-hidden>
+              <StoreIcon size={30} />
+            </span>
+          )}
+          <span className="biz-card-cat">{active.status ?? 'PENDING'}</span>
         </span>
-        {active.isVerified ? <span className="badge badge-verified">✓ Verified</span> : null}
+        <span className="biz-card-body">
+          <span className="biz-card-titlerow">
+            <span className="biz-card-name">{active.name}</span>
+            {active.isVerified ? <span className="verified-dot" title="Verified">✓</span> : null}
+          </span>
+          {place ? <span className="biz-card-meta">📍 {place}</span> : null}
+        </span>
       </div>
-      <SubscriptionBadge businessId={active.id} />
 
       {businesses.data.length > 1 ? (
         <div className="filter-row" aria-label="Switch business">
@@ -71,6 +85,8 @@ export function OwnerBusinessHome(props: {
           ))}
         </div>
       ) : null}
+
+      <SubscriptionBadge businessId={active.id} />
 
       <OverviewStats businessId={active.id} onOpen={props.onOpen} base={base} />
 
@@ -118,7 +134,7 @@ function OverviewStats(props: { businessId: string; onOpen: (path: string) => vo
   const bookings = useAsyncData<Booking[]>(() => listBusinessBookings(props.businessId), [props.businessId]);
   const payments = useAsyncData(() => listOwnerPayments('PENDING_VERIFICATION'), [props.businessId]);
 
-  if (orders.loading || bookings.loading || payments.loading) return <Loading label="Loading your numbers…" />;
+  if (orders.loading || bookings.loading || payments.loading) return <ListSkeleton count={2} />;
   if (orders.error || bookings.error || payments.error)
     return <ErrorState message={orders.error ?? bookings.error ?? payments.error ?? 'Could not load your numbers.'} />;
 
@@ -132,29 +148,29 @@ function OverviewStats(props: { businessId: string; onOpen: (path: string) => vo
   const pendingPayments = (payments.data?.bookingPayments.length ?? 0) + (payments.data?.orderPayments.length ?? 0);
 
   return (
-    <section className="card" aria-label="Overview metrics">
-      <div className="owner-quick">
-        <button type="button" className="owner-quick-card" onClick={() => props.onOpen(`${props.base}/orders`)}>
-          <span className="owner-quick-num">{pendingOrders.length}</span>
-          <span className="owner-quick-label">Pending orders</span>
+    <section aria-label="Overview metrics">
+      <div className="metric-grid">
+        <button type="button" className="metric-card" onClick={() => props.onOpen(`${props.base}/orders`)}>
+          <span className="metric-num">{pendingOrders.length}</span>
+          <span className="metric-label">Pending orders</span>
         </button>
-        <div className="owner-quick-card">
-          <span className="owner-quick-num">{todaysOrders.length}</span>
-          <span className="owner-quick-label">Today's orders</span>
+        <div className="metric-card">
+          <span className="metric-num">{todaysOrders.length}</span>
+          <span className="metric-label">Today's orders</span>
         </div>
-        <button type="button" className="owner-quick-card" onClick={() => props.onOpen(`${props.base}/bookings`)}>
-          <span className="owner-quick-num">{pendingBookings.length}</span>
-          <span className="owner-quick-label">Pending bookings</span>
+        <button type="button" className="metric-card" onClick={() => props.onOpen(`${props.base}/bookings`)}>
+          <span className="metric-num">{pendingBookings.length}</span>
+          <span className="metric-label">Pending bookings</span>
         </button>
-        <div className="owner-quick-card">
-          <span className="owner-quick-num">{todaysBookings.length}</span>
-          <span className="owner-quick-label">Today's bookings</span>
+        <div className="metric-card">
+          <span className="metric-num">{todaysBookings.length}</span>
+          <span className="metric-label">Today's bookings</span>
         </div>
-        <button type="button" className="owner-quick-card" onClick={() => props.onOpen(`${props.base}/payments`)}>
-          <span className="owner-quick-num">{pendingPayments}</span>
-          <span className="owner-quick-label">Payments to verify</span>
-        </button>
       </div>
+      <button type="button" className="metric-card metric-card-wide" onClick={() => props.onOpen(`${props.base}/payments`)}>
+        <span className="metric-num">{pendingPayments}</span>
+        <span className="metric-label">Payments to verify</span>
+      </button>
     </section>
   );
 }

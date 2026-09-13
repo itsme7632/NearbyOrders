@@ -6,7 +6,7 @@ import {
   type Notification,
 } from '../api.js';
 import { useAsyncData } from '../hooks.js';
-import { Button, EmptyState, ErrorState, Loading } from '../components/ui.js';
+import { Button, EmptyState, ErrorState, ListSkeleton, Loading } from '../components/ui.js';
 import { BookingsIcon, OrdersIcon, AlertIcon } from '../components/icons.js';
 
 type NotifIcon = 'booking' | 'order' | 'generic';
@@ -36,7 +36,7 @@ export function NotificationsScreen(props: {
   const [actionError, setActionError] = useState<string | null>(null);
   const page = useAsyncData(() => listNotifications(), []);
 
-  if (page.loading && !state) return <Loading label="Loading notifications…" />;
+  if (page.loading && !state) return <ListSkeleton count={4} />;
   if (page.error && !state) return <ErrorState message={page.error} onRetry={page.reload} />;
 
   const items = state?.items ?? page.data?.items ?? [];

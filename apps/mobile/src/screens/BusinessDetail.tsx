@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getBusiness, listBusinessReviews, type Business, type Product, type PublicReview, type ReviewPage } from '../api.js';
 import { useAsyncData } from '../hooks.js';
-import { Button, CategoryPill, EmptyState, ErrorState, Loading, Money, OpenBadge, VerifiedBadge } from '../components/ui.js';
+import { Button, EmptyState, ErrorState, ListSkeleton, Loading, Money, OpenBadge, VerifiedBadge, RatingChip } from '../components/ui.js';
 import { StoreIcon } from '../components/icons.js';
 import { formatSlotTime } from '../time.js';
 import { addToCart, replaceWith } from '../cart.js';
@@ -51,6 +51,8 @@ export function BusinessDetailScreen(props: {
 
   const b = business.data;
   const place = [b.locality, b.city].filter(Boolean).join(', ');
+  const bookable = b.services?.some((s) => s.isActive && s.durationMinutes);
+  const mapsQuery = encodeURIComponent([b.address, b.city].filter(Boolean).join(', '));
 
   return (
     <div className="screen">
@@ -58,51 +60,57 @@ export function BusinessDetailScreen(props: {
         ‹ Back
       </button>
 
+      {/* Hero image with a branded fallback; never a broken image. */}
+      <div className="detail-hero-media" role="img" aria-label={b.imageUrl ? `${b.name} photo` : undefined}>
+        {b.imageUrl ? (
+          <img src={b.imageUrl} alt={`${b.name} photo`} />
+        ) : (
+          <span className="detail-hero-fallback" aria-hidden>
+            <StoreIcon size={48} />
+          </span>
+        )}
+      </div>
+
       <header className="biz-hero">
         <h1 className="biz-hero-name">{b.name}</h1>
         <div className="biz-hero-badges">
           <VerifiedBadge verified={b.isVerified} />
           {b.categories.map((c) => (
-            <CategoryPill key={c.id} name={c.name} />
+            <span key={c.id} className="pill">
+              {c.name}
+            </span>
           ))}
           {b.isOpenNow !== undefined ? <OpenBadge open={b.isOpenNow} /> : null}
         </div>
         {b.description ? <p className="biz-hero-desc">{b.description}</p> : null}
-        <div className="contact-card">
-          <h2 className="contact-card-title">Contact &amp; location</h2>
-          <a className="contact-row" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([b.address, b.city].filter(Boolean).join(', '))}`} target="_blank" rel="noreferrer">
-            <span className="contact-icon" aria-hidden>📍</span>
-            <span className="contact-text">
-              <span className="contact-main">{b.address}</span>
-              {place ? <span className="contact-sub">{place}</span> : null}
-            </span>
-            <span className="contact-chevron" aria-hidden>›</span>
-          </a>
-          {b.phone ? (
-            <a className="contact-row" href={`tel:${b.phone.replace(/[^\d+]/g, '')}`}>
-              <span className="contact-icon" aria-hidden>📞</span>
-              <span className="contact-text">
-                <span className="contact-main">{b.phone}</span>
-                <span className="contact-sub">Tap to call</span>
-              </span>
-              <span className="contact-chevron" aria-hidden>›</span>
-            </a>
-          ) : null}
-          {b.email ? (
-            <a className="contact-row" href={`mailto:${b.email}`}>
-              <span className="contact-icon" aria-hidden>✉️</span>
-              <span className="contact-text">
-                <span className="contact-main">{b.email}</span>
-                <span className="contact-sub">Tap to email</span>
-              </span>
-              <span className="contact-chevron" aria-hidden>›</span>
-            </a>
-          ) : null}
-        </div>
+        {place || b.phone ? (
+          <div className="detail-quick">
+            {place ? (
+              <a
+                className="quick-action"
+                href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                📍 Directions
+              </a>
+            ) : null}
+            {b.phone ? (
+              <a className="quick-action" href={`tel:${b.phone.replace(/[^\d+]/g, '')}`}>
+                📞 Call
+              </a>
+            ) : null}
+            {b.hours?.length ? (
+              <a className="quick-action" href="#hours">
+                🕘 Hours
+              </a>
+            ) : null}
+          </div>
+        ) : null}
       </header>
 
       {b.hours?.length ? (
-        <section className="card" aria-label="Opening hours">
+        <section className="card" id="hours" aria-label="Opening hours">
           <h2>Opening hours</h2>
           <ul className="hours-list">
             {[1, 2, 3, 4, 5, 6, 0].map((day) => {
@@ -122,30 +130,30 @@ export function BusinessDetailScreen(props: {
       {b.services?.length ? (
         <section className="card" aria-label="Services">
           <h2>Services</h2>
-          <ul className="item-list">
+          <div className="svc-list">
             {b.services.map((s) => (
-              <li key={s.id}>
-                <div className="item-row">
-                  <span className="item-name">{s.name}</span>
-                  <Money minor={s.priceMinor} currency={s.currency} />
+              <div key={s.id} className="svc-card">
+                <div className="svc-card-row">
+                  <div className="svc-main">
+                    <div className="item-row">
+                      <span className="item-name">{s.name}</span>
+                      <Money minor={s.priceMinor} currency={s.currency} />
+                    </div>
+                    {s.description ? <p className="item-desc">{s.description}</p> : null}
+                    <div className="svc-tags">
+                      {s.durationMinutes ? <span className="pill">{s.durationMinutes} min</span> : null}
+                      {props.onBook && s.isActive && s.durationMinutes ? (
+                        <button type="button" className="pill pill-action" onClick={() => props.onBook?.(s.id)}>
+                          Book
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
-                {s.description ? <p className="item-desc">{s.description}</p> : null}
-                <div className="item-tags">
-                  {s.durationMinutes ? <span className="pill">{s.durationMinutes} min</span> : null}
-                  {props.onBook && s.isActive && s.durationMinutes ? (
-                    <button
-                      type="button"
-                      className="pill pill-action"
-                      onClick={() => props.onBook?.(s.id)}
-                    >
-                      Book
-                    </button>
-                  ) : null}
-                </div>
-              </li>
+              </div>
             ))}
-          </ul>
-          {props.onBook && b.services?.some((s) => s.isActive && s.durationMinutes) ? (
+          </div>
+          {props.onBook && bookable ? (
             <Button full onClick={() => props.onBook?.()}>
               Book this service
             </Button>
@@ -187,29 +195,40 @@ export function BusinessDetailScreen(props: {
               </div>
             </div>
           ) : null}
-          <ul className="item-list">
+          <div className="svc-list">
             {b.products.map((p) => (
-              <li key={p.id}>
-                <div className="item-row">
-                  <span className="item-name">{p.name}</span>
-                  <Money minor={p.priceMinor} currency={p.currency} />
-                </div>
-                {p.description ? <p className="item-desc">{p.description}</p> : null}
-                {props.canOrder ? (
-                  <div className="item-tags">
-                    <button
-                      type="button"
-                      className="pill pill-action"
-                      onClick={() => handleAdd(p)}
-                      aria-label={`Add ${p.name} to cart`}
-                    >
-                      + Add
-                    </button>
+              <div key={p.id} className="svc-card">
+                <div className="svc-card-row">
+                  {p.imageUrl ? (
+                    <img className="svc-thumb" src={p.imageUrl} alt="" loading="lazy" />
+                  ) : (
+                    <span className="svc-thumb detail-hero-fallback" aria-hidden>
+                      <StoreIcon size={22} />
+                    </span>
+                  )}
+                  <div className="svc-main">
+                    <div className="item-row">
+                      <span className="item-name">{p.name}</span>
+                      <Money minor={p.priceMinor} currency={p.currency} />
+                    </div>
+                    {p.description ? <p className="item-desc">{p.description}</p> : null}
+                    {props.canOrder ? (
+                      <div className="svc-tags">
+                        <button
+                          type="button"
+                          className="pill pill-action"
+                          onClick={() => handleAdd(p)}
+                          aria-label={`Add ${p.name} to cart`}
+                        >
+                          + Add
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-              </li>
+                </div>
+              </div>
             ))}
-          </ul>
+          </div>
           {props.canOrder && props.onOpenCart ? (
             <Button full variant="secondary" onClick={props.onOpenCart}>
               {cartCount > 0 ? `Go to cart (${cartCount})` : 'Go to cart'}

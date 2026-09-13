@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { formatMoney } from '@nearbyorders/shared';
 import type { Business } from '../api.js';
+import { StoreIcon } from './icons.js';
 
 export function Money({ minor, currency = 'PKR' }: { minor: number; currency?: string }) {
   return <span className="money">{formatMoney(minor, currency)}</span>;
@@ -23,6 +24,49 @@ export function OpenBadge({ open }: { open: boolean }) {
 
 export function CategoryPill({ name }: { name: string }) {
   return <span className="pill">{name}</span>;
+}
+
+/** Consistent star glyph for ratings; color comes from the token system. */
+export function StarGlyph({ size = 13 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden focusable="false">
+      <path d="m12 3.6 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.8l5.9-.9z" />
+    </svg>
+  );
+}
+
+/** Shows a rating only when the API provides one; never invents numbers. */
+export function RatingChip({ average, count }: { average?: number | null; count?: number }) {
+  if (average === null || average === undefined) return null;
+  return (
+    <span className="biz-card-rating" aria-label={`Rated ${average.toFixed(1)} out of 5`}>
+      <StarGlyph />
+      {average.toFixed(1)}
+      {count !== undefined ? <span className="muted">({count})</span> : null}
+    </span>
+  );
+}
+
+/** Tappable rounded icon tile used for the Home category grid. */
+export function CategoryTile(props: { name: string; icon: ReactNode; onClick: () => void }) {
+  return (
+    <button type="button" className="category-tile" onClick={props.onClick}>
+      <span className="category-tile-icon" aria-hidden>
+        {props.icon}
+      </span>
+      <span className="category-tile-name">{props.name}</span>
+    </button>
+  );
+}
+
+/** Selling section header with optional trailing action. */
+export function SectionHeader(props: { title: string; action?: ReactNode }) {
+  return (
+    <div className="section-head">
+      <h2>{props.title}</h2>
+      {props.action}
+    </div>
+  );
 }
 
 export function Button(props: {
@@ -86,6 +130,43 @@ export function Loading({ label = 'Loading…' }: { label?: string }) {
   );
 }
 
+/** Layout-matching shimmer placeholder for a list of business cards. */
+export function BusinessCardSkeleton({ count = 3 }: { count?: number }) {
+  return (
+    <div role="status" aria-label="Loading">
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="skeleton-card" aria-hidden>
+          <div className="skeleton skeleton-img" />
+          <div className="skeleton-row">
+            <div className="skeleton skeleton-line w-60" />
+            <div className="skeleton skeleton-line w-25" />
+          </div>
+          <div className="skeleton skeleton-line w-40" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Compact row-shaped placeholder for detail screens and lists. */
+export function ListSkeleton({ count = 4 }: { count?: number }) {
+  return (
+    <div role="status" aria-label="Loading">
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="skeleton-card" aria-hidden>
+          <div className="skeleton-row">
+            <div className="skeleton skeleton-thumb" />
+            <div className="skeleton-stack">
+              <div className="skeleton skeleton-line w-60" />
+              <div className="skeleton skeleton-line w-40" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Toggle(props: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
     <label className="toggle">
@@ -100,26 +181,44 @@ export function Toggle(props: { checked: boolean; onChange: (v: boolean) => void
   );
 }
 
+/**
+ * Marketplace business card: cover image (with graceful brand-gradient
+ * fallback), category tag, name, rating when available, locality/distance
+ * and open/closed status. Purely presentational: all data comes from the API.
+ */
 export function BusinessCard(props: { business: Business; onOpen: () => void }) {
   const b = props.business;
   const category = b.categories[0]?.name;
   const place = [b.locality, b.city].filter(Boolean).join(', ');
+  const distance =
+    b.distanceKm !== undefined && b.distanceKm !== null && Number.isFinite(b.distanceKm)
+      ? b.distanceKm >= 1
+        ? `${b.distanceKm.toFixed(1)} km`
+        : `${Math.round(b.distanceKm * 1000)} m`
+      : null;
   return (
-    <button className="business-card" onClick={props.onOpen}>
-      <div className="business-card-body">
-        <div className="business-card-title">
-          <span className="biz-name">{b.name}</span>
+    <button className="biz-card" onClick={props.onOpen}>
+      <span className="biz-card-imgwrap">
+        {b.imageUrl ? (
+          <img className="biz-card-img" src={b.imageUrl} alt="" loading="lazy" />
+        ) : (
+          <span className="detail-hero-fallback">
+            <StoreIcon size={34} />
+          </span>
+        )}
+        {category ? <span className="biz-card-cat">{category}</span> : null}
+      </span>
+      <span className="biz-card-body">
+        <span className="biz-card-titlerow">
+          <span className="biz-card-name">{b.name}</span>
           {b.isVerified ? <span className="verified-dot" title="Verified">✓</span> : null}
-        </div>
-        {b.description ? <p className="biz-desc">{b.description}</p> : null}
-        <div className="biz-meta">
-          {category ? <CategoryPill name={category} /> : null}
-          {place ? <span className="biz-place">📍 {place}</span> : null}
+          <RatingChip average={b.averageRating} />
+        </span>
+        {b.description ? <span className="biz-card-desc">{b.description}</span> : null}
+        <span className="biz-card-meta">
+          {distance ? <span className="biz-distance">📍 {distance}</span> : place ? <span className="biz-place">📍 {place}</span> : null}
           {b.isOpenNow !== undefined ? <OpenBadge open={b.isOpenNow} /> : null}
-        </div>
-      </div>
-      <span className="business-card-chevron" aria-hidden>
-        ›
+        </span>
       </span>
     </button>
   );

@@ -11,7 +11,7 @@ import {
   type CustomerPayment,
 } from '../api.js';
 import { useAsyncData } from '../hooks.js';
-import { Button, EmptyState, ErrorState, Loading, Money } from '../components/ui.js';
+import { Button, EmptyState, ErrorState, ListSkeleton, Loading, Money } from '../components/ui.js';
 import { OrdersIcon } from '../components/icons.js';
 import type { Order, OrderStatus } from '../api.js';
 import { ReviewForm } from '../components/ReviewForm.js';
@@ -54,14 +54,14 @@ export function OrdersScreen(props: { onOpenOrder: (id: string) => void; onBrows
         <h1>My orders</h1>
       </header>
       {orders.loading ? (
-        <Loading label="Loading your orders…" />
+        <ListSkeleton count={4} />
       ) : orders.error ? (
         <ErrorState message={orders.error} onRetry={orders.reload} />
       ) : !orders.data?.length ? (
         <EmptyState
           icon={<OrdersIcon size={30} />}
           title="No orders yet"
-          body="Add products from a business and place your first order."
+          body="Discover something nearby and place your first order."
           action={<Button onClick={props.onBrowse}>Find businesses</Button>}
         />
       ) : (

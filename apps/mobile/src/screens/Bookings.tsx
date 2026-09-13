@@ -15,7 +15,7 @@ import {
   type CustomerPayment,
 } from '../api.js';
 import { useAsyncData } from '../hooks.js';
-import { Button, EmptyState, ErrorState, Loading, Money } from '../components/ui.js';
+import { Button, EmptyState, ErrorState, ListSkeleton, Loading, Money } from '../components/ui.js';
 import { AlertIcon, BookingsIcon, CheckIcon } from '../components/icons.js';
 import { daysBetween, formatSlotTime, longDateLabel, todayPkt } from '../time.js';
 import { ReviewForm } from '../components/ReviewForm.js';
@@ -70,7 +70,7 @@ export function BookingsScreen(props: { onOpenBooking: (id: string) => void; onE
     return { upcoming, past };
   }, [bookings.data, today]);
 
-  if (bookings.loading) return <Loading label="Loading your bookings…" />;
+  if (bookings.loading) return <ListSkeleton count={4} />;
   if (bookings.error) return <ErrorState message={bookings.error} onRetry={bookings.reload} />;
 
   if (!bookings.data?.length) {
@@ -79,7 +79,7 @@ export function BookingsScreen(props: { onOpenBooking: (id: string) => void; onE
         <EmptyState
           icon={<BookingsIcon size={30} />}
           title="No bookings yet"
-          body="Book a service from any business and it will show up here."
+          body="Discover something nearby and book your first service."
           action={
             <Button onClick={props.onExplore} sm>
               Explore businesses
