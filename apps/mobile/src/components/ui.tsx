@@ -77,8 +77,9 @@ export function Button(props: {
   disabled?: boolean;
   full?: boolean;
   sm?: boolean;
+  className?: string;
 }) {
-  const cls = `btn btn-${props.variant ?? 'primary'}${props.full ? ' btn-full' : ''}${props.sm ? ' btn-sm' : ''}`;
+  const cls = `btn btn-${props.variant ?? 'primary'}${props.full ? ' btn-full' : ''}${props.sm ? ' btn-sm' : ''}${props.className ? ` ${props.className}` : ''}`;
   return (
     <button type={props.type ?? 'button'} className={cls} onClick={props.onClick} disabled={props.disabled}>
       {props.children}

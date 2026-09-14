@@ -1,28 +1,62 @@
 /* ------------------------------------------------------------------
-   NearbyOrders design tokens (v2 visual system)
-   Single source of truth for color, radius, shadow and spacing.
-   Screens consume tokens via CSS variables; hard-coded values in
-   screens are visual bugs.
+   NearbyOrders design tokens (v4 visual identity)
+   A warm, editorial marketplace identity: warm porcelain background,
+   charcoal ink, and a distinctive terracotta brand accent with a deep
+   teal support. Single source of truth for color, radius, shadow,
+   spacing and type. Screens consume tokens via CSS variables;
+   hard-coded values in screens are visual bugs.
 ------------------------------------------------------------------- */
 :root {
-  /* Brand */
-  --primary: #4f46e5;
-  --secondary: #2563eb;
-  --navy: #1e1b4b;
-  --light: #eef2ff;
+  /* Brand: terracotta identity (NOT indigo/purple) */
+  --brand: #c2410c;
+  --brand-strong: #9a3412;
+  --brand-pressed: #7c2d12;
+  --brand-soft: #fff1e7;
+  --brand-softer: #fff7f0;
 
-  /* Surfaces */
-  --ink: #111827;
-  --bg: #f8f9ff;
+  /* Support accent (restrained) */
+  --accent: #0f766e;
+  --accent-soft: #e6f5f3;
+
+  /* Surfaces: warm neutrals, deep charcoal ink */
+  --bg: #f7f4ef;
+  --bg-raised: #fdfcfa;
   --card: #ffffff;
-  --border: #e5e7eb;
+  --border: #e7e1d8;
+  --border-strong: #d8d0c4;
+
+  /* Text */
+  --ink: #1c1917;
+  --ink-2: #44403c;
+  --muted: #78716c;
 
   /* Semantic */
-  --success: #16a34a;
-  --warning: #f59e0b;
-  --error: #ef4444;
-  --star: #f59e0b;
-  --muted: #64748b;
+  --success: #15803d;
+  --success-soft: #ecfdf3;
+  --warning: #b45309;
+  --warning-soft: #fef3e2;
+  --error: #dc2626;
+  --error-soft: #fdecec;
+  --info: #1d4ed8;
+  --info-soft: #eaf1fe;
+  --star: #ea9a06;
+  --disabled: #a8a29e;
+
+  /* Navigation (light surface, brand-selected) */
+  --nav-surface: #ffffff;
+  --nav-selected: var(--brand);
+  --nav-selected-bg: var(--brand-soft);
+
+  /* Overlay */
+  --overlay: rgba(28, 25, 23, 0.45);
+
+  /* Legacy aliases: keep old var names working during migration so no
+     screen loses styling while token consumers are updated. */
+  --primary: var(--brand);
+  --primary-soft: var(--brand-soft);
+  --secondary: var(--accent);
+  --navy: var(--ink);
+  --light: var(--brand-soft);
 
   /* Radius scale */
   --radius-sm: 10px;
@@ -30,10 +64,18 @@
   --radius-lg: 20px;
   --radius-xl: 26px;
 
-  /* Elevation scale */
-  --shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.05);
-  --shadow: 0 1px 3px rgba(30, 27, 75, 0.08), 0 4px 14px rgba(30, 27, 75, 0.06);
-  --shadow-lg: 0 6px 24px rgba(30, 27, 75, 0.12);
+  /* Elevation scale (minimal, warm) */
+  --shadow-sm: 0 1px 2px rgba(28, 25, 23, 0.05);
+  --shadow: 0 1px 3px rgba(28, 25, 23, 0.06), 0 4px 14px rgba(28, 25, 23, 0.05);
+  --shadow-lg: 0 8px 28px rgba(28, 25, 23, 0.1);
+
+  /* Type scale */
+  --font-display: 26px;
+  --font-h1: 21px;
+  --font-h2: 17px;
+  --font-h3: 15px;
+  --font-body: 14.5px;
+  --font-caption: 12.5px;
 
   color-scheme: light;
 }
@@ -87,7 +129,7 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 
 /* Legacy gradient hero kept only for screens still using it. */
 .hero {
-  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  background: var(--brand);
   border-radius: var(--radius-lg);
   padding: 20px;
   color: white;
@@ -120,7 +162,7 @@ nav {
   display: flex;
   justify-content: space-around;
   padding: 12px 8px calc(12px + env(safe-area-inset-bottom));
-  box-shadow: 0 -3px 14px rgba(30, 27, 75, 0.07);
+  box-shadow: 0 -3px 14px rgba(28, 25, 23, 0.07);
 }
 nav button {
   font-size: 11.5px;
@@ -160,7 +202,7 @@ h1 {
 
 /* ---------------- skeletons (calm, layout-matching loading) ------------- */
 .skeleton {
-  background: linear-gradient(100deg, #eceefc 40%, #f6f7ff 50%, #eceefc 60%);
+  background: linear-gradient(100deg, #efe9e0 40%, #f7f3ec 50%, #efe9e0 60%);
   background-size: 200% 100%;
   animation: shimmer 1.4s ease infinite;
   border-radius: var(--radius-sm);
@@ -297,7 +339,7 @@ h1 {
   position: relative;
   display: block;
   height: 132px;
-  background: linear-gradient(135deg, var(--light), #e0e7ff);
+  background: linear-gradient(135deg, var(--brand-soft), #f3e3d3);
 }
 .biz-card-img {
   width: 100%;
@@ -405,7 +447,7 @@ h1 {
   height: 190px;
   border-radius: var(--radius-xl);
   overflow: hidden;
-  background: linear-gradient(135deg, var(--light), #e0e7ff);
+  background: linear-gradient(135deg, var(--brand-soft), #f3e3d3);
   box-shadow: var(--shadow);
   margin-top: 8px;
 }
@@ -953,8 +995,8 @@ nav.business-nav .nav-item.active {
   margin-bottom: 10px;
 }
 .cart-conflict {
-  background: rgba(79, 70, 229, 0.06);
-  border: 1px solid rgba(79, 70, 229, 0.3);
+  background: rgba(194, 65, 12, 0.06);
+  border: 1px solid rgba(194, 65, 12, 0.3);
   border-radius: 12px;
   padding: 12px;
   margin-bottom: 10px;
@@ -1014,7 +1056,7 @@ nav.business-nav .nav-item.active {
 .order-meta { color: var(--muted); font-size: 13px; margin: 4px 0 0; overflow-wrap: anywhere; }
 /* Order status badges reuse the badge system. */
 .status-pending { background: rgba(202, 138, 4, 0.14); color: #a16207; }
-.status-accepted { background: rgba(79, 70, 229, 0.12); color: var(--primary); }
+.status-accepted { background: var(--accent-soft); color: var(--accent); }
 .status-preparing { background: rgba(2, 132, 199, 0.12); color: #0369a1; }
 .status-ready { background: rgba(22, 163, 74, 0.14); color: var(--success); }
 .status-completed { background: rgba(16, 132, 82, 0.14); color: var(--success); }
@@ -1043,7 +1085,7 @@ nav.business-nav .nav-item.active {
   width: 50px;
   height: 50px;
   border-radius: 15px;
-  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  background: var(--brand);
   color: #fff;
   display: inline-flex;
   align-items: center;
@@ -1066,7 +1108,7 @@ nav.business-nav .nav-item.active {
   background: var(--card);
   transition: border-color 0.08s ease;
 }
-.auth-input:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
+.auth-input:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(194, 65, 12, 0.12); }
 .auth-input.input-invalid { border-color: var(--error); }
 .auth-input-icon {
   flex: 0 0 auto;
@@ -1087,7 +1129,7 @@ nav.business-nav .nav-item.active {
   color: var(--navy);
   height: 44px;
 }
-.auth-input input::placeholder { color: #94a3b8; }
+.auth-input input::placeholder { color: #a8a29e; }
 .auth-input input:focus { outline: none; }
 .password-slot { position: relative; display: flex; align-items: center; flex: 1; min-width: 0; }
 .password-slot input { padding-right: 40px; }
@@ -1263,7 +1305,7 @@ button.hub-row:active { background: var(--bg); }
   width: 56px;
   height: 56px;
   border-radius: 999px;
-  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  background: var(--brand);
   color: #fff;
   font-size: 24px;
   font-weight: 800;
@@ -1579,7 +1621,7 @@ button.hub-row:active { background: var(--bg); }
 }
 .confirm-cancel { margin-top: 12px; background: rgba(239, 68, 68, 0.05); border: 1px dashed rgba(239, 68, 68, 0.4); border-radius: 12px; padding: 12px; }
 .confirm-cancel p { margin: 0 0 4px; font-weight: 600; font-size: 13.5px; }
-.pill-action { border: 1px solid rgba(79, 70, 229, 0.35); color: var(--primary); font-weight: 700; padding: 3px 12px; }
+.pill-action { border: 1px solid rgba(194, 65, 12, 0.35); color: var(--primary); font-weight: 700; padding: 3px 12px; }
 
 @media (max-width: 359px) {
   .slot-grid { grid-template-columns: repeat(2, 1fr); }
@@ -1739,7 +1781,7 @@ input[aria-invalid='true'] { border-color: #b91c1c; }
   width: 38px;
   height: 38px;
   border-radius: 999px;
-  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  background: var(--brand);
   color: #fff;
   font-size: 16px;
   font-weight: 800;
@@ -1778,7 +1820,7 @@ input[aria-invalid='true'] { border-color: #b91c1c; }
   box-shadow: var(--shadow);
   margin: 14px 0 4px;
 }
-.search-bar-v3:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
+.search-bar-v3:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(194, 65, 12, 0.12); }
 .search-bar-v3 input {
   flex: 1;
   min-width: 0;
@@ -1810,7 +1852,7 @@ input[aria-invalid='true'] { border-color: #b91c1c; }
   border-radius: var(--radius-lg);
   padding: 16px;
   color: #fff;
-  background: linear-gradient(120deg, var(--primary) 0%, var(--secondary) 100%);
+  background: var(--brand);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
 }
@@ -1866,7 +1908,7 @@ input[aria-invalid='true'] { border-color: #b91c1c; }
 .pop-card-media {
   position: relative;
   height: 96px;
-  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  background: var(--brand);
   display: block;
 }
 .pop-card-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -2140,7 +2182,7 @@ button.manage-row:active { background: var(--bg); }
   height: 200px;
   border-radius: var(--radius-xl);
   overflow: hidden;
-  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  background: var(--brand);
   box-shadow: var(--shadow-lg);
 }
 .detail-hero-media-v3 img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -2218,7 +2260,7 @@ button.manage-row:active { background: var(--bg); }
   border-radius: 13px;
   object-fit: cover;
   flex: 0 0 auto;
-  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  background: var(--brand);
   color: #fff;
   font-size: 20px;
   font-weight: 800;
@@ -2263,7 +2305,7 @@ nav.nav-v3 .nav-item.active svg { transform: translateY(-1px); }
 .grow-card {
   margin-top: 16px;
   border-radius: var(--radius-lg);
-  background: linear-gradient(120deg, #312e81, var(--navy));
+  background: linear-gradient(120deg, #292524, var(--ink));
   color: #fff;
   padding: 16px;
   box-shadow: var(--shadow-lg);
@@ -2287,7 +2329,7 @@ nav.nav-v3 .nav-item.active svg { transform: translateY(-1px); }
 /* ---- Empty states v3: illustration circle + tighter copy ---- */
 .empty-v3 {
   background: var(--card);
-  border: 1px dashed rgba(79, 70, 229, 0.35);
+  border: 1px dashed rgba(194, 65, 12, 0.35);
   border-radius: var(--radius-lg);
   padding: 28px 20px 24px;
   text-align: center;
@@ -2310,3 +2352,258 @@ nav.nav-v3 .nav-item.active svg { transform: translateY(-1px); }
 /* ---- Compact section header with count ---- */
 .section-head-v3 { display: flex; align-items: baseline; justify-content: space-between; margin: 22px 0 10px; }
 .section-head-v3 h2 { margin: 0; font-size: 18px; font-weight: 800; letter-spacing: -0.01em; }
+
+/* ==================================================================
+   v4 IDENTITY LAYER
+   The terracotta/porcelain rebrand. Every rule here restyles shared
+   primitives so the whole app shifts coherently; screens only need
+   markup they already have.
+   ================================================================== */
+
+/* ---- Typography scale ---- */
+h1 { font-size: var(--font-h1); letter-spacing: -0.02em; }
+h2, .section-title { font-size: var(--font-h2); letter-spacing: -0.01em; }
+.screen > header h1 { font-size: var(--font-display); }
+
+/* ---- Buttons: filled brand, soft secondary, clear states ---- */
+.btn { border-radius: 13px; letter-spacing: 0.01em; }
+.btn-primary { background: var(--brand); box-shadow: 0 2px 8px rgba(194, 65, 12, 0.24); }
+.btn-primary:hover { background: var(--brand-strong); }
+.btn-primary:active { background: var(--brand-pressed); transform: scale(0.98); }
+.btn-secondary { background: var(--brand-soft); color: var(--brand-strong); }
+.btn-secondary:hover { background: #ffe8d6; }
+.btn-ghost { color: var(--ink-2); }
+.btn-ghost:hover { background: rgba(28, 25, 23, 0.05); }
+
+/* ---- Inputs: warm borders, brand focus ---- */
+.field input,
+.field textarea,
+.field select {
+  border-color: var(--border-strong);
+  border-radius: 12px;
+}
+.field input:focus,
+.field textarea:focus,
+.field select:focus {
+  outline: 2px solid var(--brand);
+  outline-offset: 0;
+  border-color: var(--brand);
+}
+.field input::placeholder, .field textarea::placeholder { color: var(--disabled); }
+
+/* ---- Bottom navigation: floating pill bar, both modes ---- */
+nav,
+nav.nav-v3,
+nav.business-nav,
+nav.business-nav-v3 {
+  left: 10px;
+  right: 10px;
+  bottom: calc(8px + env(safe-area-inset-bottom));
+  border-radius: 22px;
+  border: 1px solid var(--border);
+  background: var(--nav-surface);
+  box-shadow: 0 10px 30px rgba(28, 25, 23, 0.14);
+  padding: 8px 6px calc(8px);
+}
+nav .nav-item,
+nav button {
+  color: var(--muted);
+  border-radius: 15px;
+  font-weight: 700;
+}
+nav .nav-item.active,
+nav button.active {
+  color: var(--nav-selected);
+  background: var(--nav-selected-bg);
+}
+nav .nav-item.active svg { transform: translateY(-1px); }
+
+/* ---- Cards: warm borders, minimal elevation ---- */
+.card { border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
+
+/* ---- Brand logo: two-tone wordmark ---- */
+.logo, .auth-brand-name { color: var(--ink); }
+.logo b, .auth-brand-name b { color: var(--brand); }
+
+/* ---- Chips: brand selection state ---- */
+.chip-active,
+.category-chip:active { background: var(--brand); border-color: var(--brand); color: #fff; }
+.chip-active { box-shadow: 0 2px 8px rgba(194, 65, 12, 0.25); }
+
+/* ---- Tabs: brand underline ---- */
+.tab-strip button.tab-active { color: var(--brand); border-bottom-color: var(--brand); }
+.tab-strip { background: var(--bg-raised); }
+
+/* ---- Headers / hero surfaces ---- */
+.home-greeting { color: var(--ink); }
+.home-greeting-title em { color: var(--brand); font-style: normal; }
+.detail-hero-media-v3,
+.pop-card-media { background: linear-gradient(135deg, #f3e3d3, #e7d3bd); }
+.detail-hero-media-v3 .hero-initial,
+.pop-card-initial,
+.hero-initial { color: var(--brand-strong); }
+
+/* ---- Badges: real system colors ---- */
+.status-pending { background: var(--warning-soft); color: var(--warning); }
+.status-accepted, .status-confirmed, .status-preparing { background: var(--info-soft); color: var(--info); }
+.status-completed, .status-ready, .status-verified { background: var(--success-soft); color: var(--success); }
+.status-cancelled, .status-rejected, .status-expired { background: var(--error-soft); color: var(--error); }
+
+/* ---- Focus rings everywhere ---- */
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* ==================================================================
+   v4 CUSTOMER PROFILE — real identity header, not a settings list
+   ================================================================== */
+.profile-hero-v4 {
+  position: relative;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(160deg, #2e2a26 0%, #1c1917 70%);
+  color: #fff;
+  padding: 22px 18px 18px;
+  overflow: hidden;
+}
+.profile-hero-v4::after {
+  content: '';
+  position: absolute;
+  top: -46px;
+  right: -46px;
+  width: 150px;
+  height: 150px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(194, 65, 12, 0.5), transparent 70%);
+}
+.profile-hero-v4 .avatar-v4 {
+  width: 62px;
+  height: 62px;
+  border-radius: 20px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 26px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(194, 65, 12, 0.4);
+  flex: 0 0 auto;
+}
+.profile-hero-v4 .profile-hero-name { color: #fff; font-size: 18px; margin: 0; }
+.profile-hero-v4 .profile-hero-email { color: rgba(255, 255, 255, 0.72); font-size: 13px; margin: 2px 0 8px; }
+.profile-hero-v4 .pill {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.profile-hero-v4 .profile-edit-btn {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+.profile-hero-v4 .profile-edit-btn:active { background: rgba(255, 255, 255, 0.24); }
+.profile-hero-v4 .manage-cta {
+  margin-top: 16px;
+  width: 100%;
+  background: #fff;
+  color: var(--ink);
+  border-radius: 12px;
+  padding: 12px;
+  font-weight: 700;
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.profile-hero-v4 .manage-cta:active { background: #f1ece4; }
+.profile-hero-v4 { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.profile-hero-v4 .profile-hero-text { flex: 1; min-width: 0; }
+
+/* Hub cards on the warm surface */
+.hub-section-label {
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--muted);
+}
+.hub-card { border-radius: var(--radius); border: 1px solid var(--border); background: var(--card); }
+.hub-row-icon {
+  border-radius: 11px;
+  background: var(--brand-softer);
+  color: var(--brand);
+  border: 1px solid var(--brand-soft);
+}
+
+/* ---- v4 AUTH: split-brand screen ---- */
+.auth-screen-v4 {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-top: 24px;
+}
+.auth-brand-v4 { margin-bottom: 18px; }
+.auth-brand-v4 .auth-brand-mark {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  background: var(--brand);
+  box-shadow: 0 6px 20px rgba(194, 65, 12, 0.35);
+}
+.auth-card {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+.auth-card h1 { font-size: var(--font-display); }
+.auth-card .btn-primary { margin-top: 6px; }
+.role-option { border-radius: 14px; border: 1px solid var(--border-strong); }
+.role-option-active {
+  border-color: var(--brand);
+  background: var(--brand-softer);
+  box-shadow: 0 0 0 1px var(--brand);
+}
+.role-check { background: var(--brand); }
+.forgot-link { color: var(--brand); font-weight: 600; }
+.link-inline { color: var(--brand); font-weight: 700; }
+
+/* ==================================================================
+   v4 BUSINESS SURFACES — charcoal identity for owner-mode heroes
+   ================================================================== */
+.plan-card {
+  background: linear-gradient(150deg, #2e2a26 0%, #1c1917 75%);
+  border: 1px solid #3f3a34;
+}
+.plan-card-icon { background: rgba(255, 255, 255, 0.1); color: #fbbf24; }
+.plan-card-badge { background: rgba(255, 255, 255, 0.12); }
+.grow-card {
+  border: 1px solid #3f3a34;
+}
+.app-header-v3 {
+  background: linear-gradient(160deg, #2e2a26 0%, #1c1917 70%);
+  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+  color: #fff;
+  margin-bottom: 6px;
+}
+.detail-hero-media,
+.detail-hero-media-v3 {
+  border-radius: var(--radius-lg);
+}
+.biz-card { border-radius: var(--radius); }
+.svc-thumb { background: var(--brand-soft); color: var(--brand-strong); }
+.pop-card-initial { color: var(--brand-strong); }
+.metric-card-v3 {
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+.metric-card-v3-icon { color: var(--brand); background: var(--brand-softer); border-radius: 10px; }
+.quick-tile {
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+.quick-tile-icon { color: var(--brand); background: var(--brand-softer); }

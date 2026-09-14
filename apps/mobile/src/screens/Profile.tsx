@@ -382,8 +382,10 @@ function AccountHub(props: {
 
   return (
     <div className="screen">
-      <div className="card profile-hero">
-        <div className="avatar" aria-hidden>
+      {/* v4 identity header: the person, clearly. Business management is a
+          distinct section below — never the identity itself. */}
+      <div className="card profile-hero-v4">
+        <div className="avatar-v4" aria-hidden>
           {initial}
         </div>
         <div className="profile-hero-text">
@@ -391,18 +393,16 @@ function AccountHub(props: {
           <p className="profile-hero-email">{props.session.user.email}</p>
           <span className="pill">{isOwner ? 'Business owner' : isAdmin ? 'Administrator' : 'Customer'}</span>
         </div>
-        <Button sm variant="secondary" onClick={props.onEditProfile}>
+        <Button sm variant="secondary" className="profile-edit-btn" onClick={props.onEditProfile}>
           Edit profile
         </Button>
-      </div>
-
-      {isOwner ? (
-        <div className="card">
-          <Button full onClick={props.onOwnerDashboard}>
+        {isOwner ? (
+          <button type="button" className="manage-cta" onClick={props.onOwnerDashboard}>
+            <StoreIcon size={16} />
             Manage my business
-          </Button>
-        </div>
-      ) : null}
+          </button>
+        ) : null}
+      </div>
 
       <HubSection label="Account">
         <HubRow icon={<UserIcon size={19} />} title="Personal information" subtitle="Name and phone number" onClick={props.onEditProfile} />
@@ -531,8 +531,8 @@ export function ProfileScreen(props: {
   };
 
   return (
-    <div className="screen auth-screen">
-      <header className="auth-brand">
+    <div className="screen auth-screen auth-screen-v4">
+      <header className="auth-brand auth-brand-v4">
         <span className="auth-brand-mark" aria-hidden>
           <PinIcon size={26} />
         </span>
