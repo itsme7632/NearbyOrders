@@ -362,7 +362,7 @@ export function App() {
       {content}
       {!authFlow ? (
         businessMode ? (
-          <nav aria-label="Business" className="business-nav">
+          <nav aria-label="Business" className="business-nav business-nav-v3">
             {businessTabs.map((t) => {
               const active = t === businessTab && route.name === 'tabs';
               const IconCmp =
@@ -384,7 +384,7 @@ export function App() {
             })}
           </nav>
         ) : (
-          <nav aria-label="Primary">
+          <nav aria-label="Primary" className="nav-v3">
             {navigationTabs.map((t) => {
               const active = t === tab && route.name === 'tabs';
               const IconCmp =

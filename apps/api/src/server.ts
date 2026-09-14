@@ -289,7 +289,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     // Newest-first so the first page is deterministic once more businesses exist
     // than a single page can hold.
     const businesses = await prisma.business.findMany({ where, include: PUBLIC_BUSINESS_INCLUDE, take: fetchTake, orderBy: { createdAt: 'desc' } });
-    const mapped = businesses.map((b) => ({
+    const ratingSummaries = await Promise.all(businesses.map((b) => ratingSummary(b.id)));
+    const mapped = businesses.map((b, i) => ({
       id: b.id,
       name: b.name,
       slug: b.slug,
@@ -303,6 +304,8 @@ export async function buildApp(): Promise<FastifyInstance> {
       longitude: b.longitude,
       currency: b.currency,
       isOpenNow: isOpenNow(b.hours),
+      averageRating: ratingSummaries[i].averageRating,
+      reviewCount: ratingSummaries[i].reviewCount,
       categories: b.categories.map((bc) => bc.category),
     }));
 
@@ -334,6 +337,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       },
     });
     if (!b) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Business not found' } });
+    const summary = await ratingSummary(b.id);
     return {
       data: {
         id: b.id,
@@ -342,6 +346,8 @@ export async function buildApp(): Promise<FastifyInstance> {
         description: b.description,
         imageUrl: b.imageUrl,
         isVerified: b.isVerified,
+        averageRating: summary.averageRating,
+        reviewCount: summary.reviewCount,
         phone: b.phone,
         email: b.email,
         address: b.address,
@@ -1892,13 +1898,14 @@ export async function buildApp(): Promise<FastifyInstance> {
     servicePriceMinor?: number;
     advanceRequiredMinor?: number;
     amountPaidMinor?: number;
-    business: { id: string; name: string; slug: string; ownerId: string };
+    business: { id: string; name: string; slug: string; ownerId: string; imageUrl?: string | null };
     service: { id: string; name: string; durationMinutes: number | null; priceMinor: number; currency: string } | null | undefined;
   }) => ({
     id: booking.id,
     businessId: booking.business.id,
     businessName: booking.business.name,
     businessSlug: booking.business.slug,
+    businessImageUrl: booking.business.imageUrl ?? null,
     serviceId: booking.service?.id ?? null,
     serviceName: booking.service?.name ?? null,
     priceMinor: booking.service?.priceMinor ?? null,
@@ -1923,7 +1930,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   /** Shared booking-list include with only public customer fields. */
   const BOOKING_INCLUDE = {
-    business: { select: { id: true, name: true, slug: true, ownerId: true } },
+    business: { select: { id: true, name: true, slug: true, ownerId: true, imageUrl: true } },
     service: { select: { id: true, name: true, durationMinutes: true, priceMinor: true, currency: true } },
   } as const;
 
@@ -1932,7 +1939,7 @@ export async function buildApp(): Promise<FastifyInstance> {
    * owners; it is stripped by publicOrder and never serialized to clients.
    */
   const ORDER_INCLUDE = {
-    business: { select: { id: true, name: true, slug: true, ownerId: true } },
+    business: { select: { id: true, name: true, slug: true, ownerId: true, imageUrl: true } },
     customer: { select: { firstName: true, lastName: true } },
     items: true,
   } as const;
@@ -2222,7 +2229,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     paymentMethodId: o.paymentMethodId ?? null,
     notes: o.notes,
     createdAt: o.createdAt,
-    business: { id: o.business.id, name: o.business.name, slug: o.business.slug },
+    business: { id: o.business.id, name: o.business.name, slug: o.business.slug, imageUrl: o.business.imageUrl ?? null },
     customer: o.customer ? { firstName: o.customer.firstName, lastName: o.customer.lastName } : null,
     items: o.items.map((i) => ({
       id: i.id,
@@ -2796,7 +2803,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (query.status) where.status = query.status;
     const bookings = await prisma.booking.findMany({
       where,
-      include: { business: { select: { id: true, name: true, slug: true, ownerId: true } }, service: { select: { id: true, name: true, durationMinutes: true, priceMinor: true, currency: true } }, customer: { select: { id: true, email: true, firstName: true, lastName: true } } },
+      include: { business: { select: { id: true, name: true, slug: true, ownerId: true, imageUrl: true } }, service: { select: { id: true, name: true, durationMinutes: true, priceMinor: true, currency: true } }, customer: { select: { id: true, email: true, firstName: true, lastName: true } } },
       orderBy: { createdAt: 'desc' },
       take: query.limit,
     });

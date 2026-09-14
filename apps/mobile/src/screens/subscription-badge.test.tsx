@@ -101,8 +101,9 @@ describe('business overview uses real data and business wording', () => {
     const { OwnerBusinessHome } = await import('./OwnerBusinessHome.js');
     render(<OwnerBusinessHome onOpen={() => {}} onOpenOrder={() => {}} onOpenBooking={() => {}} />);
     expect(await screen.findByText('Butt Spices')).toBeTruthy();
-    await waitFor(() => expect(screen.getByText('Pending orders')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Today's orders")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Today's bookings")).toBeTruthy());
     // No fake metrics: with empty server data every count is 0.
-    expect(screen.getAllByText('0').length).toBeGreaterThanOrEqual(5);
+    expect(screen.getAllByText('0').length).toBeGreaterThanOrEqual(2);
   });
 });

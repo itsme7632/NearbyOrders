@@ -35,20 +35,35 @@ export function BookingStatusBadge(props: { status: BookingStatus }) {
 function BookingCard(props: { booking: Booking; onOpen: () => void }) {
   const b = props.booking;
   return (
-    <button type="button" className="booking-card" onClick={props.onOpen}>
-      <span className="booking-card-main">
-        <span className="booking-card-biz">{b.businessName}</span>
-        {b.serviceName ? <span className="booking-card-service">{b.serviceName}</span> : null}
-        <span className="booking-card-when">
-          {longDateLabel(b.bookingDate)} · {formatSlotTime(b.startTime)}
-          {b.endTime ? ` – ${formatSlotTime(b.endTime)}` : ''}
+    <button type="button" className="order-card-v3" onClick={props.onOpen}>
+      <span className="oc-top">
+        <BookingThumb name={b.businessName} imageUrl={b.businessImageUrl} />
+        <span className="oc-main">
+          <span className="oc-name">{b.businessName}</span>
+          <span className="oc-sub">{b.serviceName ?? 'Booking'}</span>
+          <span className="oc-sub booking-card-when">
+            {longDateLabel(b.bookingDate)} · {formatSlotTime(b.startTime)}
+            {b.endTime ? ` – ${formatSlotTime(b.endTime)}` : ''}
+          </span>
+        </span>
+        <span className="oc-side">
+          {b.priceMinor !== null ? <Money minor={b.priceMinor} currency={b.currency} /> : null}
+          <BookingStatusBadge status={b.status} />
         </span>
       </span>
-      <span className="booking-card-side">
-        {b.priceMinor !== null ? <Money minor={b.priceMinor} currency={b.currency} /> : null}
-        <BookingStatusBadge status={b.status} />
-      </span>
     </button>
+  );
+}
+
+/** Booking-card thumbnail: business image when present, monogram otherwise. */
+function BookingThumb(props: { name: string; imageUrl?: string | null }) {
+  if (props.imageUrl) {
+    return <img className="oc-thumb" src={props.imageUrl} alt="" loading="lazy" />;
+  }
+  return (
+    <span className="oc-thumb" aria-hidden>
+      {props.name[0]?.toUpperCase() ?? '?'}
+    </span>
   );
 }
 

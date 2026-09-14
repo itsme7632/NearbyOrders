@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getBusiness, listBusinessReviews, type Business, type Product, type PublicReview, type ReviewPage } from '../api.js';
 import { useAsyncData } from '../hooks.js';
-import { Button, EmptyState, ErrorState, ListSkeleton, Loading, Money, OpenBadge, VerifiedBadge, RatingChip } from '../components/ui.js';
+import { Button, EmptyState, ErrorState, ListSkeleton, Loading, Money, OpenBadge, VerifiedBadge } from '../components/ui.js';
 import { StoreIcon } from '../components/icons.js';
 import { formatSlotTime } from '../time.js';
 import { addToCart, replaceWith } from '../cart.js';
@@ -9,6 +9,8 @@ import { useCartCount } from '../useCartCount.js';
 import { Stars } from '../components/ReviewForm.js';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
+
+type DetailTab = 'overview' | 'services' | 'products' | 'reviews' | 'photos';
 
 export function BusinessDetailScreen(props: {
   idOrSlug: string;
@@ -20,6 +22,7 @@ export function BusinessDetailScreen(props: {
 }) {
   const business = useAsyncData<Business>(() => getBusiness(props.idOrSlug), [props.idOrSlug]);
   const cartCount = useCartCount();
+  const [tab, setTab] = useState<DetailTab>('overview');
   const [cartNotice, setCartNotice] = useState<string | null>(null);
   const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
 
@@ -53,6 +56,22 @@ export function BusinessDetailScreen(props: {
   const place = [b.locality, b.city].filter(Boolean).join(', ');
   const bookable = b.services?.some((s) => s.isActive && s.durationMinutes);
   const mapsQuery = encodeURIComponent([b.address, b.city].filter(Boolean).join(', '));
+  const closings = b.hours?.length
+    ? b.hours
+        .filter((h) => !h.isClosed && h.closesAt)
+        .sort((x, y) => (x.closesAt ?? '').localeCompare(y.closesAt ?? ''))
+    : [];
+  const closingNote = closings.length ? `Closes ${formatSlotTime(closings[closings.length - 1].closesAt ?? '')}` : undefined;
+
+  const tabs: { key: DetailTab; label: string; show: boolean }[] = [
+    { key: 'overview', label: 'Overview', show: true },
+    { key: 'services', label: 'Services', show: Boolean(b.services?.length) },
+    { key: 'products', label: 'Products', show: Boolean(b.products?.length) },
+    { key: 'reviews', label: 'Reviews', show: true },
+    { key: 'photos', label: 'Photos', show: Boolean(b.imageUrl) },
+  ];
+  const visibleTabs = tabs.filter((t) => t.show);
+  const activeTab = visibleTabs.some((t) => t.key === tab) ? tab : 'overview';
 
   return (
     <div className="screen">
@@ -60,74 +79,131 @@ export function BusinessDetailScreen(props: {
         ‹ Back
       </button>
 
-      {/* Hero image with a branded fallback; never a broken image. */}
-      <div className="detail-hero-media" role="img" aria-label={b.imageUrl ? `${b.name} photo` : undefined}>
-        {b.imageUrl ? (
-          <img src={b.imageUrl} alt={`${b.name} photo`} />
-        ) : (
-          <span className="detail-hero-fallback" aria-hidden>
-            <StoreIcon size={48} />
-          </span>
-        )}
+      {/* Hero: large media with the logo chip overlapping its bottom edge. */}
+      <div className="detail-hero-v3">
+        <div className="detail-hero-media-v3" role="img" aria-label={b.imageUrl ? `${b.name} photo` : undefined}>
+          {b.imageUrl ? (
+            <img src={b.imageUrl} alt={`${b.name} photo`} />
+          ) : (
+            <span className="hero-initial" aria-hidden>
+              {b.name[0]?.toUpperCase() ?? '?'}
+            </span>
+          )}
+        </div>
+        <div className="detail-logo" aria-hidden>
+          {b.name[0]?.toUpperCase() ?? '?'}
+        </div>
       </div>
 
       <header className="biz-hero">
-        <h1 className="biz-hero-name">{b.name}</h1>
+        <div className="detail-title-row">
+          <h1 className="biz-hero-name">{b.name}</h1>
+        </div>
         <div className="biz-hero-badges">
           <VerifiedBadge verified={b.isVerified} />
-          {b.categories.map((c) => (
-            <span key={c.id} className="pill">
-              {c.name}
-            </span>
-          ))}
           {b.isOpenNow !== undefined ? <OpenBadge open={b.isOpenNow} /> : null}
+          {closingNote && b.isOpenNow ? <span className="detail-meta-line">· {closingNote}</span> : null}
         </div>
-        {b.description ? <p className="biz-hero-desc">{b.description}</p> : null}
-        {place || b.phone ? (
-          <div className="detail-quick">
+        <div className="detail-meta-lines">
+          <RatingLine businessId={b.id} fallbackAverage={b.averageRating} fallbackCount={b.reviewCount} />
+          <span className="detail-meta-line">
+            {b.categories.map((c) => c.name).join(' • ') || 'Local business'}
             {place ? (
-              <a
-                className="quick-action"
-                href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                📍 Directions
-              </a>
+              <>
+                <span className="sep">|</span>📍 {place}
+              </>
             ) : null}
-            {b.phone ? (
-              <a className="quick-action" href={`tel:${b.phone.replace(/[^\d+]/g, '')}`}>
-                📞 Call
-              </a>
-            ) : null}
-            {b.hours?.length ? (
-              <a className="quick-action" href="#hours">
-                🕘 Hours
-              </a>
-            ) : null}
-          </div>
-        ) : null}
+          </span>
+        </div>
+
+        {/* Quick actions: Call / Directions / Share. */}
+        <div className="quick-actions-v3">
+          {b.phone ? (
+            <a className="quick-circle" href={`tel:${b.phone.replace(/[^\d+]/g, '')}`}>
+              <span className="qc-icon" aria-hidden>📞</span>
+              Call
+            </a>
+          ) : null}
+          {place ? (
+            <a
+              className="quick-circle"
+              href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span className="qc-icon" aria-hidden>📍</span>
+              Directions
+            </a>
+          ) : null}
+          <ShareButton name={b.name} />
+        </div>
       </header>
 
-      {b.hours?.length ? (
-        <section className="card" id="hours" aria-label="Opening hours">
-          <h2>Opening hours</h2>
-          <ul className="hours-list">
-            {[1, 2, 3, 4, 5, 6, 0].map((day) => {
-              const h = b.hours!.find((x) => x.dayOfWeek === day);
-              if (!h) return null;
-              return (
-                <li key={h.id} className={h.isClosed ? 'closed' : ''}>
-                  <span>{DAY_NAMES[day] ?? `Day ${day}`}</span>
-                  <span>{h.isClosed ? 'Closed' : `${formatSlotTime(h.opensAt ?? '')} – ${formatSlotTime(h.closesAt ?? '')}`}</span>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
+      {/* Primary content navigation: Reviews is a first-class tab. */}
+      <div className="tab-strip" role="tablist" aria-label="Business sections">
+        {visibleTabs.map((t) => (
+          <button
+            key={t.key}
+            role="tab"
+            aria-selected={activeTab === t.key}
+            className={activeTab === t.key ? 'tab-active' : undefined}
+            onClick={() => setTab(t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'overview' ? (
+        <>
+          {b.description ? (
+            <section className="card" aria-label="About">
+              <h2>About</h2>
+              <p className="biz-hero-desc" style={{ margin: 0 }}>
+                {b.description}
+              </p>
+            </section>
+          ) : null}
+          {b.hours?.length ? (
+            <section className="card" aria-label="Opening hours">
+              <h2>Opening hours</h2>
+              <ul className="hours-list">
+                {[1, 2, 3, 4, 5, 6, 0].map((day) => {
+                  const h = b.hours!.find((x) => x.dayOfWeek === day);
+                  if (!h) return null;
+                  return (
+                    <li key={h.id} className={h.isClosed ? 'closed' : ''}>
+                      <span>{DAY_NAMES[day] ?? `Day ${day}`}</span>
+                      <span>{h.isClosed ? 'Closed' : `${formatSlotTime(h.opensAt ?? '')} – ${formatSlotTime(h.closesAt ?? '')}`}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ) : null}
+          {b.services?.length ? (
+            <section className="card" aria-label="Top services" style={{ paddingBottom: 8 }}>
+              <h2>Popular services</h2>
+              <ServicePreviewList
+                services={b.services.slice(0, 3)}
+                onBook={props.onBook}
+              />
+              {b.services.length > 3 && props.onBook ? (
+                <Button full variant="ghost" sm onClick={() => setTab('services')}>
+                  See all services
+                </Button>
+              ) : null}
+            </section>
+          ) : null}
+          {props.onBook && bookable ? (
+            <Button full onClick={() => props.onBook?.()}>
+              Book this service
+            </Button>
+          ) : null}
+        </>
       ) : null}
 
-      {b.services?.length ? (
+      {activeTab === 'services' && b.services?.length ? (
         <section className="card" aria-label="Services">
           <h2>Services</h2>
           <div className="svc-list">
@@ -165,7 +241,7 @@ export function BusinessDetailScreen(props: {
         </section>
       ) : null}
 
-      {b.products?.length ? (
+      {activeTab === 'products' && b.products?.length ? (
         <section className="card" aria-label="Products">
           <h2>Products</h2>
           {cartNotice ? (
@@ -202,8 +278,8 @@ export function BusinessDetailScreen(props: {
                   {p.imageUrl ? (
                     <img className="svc-thumb" src={p.imageUrl} alt="" loading="lazy" />
                   ) : (
-                    <span className="svc-thumb detail-hero-fallback" aria-hidden>
-                      <StoreIcon size={22} />
+                    <span className="svc-thumb pop-card-initial" aria-hidden>
+                      {p.name[0]?.toUpperCase() ?? '?'}
                     </span>
                   )}
                   <div className="svc-main">
@@ -241,13 +317,86 @@ export function BusinessDetailScreen(props: {
         </section>
       ) : null}
 
-      <ReviewsSection businessId={b.id} />
+      {activeTab === 'reviews' ? <ReviewsTab businessId={b.id} /> : null}
+
+      {activeTab === 'photos' && b.imageUrl ? (
+        <section className="card" aria-label="Photos">
+          <h2>Photos</h2>
+          <div className="detail-hero-media-v3" style={{ height: 220, marginTop: 10 }}>
+            <img src={b.imageUrl} alt={`${b.name} photo`} />
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }
 
-/** Public reviews + rating summary, with cursor pagination. */
-function ReviewsSection(props: { businessId: string }) {
+/** Rating line for the hero; renders only when real data exists. */
+function RatingLine(props: { businessId: string; fallbackAverage?: number | null; fallbackCount?: number | null }) {
+  const page = useAsyncData<ReviewPage>(() => listBusinessReviews(props.businessId), [props.businessId]);
+  const avg = page.data?.averageRating ?? props.fallbackAverage ?? null;
+  const count = page.data?.reviewCount ?? props.fallbackCount ?? 0;
+  if (avg === null) return null;
+  return (
+    <span className="detail-meta-line">
+      <span aria-hidden>⭐</span>
+      <strong>{avg.toFixed(1)}</strong>
+      {count > 0 ? <span>({count} reviews)</span> : null}
+    </span>
+  );
+}
+
+/** Web Share API with a clipboard fallback; both are real, local actions. */
+function ShareButton(props: { name: string }) {
+  const [shared, setShared] = useState(false);
+  const share = async () => {
+    const url = window.location.href;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: props.name, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        setShared(true);
+        setTimeout(() => setShared(false), 2000);
+      }
+    } catch {
+      /* User cancelled sharing; nothing to report. */
+    }
+  };
+  return (
+    <button type="button" className="quick-circle" onClick={() => void share()}>
+      <span className="qc-icon" aria-hidden>🔗</span>
+      {shared ? 'Copied' : 'Share'}
+    </button>
+  );
+}
+
+/** Compact service rows for the Overview tab preview. */
+function ServicePreviewList(props: { services: NonNullable<Business['services']>; onBook?: (serviceId?: string) => void }) {
+  return (
+    <ul className="item-list">
+      {props.services.map((s) => (
+        <li key={s.id}>
+          <div className="item-row">
+            <span className="item-name">{s.name}</span>
+            <Money minor={s.priceMinor} currency={s.currency} />
+          </div>
+          <div className="item-tags">
+            {s.durationMinutes ? <span className="pill">{s.durationMinutes} min</span> : null}
+            {props.onBook && s.isActive && s.durationMinutes ? (
+              <button type="button" className="pill pill-action" onClick={() => props.onBook?.(s.id)}>
+                Book
+              </button>
+            ) : null}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Reviews as a first-class tab: summary + list + pagination. */
+function ReviewsTab(props: { businessId: string }) {
   const [state, setState] = useState<{ items: PublicReview[]; cursor: string | null; avg: number | null; count: number } | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
@@ -277,7 +426,7 @@ function ReviewsSection(props: { businessId: string }) {
     }
   };
 
-  if (page.loading && !state) return <Loading label="Loading reviews…" />;
+  if (page.loading && !state) return <ListSkeleton count={3} />;
   if (page.error && !state)
     return (
       <section className="card" aria-label="Reviews">

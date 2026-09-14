@@ -117,11 +117,17 @@ function renderDetail() {
 }
 
 describe('BusinessDetail reviews section', () => {
+  /** Reviews are a first-class tab; open it before asserting content. */
+  async function openReviewsTab() {
+    fireEvent.click(await screen.findByRole('tab', { name: 'Reviews' }));
+  }
+
   it('shows the rating summary, count and review cards', async () => {
     vi.spyOn(api, 'getBusiness').mockResolvedValue(business());
     vi.spyOn(api, 'listBusinessReviews').mockResolvedValue(reviewPage());
 
     renderDetail();
+    await openReviewsTab();
     expect(await screen.findByText('4.8'.slice(0, 0) + '5.0')).toBeTruthy();
     expect(screen.getByText('1 review')).toBeTruthy();
     expect(screen.getByText('Ayesha K.')).toBeTruthy();
@@ -133,6 +139,7 @@ describe('BusinessDetail reviews section', () => {
     vi.spyOn(api, 'listBusinessReviews').mockResolvedValue(reviewPage({ items: [], averageRating: null, reviewCount: 0 }));
 
     renderDetail();
+    await openReviewsTab();
     expect(await screen.findByText('No reviews yet. Customers can review after a completed booking or order.')).toBeTruthy();
     expect(screen.getByText('—')).toBeTruthy();
   });
@@ -142,6 +149,7 @@ describe('BusinessDetail reviews section', () => {
     vi.spyOn(api, 'listBusinessReviews').mockRejectedValue(new api.ApiError(500, 'X', 'boom'));
 
     renderDetail();
+    await openReviewsTab();
     expect(await screen.findByRole('alert')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
@@ -157,6 +165,7 @@ describe('BusinessDetail reviews section', () => {
     );
 
     renderDetail();
+    await openReviewsTab();
     expect(await screen.findByText('x'.repeat(300))).toBeTruthy();
   });
 });

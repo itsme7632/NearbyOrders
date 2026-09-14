@@ -36,7 +36,7 @@ const withProducts = (b: Business): Business => ({
   ],
 });
 
-const renderDetail = (props: Partial<Parameters<typeof BusinessDetailScreen>[0]> = {}) =>
+const renderDetail = async (props: Partial<Parameters<typeof BusinessDetailScreen>[0]> = {}) => {
   render(
     <BusinessDetailScreen
       idOrSlug="biz-1"
@@ -46,11 +46,14 @@ const renderDetail = (props: Partial<Parameters<typeof BusinessDetailScreen>[0]>
       {...props}
     />,
   );
+  // The tabbed Business Profile keeps catalog data behind its Products tab.
+  fireEvent.click(await screen.findByRole('tab', { name: 'Products' }));
+};
 
 describe('add to cart from business detail', () => {
   it('adds an active product and shows the cart notice', async () => {
     vi.spyOn(api, 'getBusiness').mockResolvedValue(withProducts(biz()));
-    renderDetail();
+    await renderDetail();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Add Chicken Biryani to cart' }));
     expect(await screen.findByText(/Added Chicken Biryani to your cart/)).toBeTruthy();
@@ -60,7 +63,7 @@ describe('add to cart from business detail', () => {
 
   it('does not render add controls when canOrder is false (owners / signed-out)', async () => {
     vi.spyOn(api, 'getBusiness').mockResolvedValue(withProducts(biz()));
-    renderDetail({ canOrder: false, onOpenCart: undefined });
+    await renderDetail({ canOrder: false, onOpenCart: undefined });
 
     await screen.findByText('Chicken Biryani');
     expect(screen.queryByRole('button', { name: /Add .* to cart/ })).toBeNull();
@@ -72,7 +75,7 @@ describe('add to cart from business detail', () => {
     // Cart already holds items from biz-1.
     addToCart({ businessId: 'biz-1', businessName: 'Butt Spices', product: { id: 'p9', name: 'Biryani Platter', priceMinor: 90000, imageUrl: null } });
 
-    renderDetail();
+    await renderDetail();
     fireEvent.click(await screen.findByRole('button', { name: 'Add Chicken Biryani to cart' }));
 
     // Conflict dialog, not a silent replace.
@@ -94,7 +97,7 @@ describe('add to cart from business detail', () => {
 
   it('products section carries no image-URL affordances', async () => {
     vi.spyOn(api, 'getBusiness').mockResolvedValue(withProducts(biz()));
-    renderDetail();
+    await renderDetail();
     await screen.findByText('Chicken Biryani');
     expect(screen.queryByText(/image url/i)).toBeNull();
     expect(screen.queryByPlaceholderText(/url/i)).toBeNull();

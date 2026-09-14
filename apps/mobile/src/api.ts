@@ -86,6 +86,7 @@ export type Business = {
   status?: string;
   /** Average rating shown to owners on their business profile (may be null). */
   averageRating?: number | null;
+  reviewCount?: number | null;
   description: string | null;
   imageUrl: string | null;
   isVerified: boolean;
@@ -150,7 +151,7 @@ export type Order = {
   deliveryFeeMinor?: number;
   totalMinor?: number;
   notes: string | null;
-  business: { id: string; name: string; slug: string };
+  business: { id: string; name: string; slug: string; imageUrl?: string | null };
   /** First name / last name only — never email or credentials. */
   customer: { firstName: string | null; lastName: string | null } | null;
   items: OrderItem[];
@@ -453,6 +454,7 @@ export type Booking = {
   id: string;
   businessId: string;
   businessName: string;
+  businessImageUrl?: string | null;
   businessSlug: string;
   serviceId: string | null;
   serviceName: string | null;
@@ -692,7 +694,7 @@ export type MyReview = {
   createdAt: string;
   bookingId: string | null;
   orderId: string | null;
-  business: { id: string; name: string; slug: string };
+  business: { id: string; name: string; slug: string; imageUrl?: string | null };
 };
 
 export type OwnerReview = PublicReview & { business: { id: string; name: string } };

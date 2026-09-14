@@ -21,6 +21,18 @@ export function orderNumber(o: Order): string {
   return `#${o.id.replace(/-/g, '').slice(-6).toUpperCase()}`;
 }
 
+/** Marketplace-card business thumbnail: image when present, monogram otherwise. */
+export function OrderThumb(props: { name: string; imageUrl?: string | null }) {
+  if (props.imageUrl) {
+    return <img className="oc-thumb" src={props.imageUrl} alt="" loading="lazy" />;
+  }
+  return (
+    <span className="oc-thumb" aria-hidden>
+      {props.name[0]?.toUpperCase() ?? '?'}
+    </span>
+  );
+}
+
 export function orderLabel(status: OrderStatus): { text: string; cls: string } {
   switch (status) {
     case 'PENDING':
@@ -65,23 +77,29 @@ export function OrdersScreen(props: { onOpenOrder: (id: string) => void; onBrows
           action={<Button onClick={props.onBrowse}>Find businesses</Button>}
         />
       ) : (
-        <ul className="order-list">
+        <ul className="order-list" style={{ display: 'grid', gap: 10 }}>
           {orders.data.map((o) => {
             const label = orderLabel(o.status);
             return (
               <li key={o.id}>
-                <button className="order-card" onClick={() => props.onOpenOrder(o.id)}>
-                  <div className="order-card-top">
-                    <span className="order-no">{orderNumber(o)}</span>
-                    <span className={`badge ${label.cls}`}>{label.text}</span>
-                  </div>
-                  <div className="item-row">
-                    <span className="item-name">{o.business.name}</span>
-                    <Money minor={o.subtotalMinor} currency={o.currency} />
-                  </div>
-                  <p className="order-meta">
-                    {formatWhen(o.createdAt)} · {itemCount(o)} item{itemCount(o) === 1 ? '' : 's'}
-                  </p>
+                <button className="order-card-v3" onClick={() => props.onOpenOrder(o.id)}>
+                  <span className="oc-top">
+                    <OrderThumb name={o.business.name} imageUrl={o.business.imageUrl} />
+                    <span className="oc-main">
+                      <span className="oc-name">{o.business.name}</span>
+                      <span className="oc-sub">
+                        {orderNumber(o)} · {itemCount(o)} item{itemCount(o) === 1 ? '' : 's'}
+                      </span>
+                    </span>
+                    <span className="oc-side">
+                      <Money minor={o.totalMinor ?? o.subtotalMinor} currency={o.currency} />
+                      <span className={`badge ${label.cls}`}>{label.text}</span>
+                    </span>
+                  </span>
+                  <span className="oc-bottom">
+                    <span className="oc-when">Placed {formatWhen(o.createdAt)}</span>
+                    <span className="oc-when" aria-hidden>›</span>
+                  </span>
                 </button>
               </li>
             );

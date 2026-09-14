@@ -49,7 +49,8 @@ describe('Home category display', () => {
       <HomeScreen onSearch={() => {}} onOpenBusiness={() => {}} onExploreCategory={() => {}} onSeeAllCategories={onSeeAll} />,
     );
     await screen.findByText('See all');
-    fireEvent.click(screen.getByText('See all'));
+    // "See all" appears in both the Categories header and the Popular section.
+    fireEvent.click(screen.getAllByText('See all')[0]);
     expect(onSeeAll).toHaveBeenCalledTimes(1);
   });
 
@@ -59,7 +60,8 @@ describe('Home category display', () => {
       <HomeScreen onSearch={() => {}} onOpenBusiness={() => {}} onExploreCategory={() => {}} onSeeAllCategories={() => {}} />,
     );
     await screen.findByRole('button', { name: 'Beauty & Salon' });
-    await waitFor(() => expect(screen.queryByText('See all')).toBeNull());
+    // Categories header drops its See all; only the Popular section's remains.
+    await waitFor(() => expect(screen.getAllByText('See all')).toHaveLength(1));
   });
 
   it('navigates to Explore with the chosen category slug', async () => {

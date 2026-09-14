@@ -61,7 +61,7 @@ describe('default mode after login (ownership-aware)', () => {
     render(<App />);
 
     // Business Overview never appears; the customer experience does.
-    await screen.findByText('Find nearby. Book or order.', undefined, { timeout: 3000 });
+    await screen.findByText('Find the best', undefined, { timeout: 3000 });
     expect(screen.queryByText('Business Overview')).toBeNull();
     expect(document.querySelector('nav[aria-label="Primary"]')).not.toBeNull();
     expect(document.querySelector('nav[aria-label="Business"]')).toBeNull();
@@ -89,7 +89,7 @@ describe('default mode after login (ownership-aware)', () => {
     vi.spyOn(api, 'getMyBusinesses').mockResolvedValue([]);
     render(<App />);
 
-    await screen.findByText('Find nearby. Book or order.', undefined, { timeout: 3000 });
+    await screen.findByText('Find the best', undefined, { timeout: 3000 });
     expect(screen.queryByText('Business Overview')).toBeNull();
     expect(getAppMode()).toBe('CUSTOMER');
   });
@@ -99,7 +99,7 @@ describe('default mode after login (ownership-aware)', () => {
     vi.spyOn(api, 'getMyBusinesses').mockRejectedValue(new api.ApiError(0, 'NETWORK_ERROR', 'offline'));
     render(<App />);
 
-    await screen.findByText('Find nearby. Book or order.', undefined, { timeout: 3000 });
+    await screen.findByText('Find the best', undefined, { timeout: 3000 });
     expect(getAppMode()).toBe('CUSTOMER');
   });
 });
@@ -170,7 +170,9 @@ describe('data scoping across modes', () => {
     render(<App />);
     await screen.findByText('Business Overview', undefined, { timeout: 3000 });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Orders' }));
+    // The Overview's quick-action tile (class-named target); the bottom nav
+    // button with the same label is matched separately below.
+    fireEvent.click(document.querySelector('.quick-tile .quick-tile-name')!.closest('button')!);
     await screen.findByText('No customer orders yet', undefined, { timeout: 3000 });
     await waitFor(() => expect(listBusinessOrders).toHaveBeenCalledWith('biz-1'));
     expect(listOrders).not.toHaveBeenCalled();

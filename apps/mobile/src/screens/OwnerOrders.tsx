@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { collectOrderCash, listOrders, listOrderPayments, setOrderStatus, ApiError, type CustomerPayment, type Order, type OrderStatus } from '../api.js';
+import { collectOrderCash, listBusinessOrders, listOrderPayments, setOrderStatus, ApiError, type CustomerPayment, type Order, type OrderStatus } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, Loading, Money } from '../components/ui.js';
 import { AlertIcon, OrdersIcon } from '../components/icons.js';
@@ -53,7 +53,13 @@ const formatWhen = (iso: string) =>
  * otherwise the component fetches and filters itself (management screens).
  */
 export function OwnerOrders(props: { businessId: string; orders?: Order[] }) {
-  const selfFetched = useAsyncData<Order[]>(() => listOrders(), []);
+  // Management screens fetch the caller-scoped business listing (server-side
+  // ownership, same dataset the Business-mode tab uses); the personal list is
+  // never the source for business order management.
+  const selfFetched = useAsyncData<Order[]>(
+    props.orders ? async () => [] : () => listBusinessOrders(props.businessId),
+    [],
+  );
   const orders = props.orders ? { data: props.orders, loading: false, error: null, reload: selfFetched.reload } : selfFetched;
   const list = (orders.data ?? []).filter((o) => o.business.id === props.businessId);
   const [selectedId, setSelectedId] = useState<string | null>(null);

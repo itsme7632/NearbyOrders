@@ -114,7 +114,8 @@ describe('customer orders screens', () => {
     render(<OrdersScreen onOpenOrder={() => {}} onBrowse={() => {}} />);
 
     expect(await screen.findByText('Butt Spices')).toBeTruthy();
-    expect(screen.getByText('#F90AE7')).toBeTruthy();
+    // v3 card: the order number sits inside the combined metadata line.
+    expect(screen.getByText(/#F90AE7/)).toBeTruthy();
     expect(screen.getByText('Pending')).toBeTruthy();
     expect(screen.getByText(/3 items/)).toBeTruthy();
   });

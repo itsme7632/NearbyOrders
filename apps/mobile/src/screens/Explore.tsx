@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { listBusinesses, listCategories, type Business, type Category } from '../api.js';
 import { useAsyncData } from '../hooks.js';
-import { BusinessCard, BusinessCardSkeleton, EmptyState, ErrorState, SectionHeader } from '../components/ui.js';
+import { EmptyState, ErrorState, SectionHeader } from '../components/ui.js';
 import { ExploreIcon } from '../components/icons.js';
+import { EmptyStateV3 } from '../components/EmptyStateV3.js';
+import { PopularBusinessCard } from './Home.js';
 
 /** Distance-aware sort uses the geolocation API when the user permits it. */
 type SortMode = 'default' | 'distance';
@@ -47,96 +49,120 @@ export function ExploreScreen(props: {
     );
   };
 
-  // Nearby results are already distance-sorted by the API; without a fix
-  // there is no client-side distance sort.
   const results = businesses.data ?? [];
+  const activeFilters = [selectedCategory ? 1 : 0, query ? 1 : 0].reduce((a, b) => a + b, 0);
 
   return (
     <div className="screen">
+      {/* Discovery header: title + major search control. */}
+      <section className="home-greeting" aria-label="Explore">
+        <h1 className="home-greeting-title" style={{ fontSize: 'clamp(22px, 6vw, 26px)' }}>
+          Explore <em>nearby</em>
+        </h1>
+        <p className="home-greeting-sub">Every approved business on NearbyOrders.</p>
+      </section>
+
       <form
-        className="search-hero"
         role="search"
         onSubmit={(e) => {
           e.preventDefault();
           // state change above already re-triggers the query via useAsyncData deps
         }}
       >
-        <span className="search-hero-icon" aria-hidden>
-          <ExploreIcon size={18} />
-        </span>
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search businesses or services"
-          aria-label="Search businesses"
-        />
+        <div className="search-bar-v3">
+          <span className="search-hero-icon" style={{ position: 'static', transform: 'none' }} aria-hidden>
+            <ExploreIcon size={18} />
+          </span>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search food, services, shops…"
+            aria-label="Search businesses"
+          />
+          <button type="submit" className="search-go" aria-label="Search">
+            <ExploreIcon size={17} />
+          </button>
+        </div>
       </form>
 
-      <section aria-label="Category filters">
-        {categories.loading ? (
-          <ListSkeletonFallback />
-        ) : categories.error ? (
-          <ErrorState message={categories.error} onRetry={categories.reload} />
-        ) : (
-          <div className="filter-row">
-            <button className={`chip${!selectedCategory ? ' chip-active' : ''}`} onClick={() => setSelectedCategory(undefined)}>
-              All
+      {/* Controls: sort toggle + category chips, visually one control band. */}
+      <section aria-label="Filters" style={{ marginTop: 12 }}>
+        <div className="filter-row">
+          <button
+            type="button"
+            className={`chip${sort === 'distance' ? ' chip-active' : ''}`}
+            onClick={() => {
+              if (sort === 'distance') {
+                setSort('default');
+                setCoords(null);
+              } else {
+                requestLocation();
+              }
+            }}
+          >
+            📍 Sort by distance
+          </button>
+          {categories.data?.slice(0, 8).map((c) => (
+            <button
+              key={c.id}
+              className={`chip${selectedCategory === c.slug ? ' chip-active' : ''}`}
+              onClick={() => setSelectedCategory(selectedCategory === c.slug ? undefined : c.slug)}
+            >
+              {c.name}
             </button>
-            {categories.data?.map((c) => (
-              <button
-                key={c.id}
-                className={`chip${selectedCategory === c.slug ? ' chip-active' : ''}`}
-                onClick={() => setSelectedCategory(selectedCategory === c.slug ? undefined : c.slug)}
-              >
-                {c.name}
-              </button>
-            ))}
-          </div>
-        )}
+          ))}
+        </div>
       </section>
 
-      <section aria-label="Results">
-        <SectionHeader
-          title={selectedCategory ? categories.data?.find((c) => c.slug === selectedCategory)?.name ?? 'Results' : 'All nearby'}
-          action={
-            sort === 'distance' ? (
-              <span className="biz-distance">Sorted by distance</span>
-            ) : (
-              <button type="button" className="see-all-link" onClick={requestLocation} disabled={businesses.loading}>
-                Sort by distance
-              </button>
-            )
-          }
+      <SectionHeader
+        title={
+          selectedCategory
+            ? categories.data?.find((c) => c.slug === selectedCategory)?.name ?? 'Results'
+            : query
+              ? 'Search results'
+              : 'All nearby'
+        }
+        action={
+          businesses.loading ? null : (
+            <span className="biz-distance">
+              {results.length} {results.length === 1 ? 'business' : 'businesses'}
+              {sort === 'distance' ? ' · by distance' : ''}
+            </span>
+          )
+        }
+      />
+      {locError ? (
+        <p className="hint" role="status">
+          {locError}
+        </p>
+      ) : null}
+      {businesses.loading ? (
+        <div className="popular-grid" aria-hidden>
+          {Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className="skeleton-card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div className="skeleton" style={{ height: 96, borderRadius: 0 }} />
+              <div style={{ padding: 12 }}>
+                <div className="skeleton skeleton-line w-60" />
+                <div className="skeleton skeleton-line w-40" style={{ marginTop: 8 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : businesses.error ? (
+        <ErrorState message={businesses.error} onRetry={businesses.reload} />
+      ) : !results.length ? (
+        <EmptyStateV3
+          icon={<ExploreIcon size={28} />}
+          title="Nothing found"
+          body={activeFilters > 0 ? 'Try a different search term or category filter.' : 'No businesses match yet. Check back soon.'}
         />
-        {locError ? (
-          <p className="hint" role="status">
-            {locError}
-          </p>
-        ) : null}
-        {businesses.loading ? (
-          <BusinessCardSkeleton count={4} />
-        ) : businesses.error ? (
-          <ErrorState message={businesses.error} onRetry={businesses.reload} />
-        ) : !results.length ? (
-          <EmptyState icon={<ExploreIcon size={30} />} title="Nothing found" body="Try a different search term or category filter." />
-        ) : (
-          <div className="business-list">
-            {results.map((b) => (
-              <BusinessCard key={b.id} business={b} onOpen={() => props.onOpenBusiness(b.id)} />
-            ))}
-          </div>
-        )}
-      </section>
-    </div>
-  );
-}
-
-function ListSkeletonFallback() {
-  return (
-    <div className="filter-row" aria-hidden>
-      {Array.from({ length: 5 }, (_, i) => (
-        <span key={i} className="skeleton" style={{ width: 86, height: 38, borderRadius: 999 }} />
-      ))}
+      ) : (
+        <div className="popular-grid">
+          {results.map((b) => (
+            <PopularBusinessCard key={b.id} business={b} onOpen={() => props.onOpenBusiness(b.id)} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -3,22 +3,20 @@ import {
   getMyBusinesses,
   listBusinessBookings,
   listBusinessOrders,
+  listBusinessReviews,
   listOwnerPayments,
   type Booking,
   type Business,
   type Order,
 } from '../api.js';
 import { useAsyncData } from '../hooks.js';
-import { Button, EmptyState, ErrorState, ListSkeleton, Loading } from '../components/ui.js';
+import { Button, EmptyState, ErrorState, ListSkeleton } from '../components/ui.js';
 import { AlertIcon, BookingsIcon, CheckIcon, OrdersIcon, StoreIcon } from '../components/icons.js';
 import { OwnerHubRow, OwnerHubSection } from './owner-ui.js';
 import { SubscriptionBadge } from './subscription-badge.js';
+import { OrderThumb } from './Orders.js';
 
-/**
- * Business-mode Overview (/owner): the owner's real numbers for the selected
- * business plus the Manage My Business hub. Real data only: every count comes
- * from the server endpoints; nothing is invented while loading.
- */
+/** Business-mode Overview (/owner): real numbers, real activity, real state. */
 export function OwnerBusinessHome(props: {
   onOpen: (path: string) => void;
   onListBusiness?: () => void;
@@ -54,41 +52,54 @@ export function OwnerBusinessHome(props: {
       <header className="owner-head">
         <h1>Business Overview</h1>
       </header>
-
-      {/* Selected business identity: image, name, place, status. */}
-      <div className="biz-card" aria-label="Selected business">
-        <span className="biz-card-imgwrap biz-card-imgwrap-sm">
-          {active.imageUrl ? (
-            <img className="biz-card-img" src={active.imageUrl} alt="" />
-          ) : (
-            <span className="detail-hero-fallback" aria-hidden>
-              <StoreIcon size={30} />
-            </span>
-          )}
-          <span className="biz-card-cat">{active.status ?? 'PENDING'}</span>
-        </span>
-        <span className="biz-card-body">
-          <span className="biz-card-titlerow">
-            <span className="biz-card-name">{active.name}</span>
-            {active.isVerified ? <span className="verified-dot" title="Verified">✓</span> : null}
+      {/* Selected business identity: image, name, place, switcher. */}
+      <section aria-label="Selected business" style={{ marginTop: 4 }}>
+        <div className="owner-biz-card" style={{ boxShadow: 'var(--shadow)', borderRadius: 'var(--radius-lg)' }}>
+          <OrderThumb name={active.name} imageUrl={active.imageUrl} />
+          <span className="oc-main">
+            <span className="oc-name">{active.name}</span>
+            <span className="oc-sub">{place || active.address}</span>
           </span>
-          {place ? <span className="biz-card-meta">📍 {place}</span> : null}
-        </span>
-      </div>
-
-      {businesses.data.length > 1 ? (
-        <div className="filter-row" aria-label="Switch business">
-          {businesses.data.map((b) => (
-            <button key={b.id} className={`chip${b.id === active.id ? ' chip-active' : ''}`} onClick={() => setSelectedId(b.id)}>
-              {b.name}
-            </button>
-          ))}
+          <span className={`badge ${active.status === 'APPROVED' ? 'badge-open' : 'badge-closed'}`}>
+            {active.status ?? 'PENDING'}
+          </span>
         </div>
-      ) : null}
+        {businesses.data.length > 1 ? (
+          <div className="filter-row" aria-label="Switch business" style={{ marginTop: 10 }}>
+            {businesses.data.map((b) => (
+              <button key={b.id} className={`chip${b.id === active.id ? ' chip-active' : ''}`} onClick={() => setSelectedId(b.id)}>
+                {b.name}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </section>
 
-      <SubscriptionBadge businessId={active.id} />
+      {/* Business plan: the real subscription state from the backend. */}
+      <PlanCard businessId={active.id} onOpen={() => props.onOpen(`${base}/subscription`)} />
 
       <OverviewStats businessId={active.id} onOpen={props.onOpen} base={base} />
+
+      <RecentActivity
+        businessId={active.id}
+        onOpenOrder={props.onOpenOrder}
+        onOpenBooking={props.onOpenBooking}
+        onOpenPayments={() => props.onOpen(`${base}/payments`)}
+        onOpenReviews={() => props.onOpen(`${base}/reviews`)}
+      />
+
+      {/* Quick actions. */}
+      <section aria-label="Quick actions">
+        <div className="section-head-v3">
+          <h2>Quick actions</h2>
+        </div>
+        <div className="quick-grid">
+          <QuickTile icon={<OrdersIcon size={20} />} label="Orders" onClick={() => props.onOpen(`${base}/orders`)} />
+          <QuickTile icon={<BookingsIcon size={20} />} label="Bookings" onClick={() => props.onOpen(`${base}/bookings`)} />
+          <QuickTile icon={<StoreIcon size={20} />} label="Services" onClick={() => props.onOpen(`${base}/services`)} />
+          <QuickTile icon={<StoreIcon size={20} />} label="Products" onClick={() => props.onOpen(`${base}/products`)} />
+        </div>
+      </section>
 
       <h2 className="hub-manage-title">Manage my business</h2>
       <OwnerHubSection label="Business">
@@ -128,15 +139,37 @@ export function OwnerBusinessHome(props: {
   );
 }
 
+function QuickTile(props: { icon: React.ReactNode; label: string; onClick: () => void }) {
+  return (
+    <button type="button" className="quick-tile" onClick={props.onClick}>
+      <span className="quick-tile-icon" aria-hidden>
+        {props.icon}
+      </span>
+      <span className="quick-tile-name">{props.label}</span>
+    </button>
+  );
+}
+
+/**
+ * Plan card: renders the real SubscriptionBadge (which owns all fetching)
+ * inside the navy hero treatment; the CTA opens the subscription screen.
+ */
+function PlanCard(props: { businessId: string; onOpen: () => void }) {
+  return (
+    <section aria-label="Business plan" style={{ marginTop: 14 }}>
+      <SubscriptionBadge businessId={props.businessId} variant="hero" onOpen={props.onOpen} />
+    </section>
+  );
+}
+
 /** Real metrics for the selected business; cards link to their screens. */
 function OverviewStats(props: { businessId: string; onOpen: (path: string) => void; base: string }) {
   const orders = useAsyncData<Order[]>(() => listBusinessOrders(props.businessId), [props.businessId]);
   const bookings = useAsyncData<Booking[]>(() => listBusinessBookings(props.businessId), [props.businessId]);
-  const payments = useAsyncData(() => listOwnerPayments('PENDING_VERIFICATION'), [props.businessId]);
 
-  if (orders.loading || bookings.loading || payments.loading) return <ListSkeleton count={2} />;
-  if (orders.error || bookings.error || payments.error)
-    return <ErrorState message={orders.error ?? bookings.error ?? payments.error ?? 'Could not load your numbers.'} />;
+  if (orders.loading || bookings.loading) return <ListSkeleton count={2} />;
+  if (orders.error || bookings.error)
+    return <ErrorState message={orders.error ?? bookings.error ?? 'Could not load your numbers.'} />;
 
   // Metrics come straight from the scoped endpoints — never invented.
   const ordersHere = (orders.data ?? []).filter((o) => o.business.id === props.businessId);
@@ -145,32 +178,157 @@ function OverviewStats(props: { businessId: string; onOpen: (path: string) => vo
   const todaysOrders = ordersHere.filter((o) => o.createdAt.slice(0, 10) === today && !['CANCELLED', 'REJECTED'].includes(o.status));
   const pendingBookings = (bookings.data ?? []).filter((b) => b.status === 'PENDING');
   const todaysBookings = (bookings.data ?? []).filter((b) => b.bookingDate === today && ['PENDING', 'CONFIRMED'].includes(b.status));
-  const pendingPayments = (payments.data?.bookingPayments.length ?? 0) + (payments.data?.orderPayments.length ?? 0);
 
   return (
-    <section aria-label="Overview metrics">
-      <div className="metric-grid">
-        <button type="button" className="metric-card" onClick={() => props.onOpen(`${props.base}/orders`)}>
-          <span className="metric-num">{pendingOrders.length}</span>
-          <span className="metric-label">Pending orders</span>
+    <section aria-label="Overview metrics" style={{ marginTop: 12 }}>
+      <div className="metric-grid-v3">
+        <button type="button" className="metric-card-v3" onClick={() => props.onOpen(`${props.base}/orders`)}>
+          <span className="metric-card-v3-top">
+            <span className="metric-card-v3-icon" aria-hidden>
+              <OrdersIcon size={16} />
+            </span>
+            <span className="metric-card-v3-label">Today's orders</span>
+          </span>
+          <span className="metric-card-v3-num">{todaysOrders.length}</span>
+          <span className="metric-card-v3-label">{pendingOrders.length} pending</span>
         </button>
-        <div className="metric-card">
-          <span className="metric-num">{todaysOrders.length}</span>
-          <span className="metric-label">Today's orders</span>
-        </div>
-        <button type="button" className="metric-card" onClick={() => props.onOpen(`${props.base}/bookings`)}>
-          <span className="metric-num">{pendingBookings.length}</span>
-          <span className="metric-label">Pending bookings</span>
+        <button type="button" className="metric-card-v3" onClick={() => props.onOpen(`${props.base}/bookings`)}>
+          <span className="metric-card-v3-top">
+            <span className="metric-card-v3-icon" aria-hidden>
+              <BookingsIcon size={16} />
+            </span>
+            <span className="metric-card-v3-label">Today's bookings</span>
+          </span>
+          <span className="metric-card-v3-num">{todaysBookings.length}</span>
+          <span className="metric-card-v3-label">{pendingBookings.length} pending</span>
         </button>
-        <div className="metric-card">
-          <span className="metric-num">{todaysBookings.length}</span>
-          <span className="metric-label">Today's bookings</span>
-        </div>
       </div>
-      <button type="button" className="metric-card metric-card-wide" onClick={() => props.onOpen(`${props.base}/payments`)}>
-        <span className="metric-num">{pendingPayments}</span>
-        <span className="metric-label">Payments to verify</span>
-      </button>
+    </section>
+  );
+}
+
+type ActivityItem =
+  | { kind: 'order'; id: string; title: string; sub: string; when: string }
+  | { kind: 'booking'; id: string; title: string; sub: string; when: string }
+  | { kind: 'payment'; count: number; title: string; sub: string }
+  | { kind: 'review'; title: string; sub: string; when: string };
+
+/**
+ * Recent activity built ONLY from real records: the newest orders, bookings,
+ * pending payment proofs and reviews for the selected business.
+ */
+function RecentActivity(props: {
+  businessId: string;
+  onOpenOrder: (id: string) => void;
+  onOpenBooking: (id: string) => void;
+  onOpenPayments: () => void;
+  onOpenReviews: () => void;
+}) {
+  const orders = useAsyncData<Order[]>(() => listBusinessOrders(props.businessId), [props.businessId]);
+  const bookings = useAsyncData<Booking[]>(() => listBusinessBookings(props.businessId), [props.businessId]);
+  const payments = useAsyncData(() => listOwnerPayments('PENDING_VERIFICATION'), [props.businessId]);
+  const reviews = useAsyncData(() => listBusinessReviews(props.businessId, 3), [props.businessId]);
+
+  if (orders.loading || bookings.loading || payments.loading || reviews.loading) return <ListSkeleton count={2} />;
+  // Individual feed failures don't sink the whole card; skip the failed source.
+  const items: ActivityItem[] = [];
+
+  const rel = (iso: string) => {
+    const mins = Math.floor((Date.now() - Date.parse(iso)) / 60_000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d ago`;
+    return new Date(iso).toLocaleDateString('en-PK', { day: 'numeric', month: 'short' });
+  };
+
+  const customerName = (o: Order) => [o.customer?.firstName, o.customer?.lastName].filter(Boolean).join(' ') || 'Customer';
+
+  for (const o of (orders.data ?? []).filter((x) => x.business.id === props.businessId).slice(0, 3)) {
+    items.push({ kind: 'order', id: o.id, title: `New order: ${customerName(o)}`, sub: `${o.items.length} item(s)`, when: rel(o.createdAt) });
+  }
+  for (const bk of (bookings.data ?? []).filter((x) => x.businessId === props.businessId).slice(0, 2)) {
+    items.push({ kind: 'booking', id: bk.id, title: 'New booking', sub: bk.serviceName ?? 'Service', when: rel(bk.createdAt) });
+  }
+  const orderPayments = payments.data?.orderPayments ?? [];
+  const bookingPayments = payments.data?.bookingPayments ?? [];
+  const pendingCount = orderPayments.length + bookingPayments.length;
+  if (pendingCount > 0) {
+    items.push({
+      kind: 'payment',
+      count: pendingCount,
+      title: 'Payment proof submitted',
+      sub: 'Waiting for your verification',
+    });
+  }
+  for (const rv of reviews.data?.items.slice(0, 2) ?? []) {
+    items.push({ kind: 'review', title: 'New review', sub: `${rv.rating}★ from ${rv.reviewerName}`, when: rel(rv.createdAt) });
+  }
+
+  if (!items.length) return null;
+
+  return (
+    <section aria-label="Recent activity" style={{ marginTop: 18 }}>
+      <div className="section-head-v3">
+        <h2>Recent activity</h2>
+      </div>
+      <div className="activity-card">
+        {items.slice(0, 6).map((item) => {
+          if (item.kind === 'order')
+            return (
+              <button key={`o-${item.id}`} type="button" className="activity-row" onClick={() => props.onOpenOrder(item.id)}>
+                <span className="activity-icon tone-indigo" aria-hidden>
+                  <OrdersIcon size={18} />
+                </span>
+                <span className="activity-main">
+                  <span className="activity-title">{item.title}</span>
+                  <span className="activity-sub">{item.sub}</span>
+                </span>
+                <span className="activity-when">{item.when}</span>
+              </button>
+            );
+          if (item.kind === 'booking')
+            return (
+              <button key={`b-${item.id}`} type="button" className="activity-row" onClick={() => props.onOpenBooking(item.id)}>
+                <span className="activity-icon tone-green" aria-hidden>
+                  <BookingsIcon size={18} />
+                </span>
+                <span className="activity-main">
+                  <span className="activity-title">{item.title}</span>
+                  <span className="activity-sub">{item.sub}</span>
+                </span>
+                <span className="activity-when">{item.when}</span>
+              </button>
+            );
+          if (item.kind === 'payment')
+            return (
+              <button key="pay" type="button" className="activity-row" onClick={props.onOpenPayments}>
+                <span className="activity-icon tone-orange" aria-hidden>
+                  <AlertIcon size={18} />
+                </span>
+                <span className="activity-main">
+                  <span className="activity-title">{item.title}</span>
+                  <span className="activity-sub">{item.count} awaiting verification</span>
+                </span>
+                <span className="activity-when" aria-hidden>›</span>
+              </button>
+            );
+          return (
+            <button key={`r-${item.sub}`} type="button" className="activity-row" onClick={props.onOpenReviews}>
+              <span className="activity-icon tone-yellow" aria-hidden>
+                ★
+              </span>
+              <span className="activity-main">
+                <span className="activity-title">{item.title}</span>
+                <span className="activity-sub">{item.sub}</span>
+              </span>
+              <span className="activity-when">{item.when}</span>
+            </button>
+          );
+        })}
+      </div>
     </section>
   );
 }
