@@ -341,7 +341,7 @@ function RatingLine(props: { businessId: string; fallbackAverage?: number | null
     <span className="detail-meta-line">
       <span aria-hidden>⭐</span>
       <strong>{avg.toFixed(1)}</strong>
-      {count > 0 ? <span>({count} reviews)</span> : null}
+      {count > 0 ? <span>({count} {count === 1 ? 'review' : 'reviews'})</span> : null}
     </span>
   );
 }

@@ -128,8 +128,9 @@ describe('BusinessDetail reviews section', () => {
 
     renderDetail();
     await openReviewsTab();
-    expect(await screen.findByText('4.8'.slice(0, 0) + '5.0')).toBeTruthy();
-    expect(screen.getByText('1 review')).toBeTruthy();
+    expect(await screen.findByText('5.0')).toBeTruthy();
+    // Wait for the async reviews tab content, not just the hero meta.
+    expect(await screen.findByText('1 review')).toBeTruthy();
     expect(screen.getByText('Ayesha K.')).toBeTruthy();
     expect(screen.getByText('Loved it')).toBeTruthy();
   });
