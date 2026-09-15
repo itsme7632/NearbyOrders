@@ -5,7 +5,7 @@ export const businessTabs = ['Overview', 'Orders', 'Bookings', 'Earnings', 'Prof
 export type BusinessTab = (typeof businessTabs)[number];
 
 /** Dedicated Business Dashboard management screens (each its own route). */
-export const ownerScreens = ['profile', 'hours', 'delivery', 'services', 'products', 'bookings', 'orders', 'payments', 'payment-methods', 'advances', 'reviews', 'subscription', 'settings'] as const;
+export const ownerScreens = ['profile', 'hours', 'delivery', 'services', 'products', 'bookings', 'orders', 'payments', 'payment-methods', 'advances', 'reviews', 'subscription', 'settings', 'location'] as const;
 export type OwnerScreenName = (typeof ownerScreens)[number];
 
 /** Customer-mode bottom navigation. */

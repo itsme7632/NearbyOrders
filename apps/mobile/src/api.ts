@@ -93,6 +93,9 @@ export type Business = {
   address: string;
   city: string;
   locality: string | null;
+  /** Real configured coordinates — null when the owner has not set a location. Never invented client-side. */
+  latitude: number | null;
+  longitude: number | null;
   phone: string | null;
   email: string | null;
   currency: string;
@@ -365,6 +368,34 @@ export function listBusinesses(query: BusinessQuery = {}): Promise<Business[]> {
 export const getBusiness = (idOrSlug: string) => request<Business>(`/businesses/${idOrSlug}`);
 
 export const getMyBusinesses = () => request<Business[]>('/businesses/mine', { auth: true });
+
+/* ------------------- location (Phase 11) --------------------------- */
+
+export type NearbyQuery = { lat: number; lng: number; radiusKm?: number; limit?: number };
+
+/** Dedicated nearby search; the server computes and orders by real distance. */
+export function listNearbyBusinesses(query: NearbyQuery): Promise<Business[]> {
+  const params = new URLSearchParams({ lat: String(query.lat), lng: String(query.lng) });
+  if (query.radiusKm !== undefined) params.set('radiusKm', String(query.radiusKm));
+  if (query.limit !== undefined) params.set('limit', String(query.limit));
+  return request<Business[]>(`/businesses/nearby?${params}`);
+}
+
+export type BusinessLocation = {
+  latitude: number | null;
+  longitude: number | null;
+  isConfigured: boolean;
+};
+
+/** Owner-facing location state for a business they own. */
+export const getBusinessLocation = (businessId: string) =>
+  request<BusinessLocation>(`/businesses/${businessId}/location`, { auth: true });
+
+/** Sets or clears (both nulls) the business's real coordinates. */
+export const updateBusinessLocation = (
+  businessId: string,
+  payload: { latitude: number | null; longitude: number | null },
+) => request<BusinessLocation>(`/businesses/${businessId}/location`, { method: 'PUT', body: payload, auth: true });
 
 /** Self-service business creation; the server assigns ownership from the session. */
 export const createBusiness = (input: {

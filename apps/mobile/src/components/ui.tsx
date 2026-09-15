@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { formatMoney } from '@nearbyorders/shared';
+import { formatDistanceKm, hasCoordinates } from '../location.js';
 import type { Business } from '../api.js';
 import { StoreIcon } from './icons.js';
 
@@ -191,12 +192,10 @@ export function BusinessCard(props: { business: Business; onOpen: () => void }) 
   const b = props.business;
   const category = b.categories[0]?.name;
   const place = [b.locality, b.city].filter(Boolean).join(', ');
+  // Only server-computed distances for businesses with real coordinates are
+  // shown — never a client-invented estimate (Phase 11).
   const distance =
-    b.distanceKm !== undefined && b.distanceKm !== null && Number.isFinite(b.distanceKm)
-      ? b.distanceKm >= 1
-        ? `${b.distanceKm.toFixed(1)} km`
-        : `${Math.round(b.distanceKm * 1000)} m`
-      : null;
+    b.distanceKm !== undefined && b.distanceKm !== null && hasCoordinates(b) ? formatDistanceKm(b.distanceKm) : null;
   return (
     <button className="biz-card" onClick={props.onOpen}>
       <span className="biz-card-imgwrap">

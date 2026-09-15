@@ -1,13 +1,19 @@
 import { useState } from 'react';
-import { listBusinesses, listCategories, type Business, type Category } from '../api.js';
+import { listBusinesses, listCategories, listNearbyBusinesses, type Business, type Category } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { EmptyState, ErrorState, SectionHeader } from '../components/ui.js';
-import { ExploreIcon } from '../components/icons.js';
+import { ExploreIcon, PinIcon } from '../components/icons.js';
 import { EmptyStateV3 } from '../components/EmptyStateV3.js';
 import { PopularBusinessCard } from './Home.js';
+import { requestCustomerLocation, locationOutcomeHint, type LocationOutcome } from '../location.js';
 
-/** Distance-aware sort uses the geolocation API when the user permits it. */
-type SortMode = 'default' | 'distance';
+/**
+ * Explore with Phase 11 "Near You" discovery. Customer location is optional:
+ * the default list is unaffected until the user explicitly turns on nearby
+ * mode, and a denied/unavailable permission simply returns to that list. All
+ * distances come from the server (Haversine over configured coordinates).
+ */
+type DiscoveryMode = 'all' | 'nearby';
 
 export function ExploreScreen(props: {
   initialCategory?: string;
@@ -16,37 +22,44 @@ export function ExploreScreen(props: {
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>(props.initialCategory);
   const [query, setQuery] = useState(props.initialQuery ?? '');
-  const [sort, setSort] = useState<SortMode>('default');
+  const [mode, setMode] = useState<DiscoveryMode>('all');
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [locError, setLocError] = useState<string | null>(null);
+  const [locNote, setLocNote] = useState<string | null>(null);
+  const [locating, setLocating] = useState(false);
 
   const categories = useAsyncData<Category[]>(() => listCategories(), []);
   const businesses = useAsyncData<Business[]>(
     () =>
-      listBusinesses({
-        q: query || undefined,
-        category: selectedCategory,
-        nearLat: coords?.lat,
-        nearLng: coords?.lng,
-        radiusKm: coords ? 25 : undefined,
-      }),
-    [query, selectedCategory, coords],
+      // Nearby mode uses the dedicated endpoint (server-side distance + radius);
+      // the default list keeps its existing search/filter behavior untouched.
+      mode === 'nearby' && coords
+        ? listNearbyBusinesses({ lat: coords.lat, lng: coords.lng, radiusKm: 25, limit: 50 })
+        : listBusinesses({
+            q: query || undefined,
+            category: selectedCategory,
+          }),
+    [query, selectedCategory, mode, coords],
   );
 
-  const requestLocation = () => {
-    setLocError(null);
-    if (!('geolocation' in navigator)) {
-      setLocError('Location is not available in this browser.');
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setSort('distance');
-      },
-      () => setLocError('Location permission was denied. You can still browse all businesses.'),
-      { timeout: 8000 },
-    );
+  const enableNearby = () => {
+    setLocNote(null);
+    setLocating(true);
+    requestCustomerLocation()
+      .then((outcome: LocationOutcome) => {
+        if (outcome.status === 'granted') {
+          setCoords(outcome.coords);
+          setMode('nearby');
+        } else {
+          setLocNote(locationOutcomeHint(outcome));
+        }
+      })
+      .finally(() => setLocating(false));
+  };
+
+  const disableNearby = () => {
+    setMode('all');
+    setCoords(null);
+    setLocNote(null);
   };
 
   const results = businesses.data ?? [];
@@ -85,23 +98,18 @@ export function ExploreScreen(props: {
         </div>
       </form>
 
-      {/* Controls: sort toggle + category chips, visually one control band. */}
+      {/* Controls: Near You toggle + category chips, visually one control band. */}
       <section aria-label="Filters" style={{ marginTop: 12 }}>
         <div className="filter-row">
-          <button
-            type="button"
-            className={`chip${sort === 'distance' ? ' chip-active' : ''}`}
-            onClick={() => {
-              if (sort === 'distance') {
-                setSort('default');
-                setCoords(null);
-              } else {
-                requestLocation();
-              }
-            }}
-          >
-            📍 Sort by distance
-          </button>
+          {mode === 'nearby' ? (
+            <button type="button" className="chip chip-active" onClick={disableNearby}>
+              <PinIcon size={14} /> Near you ✓
+            </button>
+          ) : (
+            <button type="button" className="chip" onClick={enableNearby} disabled={locating}>
+              <PinIcon size={14} /> {locating ? 'Finding you…' : 'Near you'}
+            </button>
+          )}
           {categories.data?.slice(0, 8).map((c) => (
             <button
               key={c.id}
@@ -115,25 +123,19 @@ export function ExploreScreen(props: {
       </section>
 
       <SectionHeader
-        title={
-          selectedCategory
-            ? categories.data?.find((c) => c.slug === selectedCategory)?.name ?? 'Results'
-            : query
-              ? 'Search results'
-              : 'All nearby'
-        }
+        title={mode === 'nearby' ? 'Near you' : selectedCategory ? (categories.data?.find((c) => c.slug === selectedCategory)?.name ?? 'Results') : query ? 'Search results' : 'All businesses'}
         action={
           businesses.loading ? null : (
             <span className="biz-distance">
               {results.length} {results.length === 1 ? 'business' : 'businesses'}
-              {sort === 'distance' ? ' · by distance' : ''}
+              {mode === 'nearby' ? ' · closest first' : ''}
             </span>
           )
         }
       />
-      {locError ? (
+      {locNote ? (
         <p className="hint" role="status">
-          {locError}
+          {locNote}
         </p>
       ) : null}
       {businesses.loading ? (
@@ -153,8 +155,14 @@ export function ExploreScreen(props: {
       ) : !results.length ? (
         <EmptyStateV3
           icon={<ExploreIcon size={28} />}
-          title="Nothing found"
-          body={activeFilters > 0 ? 'Try a different search term or category filter.' : 'No businesses match yet. Check back soon.'}
+          title={mode === 'nearby' ? 'Nothing nearby yet' : 'Nothing found'}
+          body={
+            mode === 'nearby'
+              ? 'No businesses within 25 km of you have set a map location yet. Try All businesses instead.'
+              : activeFilters > 0
+                ? 'Try a different search term or category filter.'
+                : 'No businesses match yet. Check back soon.'
+          }
         />
       ) : (
         <div className="popular-grid">

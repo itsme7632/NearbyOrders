@@ -38,8 +38,10 @@ describe('self-service business onboarding (Phase 3C.5)', () => {
     expect(row.ownerId).toBe(owner.userId);
     // New businesses follow the existing approval workflow (PENDING).
     expect(body.status).toBe('PENDING');
-    // City-centre fallback keeps the not-null coordinate contract.
-    expect(Number(body.latitude)).toBeGreaterThan(0);
+    // No invented coordinates: location stays unconfigured until the owner
+    // sets a real one (Phase 11 removed the city-centre fallback).
+    expect(body.latitude).toBeNull();
+    expect(body.longitude).toBeNull();
   });
 
   it('ignores a client-supplied ownerId', async () => {

@@ -4,6 +4,7 @@ import { ErrorState, Loading } from '../components/ui.js';
 import { OwnerScreen as OwnerScreenChrome } from './owner-ui.js';
 import { OwnerProfile } from './OwnerProfile.js';
 import { OwnerHours } from './OwnerHours.js';
+import { OwnerLocation } from './OwnerLocation.js';
 import { DeliverySettingsSection } from './OwnerDeliverySettings.js';
 import { OwnerServices, OwnerProducts } from './OwnerCatalog.js';
 import { OwnerBookingsList } from './OwnerBookingsList.js';
@@ -16,6 +17,7 @@ import { OwnerReviews } from './OwnerReviews.js';
 const TITLE: Record<string, string> = {
   profile: 'Business Profile',
   hours: 'Business Hours',
+  location: 'Location',
   delivery: 'Delivery & COD',
   settings: 'Business Settings',
   services: 'Services',
@@ -44,6 +46,9 @@ export function OwnerScreen(props: { screen: string; businessId: string; onBack:
       break;
     case 'hours':
       body = <OwnerHours businessId={businessId} />;
+      break;
+    case 'location':
+      body = <OwnerLocation businessId={businessId} />;
       break;
     // Delivery and Business Settings expose the same server-authoritative
     // delivery/COD configuration; the hub lists both entry points.

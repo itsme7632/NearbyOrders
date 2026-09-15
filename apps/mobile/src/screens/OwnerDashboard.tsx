@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { getMyBusinesses, type Business } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, Loading } from '../components/ui.js';
-import { CheckIcon, OrdersIcon, StoreIcon } from '../components/icons.js';
+import { CheckIcon, OrdersIcon, PinIcon, StoreIcon } from '../components/icons.js';
 import { OwnerHubRow, OwnerHubSection } from './owner-ui.js';
 
 /**
@@ -104,6 +104,12 @@ export function OwnerDashboardScreen(props: {
           title="Business Hours"
           subtitle="Opening times for each day of the week"
           onClick={() => props.onOpen(`${base}/hours`)}
+        />
+        <OwnerHubRow
+          icon={<PinIcon size={18} />}
+          title="Location"
+          subtitle="Map coordinates so nearby customers find you"
+          onClick={() => props.onOpen(`${base}/location`)}
         />
         <OwnerHubRow
           icon={<OrdersIcon size={18} />}

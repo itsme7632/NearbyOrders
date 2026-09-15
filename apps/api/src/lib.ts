@@ -98,16 +98,31 @@ export const categoryUpdateSchema = categoryCreateSchema.partial().refine(
 /* Businesses                                                          */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Shared coordinate validation for location APIs. Reused by the business
+ * create/update payloads and the nearby-search query string.
+ */
+export const latitudeSchema = z
+  .number()
+  .gte(-90)
+  .lte(90)
+  .refine((v) => Number.isFinite(v), { message: 'latitude must be finite' });
+export const longitudeSchema = z
+  .number()
+  .gte(-180)
+  .lte(180)
+  .refine((v) => Number.isFinite(v), { message: 'longitude must be finite' });
+
 const businessCore = {
   name: z.string().min(2).max(120),
   description: optionalText(2000),
   address: z.string().min(5),
   city: z.string().min(2),
   locality: optionalText(100),
-  // Optional for self-service onboarding; the create handler applies a
-  // city-centre fallback so the not-null schema contract stays intact.
-  latitude: z.number().gte(-90).lte(90).optional(),
-  longitude: z.number().gte(-180).lte(180).optional(),
+  // Optional for self-service onboarding; nullable until the owner configures
+  // a real location via the dedicated location screen.
+  latitude: latitudeSchema.optional(),
+  longitude: longitudeSchema.optional(),
   phone: z
     .union([phone, z.literal(''), z.null()])
     .optional()
@@ -120,6 +135,36 @@ export const businessSchema = z.object({
   ...businessCore,
   categoryIds: z.array(z.string().uuid()).min(1),
 });
+
+export const businessLocationSchema = z
+  .object({
+    // Coordinates are set or cleared together: null/null clears the location,
+    // numbers configure it. The server never invents a location.
+    latitude: latitudeSchema.nullable(),
+    longitude: longitudeSchema.nullable(),
+  })
+  .strict()
+  .refine((d) => (d.latitude === null) === (d.longitude === null), {
+    message: 'latitude and longitude must be set or cleared together',
+  });
+
+/**
+ * Accepts the documented location-payload shapes: the full object, or a bare
+ * JSON `null` as an explicit alias for "clear the location". A missing body
+ * (undefined) stays invalid — clearing is always deliberate.
+ */
+export const locationPutBodySchema = z.union([businessLocationSchema, z.null()]);
+
+export const nearbyBusinessesQuerySchema = z
+  .object({
+    // Query strings arrive as text — coerce, then range/finite-check.
+    lat: z.coerce.number().gte(-90).lte(90).refine((v) => Number.isFinite(v), { message: 'latitude must be finite' }),
+    lng: z.coerce.number().gte(-180).lte(180).refine((v) => Number.isFinite(v), { message: 'longitude must be finite' }),
+    // 50 km covers metro-scale discovery without inventing cross-country "nearby".
+    radiusKm: z.coerce.number().gt(0).lte(50).default(10),
+    limit: z.coerce.number().int().gt(0).lte(100).optional(),
+  })
+  .strict();
 
 /** Owners may update profile content but never status, verification, slug or ownership. */
 export const businessUpdateSchema = z
@@ -694,6 +739,26 @@ export const distanceKm = (
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
+};
+
+/**
+ * Conservative square around the anchor that fully contains the radius circle
+ * (so it never excludes an in-radius business). Powers the SQL prefilter for
+ * nearby queries — the exact Haversine distance remains authoritative in JS.
+ */
+export const boundingBoxKm = (
+  lat: number,
+  lng: number,
+  radiusKm: number,
+): { minLat: number; maxLat: number; minLng: number; maxLng: number } => {
+  const dLat = radiusKm / 111.045;
+  const dLng = radiusKm / (111.045 * Math.max(0.01, Math.cos((lat * Math.PI) / 180)));
+  return {
+    minLat: lat - dLat,
+    maxLat: lat + dLat,
+    minLng: lng - dLng,
+    maxLng: lng + dLng,
+  };
 };
 
 /* ------------------------------------------------------------------ */

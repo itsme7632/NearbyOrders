@@ -7,6 +7,7 @@ import { formatSlotTime } from '../time.js';
 import { addToCart, replaceWith } from '../cart.js';
 import { useCartCount } from '../useCartCount.js';
 import { Stars } from '../components/ReviewForm.js';
+import { directionsUrl, formatDistanceKm, hasCoordinates } from '../location.js';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
@@ -55,7 +56,11 @@ export function BusinessDetailScreen(props: {
   const b = business.data;
   const place = [b.locality, b.city].filter(Boolean).join(', ');
   const bookable = b.services?.some((s) => s.isActive && s.durationMinutes);
-  const mapsQuery = encodeURIComponent([b.address, b.city].filter(Boolean).join(', '));
+  // Phase 11: distance comes only from the server when the customer searched
+  // nearby; coordinates exist only when the owner configured a real location.
+  const distanceLabel =
+    b.distanceKm !== undefined && b.distanceKm !== null && hasCoordinates(b) ? formatDistanceKm(b.distanceKm) : null;
+  const directions = directionsUrl(b);
   const closings = b.hours?.length
     ? b.hours
         .filter((h) => !h.isClosed && h.closesAt)
@@ -108,7 +113,11 @@ export function BusinessDetailScreen(props: {
           <RatingLine businessId={b.id} fallbackAverage={b.averageRating} fallbackCount={b.reviewCount} />
           <span className="detail-meta-line">
             {b.categories.map((c) => c.name).join(' • ') || 'Local business'}
-            {place ? (
+            {distanceLabel ? (
+              <>
+                <span className="sep">|</span>📍 {distanceLabel} away
+              </>
+            ) : place ? (
               <>
                 <span className="sep">|</span>📍 {place}
               </>
@@ -124,13 +133,9 @@ export function BusinessDetailScreen(props: {
               Call
             </a>
           ) : null}
-          {place ? (
-            <a
-              className="quick-circle"
-              href={`https://www.google.com/maps/search/?api=1&query=${mapsQuery}`}
-              target="_blank"
-              rel="noreferrer"
-            >
+          {/* Directions only when the business has usable location data. */}
+          {directions ? (
+            <a className="quick-circle" href={directions} target="_blank" rel="noreferrer">
               <span className="qc-icon" aria-hidden>📍</span>
               Directions
             </a>

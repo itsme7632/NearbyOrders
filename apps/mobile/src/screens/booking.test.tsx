@@ -29,6 +29,8 @@ const business: Business = {
   address: '12 Test Avenue',
   city: 'Lahore',
   locality: 'DHA Phase 5',
+  latitude: 24.805,
+  longitude: 67.045,
   phone: null,
   email: null,
   currency: 'PKR',

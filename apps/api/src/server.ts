@@ -33,7 +33,10 @@ import {
   categoryCreateSchema,
   categoryUpdateSchema,
   businessSchema,
+  businessLocationSchema,
+  locationPutBodySchema,
   businessUpdateSchema,
+  nearbyBusinessesQuerySchema,
   serviceSchema,
   serviceUpdateSchema,
   productSchema,
@@ -51,6 +54,7 @@ import {
   allowedTransitions,
   isOpenNow,
   distanceKm,
+  boundingBoxKm,
   BLOCKING_BOOKING_STATUSES,
   overlaps,
   generateSlots,
@@ -285,10 +289,18 @@ export async function buildApp(): Promise<FastifyInstance> {
     const limit = Math.min(Number(s.limit ?? 20), 100);
     // Nearby filtering happens after the fetch, so when active we scan a wider
     // page before applying the radius + sort, then slice to the requested limit.
-    const fetchTake = s.nearLat !== undefined && s.nearLng !== undefined ? 100 : limit;
+    const nearActive = s.nearLat !== undefined && s.nearLng !== undefined;
+    // When distance search is active, prefilter to a conservative bounding box
+    // in SQL so the fetch window targets relevant rows; the exact Haversine
+    // distance still decides inclusion and ordering (server-authoritative).
+    const near = nearActive ? boundingBoxKm(Number(s.nearLat), Number(s.nearLng), Math.min(Math.max(Number(s.radiusKm ?? 10), 0.1), 50)) : null;
+    if (near) {
+      where.latitude = { not: null, gte: near.minLat, lte: near.maxLat };
+      where.longitude = { not: null, gte: near.minLng, lte: near.maxLng };
+    }
     // Newest-first so the first page is deterministic once more businesses exist
     // than a single page can hold.
-    const businesses = await prisma.business.findMany({ where, include: PUBLIC_BUSINESS_INCLUDE, take: fetchTake, orderBy: { createdAt: 'desc' } });
+    const businesses = await prisma.business.findMany({ where, include: PUBLIC_BUSINESS_INCLUDE, take: near ? 200 : limit, orderBy: { createdAt: 'desc' } });
     const ratingSummaries = await Promise.all(businesses.map((b) => ratingSummary(b.id)));
     const mapped = businesses.map((b, i) => ({
       id: b.id,
@@ -309,13 +321,20 @@ export async function buildApp(): Promise<FastifyInstance> {
       categories: b.categories.map((bc) => bc.category),
     }));
 
-    if (s.nearLat !== undefined && s.nearLng !== undefined) {
+    if (nearActive) {
       const lat = Number(s.nearLat);
       const lng = Number(s.nearLng);
-      const radius = Number(s.radiusKm ?? 10);
-      if (Number.isFinite(lat) && Number.isFinite(lng) && Number.isFinite(radius) && radius > 0) {
+      // Query-string coords are range-checked; the radius is clamped to a
+      // metro-scale maximum (50 km) so "nearby" stays meaningful.
+      const radius = Math.min(Math.max(Number(s.radiusKm ?? 10), 0.1), 50);
+      const coordsValid =
+        Number.isFinite(lat) && Math.abs(lat) <= 90 && Number.isFinite(lng) && Math.abs(lng) <= 180;
+      if (coordsValid) {
         return {
           data: mapped
+            // Only businesses with real configured coordinates participate in
+            // distance search — never an invented placeholder location.
+            .filter((b) => b.latitude !== null && b.longitude !== null)
             .map((b) => ({ ...b, distanceKm: distanceKm(lat, lng, Number(b.latitude), Number(b.longitude)) }))
             .filter((b) => b.distanceKm <= radius)
             .sort((a, b) => a.distanceKm - b.distanceKm)
@@ -324,6 +343,67 @@ export async function buildApp(): Promise<FastifyInstance> {
       }
     }
     return { data: mapped };
+  });
+
+  /**
+   * Dedicated nearby search (Phase 11). Same public-business visibility rules
+   * as the list endpoint, one authoritative server-side Haversine distance,
+   * radius validation, and businesses without configured coordinates excluded.
+   */
+  app.get('/api/v1/businesses/nearby', async (q, r) => {
+    const parsed = nearbyBusinessesQuerySchema.safeParse(q.query);
+    if (!parsed.success)
+      return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid nearby query' } });
+    const { lat, lng, radiusKm, limit } = parsed.data;
+    const take = Math.min(limit ?? 20, 100);
+    // Conservative bounding box (a square that fully contains the radius
+    // circle, so it never excludes an in-radius row) keeps the SQL scan
+    // relevant in a populated database; the exact Haversine distance still
+    // decides inclusion and ordering below.
+    const bbox = boundingBoxKm(lat, lng, radiusKm);
+    const businesses = await prisma.business.findMany({
+      where: {
+        status: 'APPROVED',
+        archivedAt: null,
+        latitude: bbox.minLat > -90 && bbox.maxLat < 90 ? { not: null, gte: bbox.minLat, lte: bbox.maxLat } : { not: null },
+        longitude: bbox.minLng > -180 && bbox.maxLng < 180 ? { not: null, gte: bbox.minLng, lte: bbox.maxLng } : { not: null },
+      },
+      include: PUBLIC_BUSINESS_INCLUDE,
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+    const withDistance = (
+      await Promise.all(
+        businesses.map(async (b) => {
+          const distance = distanceKm(lat, lng, Number(b.latitude), Number(b.longitude));
+          if (distance > radiusKm) return null;
+          const summary = await ratingSummary(b.id);
+          return {
+            id: b.id,
+            name: b.name,
+            slug: b.slug,
+            description: b.description,
+            imageUrl: b.imageUrl,
+            isVerified: b.isVerified,
+            address: b.address,
+            city: b.city,
+            locality: b.locality,
+            latitude: b.latitude === null ? null : Number(b.latitude),
+            longitude: b.longitude === null ? null : Number(b.longitude),
+            currency: b.currency,
+            isOpenNow: isOpenNow(b.hours),
+            averageRating: summary.averageRating,
+            reviewCount: summary.reviewCount,
+            categories: b.categories.map((bc) => bc.category),
+            distanceKm: Math.round(distance * 100) / 100,
+          };
+        }),
+      )
+    )
+      .filter((v): v is NonNullable<typeof v> => v !== null)
+      .sort((a, b) => a.distanceKm - b.distanceKm)
+      .slice(0, take);
+    return { data: withDistance };
   });
 
   app.get('/api/v1/businesses/:id', async (q, r) => {
@@ -373,20 +453,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (validCategories.length !== categoryIds.length)
       return r.status(400).send({ error: { code: 'INVALID_CATEGORY', message: 'One or more categories are invalid' } });
     // Coordinates are optional for self-service onboarding (no maps in the
-    // create form). When omitted, a city-centre fallback keeps the existing
-    // schema/not-null contract and nearby search functional until real
-    // coordinates are captured in a later phase.
-    const FALLBACK_COORDS: Record<string, { latitude: number; longitude: number }> = {
-      karachi: { latitude: 24.8607, longitude: 67.0011 },
-      lahore: { latitude: 31.5204, longitude: 74.3587 },
-      islamabad: { latitude: 33.6844, longitude: 73.0479 },
-      rawalpindi: { latitude: 33.5651, longitude: 73.0169 },
-      faisalabad: { latitude: 31.4187, longitude: 73.0791 },
-      multan: { latitude: 30.1575, longitude: 71.5249 },
-      peshawar: { latitude: 34.0151, longitude: 71.5249 },
-      quetta: { latitude: 30.1798, longitude: 66.975 },
-    };
-    const fallback = FALLBACK_COORDS[d.city.trim().toLowerCase()] ?? { latitude: 30.3753, longitude: 69.3451 };
+    // create form). They stay null until the owner configures a real location
+    // in Business mode; no city-centre or other invented fallback is applied.
     // Dev/preview-only convenience (AUTO_APPROVE_BUSINESSES=true): skip the
     // admin approval wait for NEW businesses. Strictly server-configured —
     // there is deliberately no client-controllable path to approval, and the
@@ -395,8 +463,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     const b = await prisma.business.create({
       data: {
         ...input,
-        latitude: latitude ?? fallback.latitude,
-        longitude: longitude ?? fallback.longitude,
+        latitude: latitude ?? null,
+        longitude: longitude ?? null,
         slug: `${slugify(d.name)}-${Date.now().toString(36)}`,
         ownerId: currentUser(q).id,
         status,
@@ -454,6 +522,43 @@ export async function buildApp(): Promise<FastifyInstance> {
         .update({ where: { id }, data, include: { categories: { include: { category: true } } } })
         .then((b) => ({ ...b, categories: flattenCategories(b.categories) })),
     };
+  });
+
+  /* ----------------------- Business location (Phase 11) ------------- */
+
+  /** Owner-facing location view: coordinates plus configured-state flag. */
+  const locationPayload = (b: { latitude: unknown; longitude: unknown }) => ({
+    latitude: b.latitude === null ? null : Number(b.latitude),
+    longitude: b.longitude === null ? null : Number(b.longitude),
+    isConfigured: b.latitude !== null && b.longitude !== null,
+  });
+
+  app.get('/api/v1/businesses/:id/location', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const business = await ownedBusiness(q, (q.params as { id: string }).id);
+    return { data: locationPayload(business) };
+  });
+
+  /**
+   * Sets or clears the business's real coordinates. Clearing is explicit —
+   * `{ latitude: null, longitude: null }` (or a bare JSON `null` body) — the
+   * server never invents a location, and clearing one simply removes the
+   * business from distance-based nearby results.
+   */
+  app.put('/api/v1/businesses/:id/location', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    // Bare `null` bodies are an accepted alias for clearing; a missing body
+    // (undefined) is invalid — clearing is always deliberate.
+    const parsed = locationPutBodySchema.safeParse(q.body ?? null);
+    if (!parsed.success)
+      return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid location payload' } });
+    const cleared = parsed.data === null;
+    const data = {
+      latitude: cleared ? null : parsed.data.latitude,
+      longitude: cleared ? null : parsed.data.longitude,
+    };
+    await prisma.business.update({ where: { id }, data });
+    return { data: { ...data, isConfigured: data.latitude !== null } };
   });
 
   app.get('/api/v1/businesses/:id/hours', async (q, r) => {
