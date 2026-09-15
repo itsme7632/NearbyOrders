@@ -20,6 +20,8 @@ const baseBusiness: Business = {
   address: '12 Food Street',
   city: 'Karachi',
   locality: null,
+  latitude: null,
+  longitude: null,
   phone: null,
   email: null,
   currency: 'PKR',

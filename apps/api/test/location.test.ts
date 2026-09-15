@@ -1,7 +1,28 @@
-import { describe, expect, it } from 'vitest';
-import { approveBusiness, authed, createBusiness, ensureCategory, makeApp, registerAndLogin } from './helpers.js';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { approveBusiness, authed, createBusiness, ensureCategory, makeApp, registerAndLogin, type TestApp } from './helpers.js';
+import { prisma } from '../src/lib.js';
 
-const app = await makeApp();
+let app: TestApp;
+
+/** Businesses created by this run; removed in afterAll to keep the shared test database clean. */
+const createdBusinessIds: string[] = [];
+
+beforeAll(async () => {
+  app = await makeApp();
+});
+
+afterAll(async () => {
+  await prisma.business.deleteMany({ where: { id: { in: createdBusinessIds } } });
+  await app.close();
+});
+
+// A randomised mid-ocean anchor per run: the shared test database keeps rows
+// from other suites and past runs, so a fixed anchor would eventually collide
+// with historical fixtures and break the nearby limit assertions.
+const ANCHOR = {
+  lat: -49.3167 + (Math.random() - 0.5) * 2,
+  lng: 71.8333 + (Math.random() - 0.5) * 2,
+};
 
 /** Creates an APPROVED business with explicit real coordinates. */
 const locatedBusiness = async (name: string, latitude: number, longitude: number) => {
@@ -23,6 +44,7 @@ const locatedBusiness = async (name: string, latitude: number, longitude: number
   });
   expect(created.statusCode).toBe(201);
   const { id } = JSON.parse(created.body).data as { id: string };
+  createdBusinessIds.push(id);
   await approveBusiness(id);
   return { id, ownerId: owner.userId, ownerToken: owner.token };
 };
@@ -47,6 +69,7 @@ describe('business location (Phase 11)', () => {
     const body = JSON.parse(created.body).data as { id: string; latitude: unknown; longitude: unknown };
     expect(body.latitude).toBeNull();
     expect(body.longitude).toBeNull();
+    createdBusinessIds.push(body.id);
 
     // The owner-facing location endpoint reports the unconfigured state.
     const location = await app.inject({
@@ -191,12 +214,6 @@ describe('business location (Phase 11)', () => {
 });
 
 describe('nearby discovery (Phase 11)', () => {
-  // An isolated mid-ocean anchor: no other business can share these
-  // coordinates, so freshly created fixtures are the only rows in the
-  // bounding box and every assertion stays deterministic against the shared
-  // test database.
-  const ANCHOR = { lat: -49.3167, lng: 71.8333 };
-
   it('returns nearby businesses with server-computed distances, ordered closest first', async () => {
     // 0.01° latitude ≈ 1.11 km; three rings at increasing distance.
     const near = await locatedBusiness(`Near Ring ${Date.now()}`, ANCHOR.lat + 0.01, ANCHOR.lng);
@@ -256,6 +273,7 @@ describe('nearby discovery (Phase 11)', () => {
     });
     expect(created.statusCode).toBe(201);
     const { id } = JSON.parse(created.body).data as { id: string };
+    createdBusinessIds.push(id);
     await approveBusiness(id);
 
     const res = await app.inject({

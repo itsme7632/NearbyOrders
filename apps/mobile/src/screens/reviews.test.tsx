@@ -93,6 +93,8 @@ const business = (patch: Partial<Business> = {}): Business => ({
   address: '12 Test Rd',
   city: 'Lahore',
   locality: null,
+  latitude: null,
+  longitude: null,
   phone: null,
   email: null,
   currency: 'PKR',

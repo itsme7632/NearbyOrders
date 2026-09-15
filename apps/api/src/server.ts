@@ -552,11 +552,10 @@ export async function buildApp(): Promise<FastifyInstance> {
     const parsed = locationPutBodySchema.safeParse(q.body ?? null);
     if (!parsed.success)
       return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid location payload' } });
-    const cleared = parsed.data === null;
-    const data = {
-      latitude: cleared ? null : parsed.data.latitude,
-      longitude: cleared ? null : parsed.data.longitude,
-    };
+    const data =
+      parsed.data === null
+        ? { latitude: null, longitude: null }
+        : { latitude: parsed.data.latitude, longitude: parsed.data.longitude };
     await prisma.business.update({ where: { id }, data });
     return { data: { ...data, isConfigured: data.latitude !== null } };
   });
