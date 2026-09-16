@@ -695,6 +695,40 @@ export const listNotifications = (limit = 30, cursor?: string) => {
 
 export const getUnreadCount = () => request<{ count: number }>('/notifications/unread-count', { auth: true });
 
+/* --------------------- Push devices & preferences (Phase 13) --------------------- */
+
+export type PushDevice = {
+  id: string;
+  platform: 'android' | 'ios' | 'web';
+  deviceId: string | null;
+  isActive: boolean;
+  lastSeenAt: string;
+  createdAt: string;
+};
+
+/** Registers (or re-activates) this device for push; idempotent per token. */
+export const registerPushDevice = (payload: { platform: 'android' | 'ios' | 'web'; pushToken: string; deviceId?: string }) =>
+  request<PushDevice>('/push/devices', { method: 'POST', body: payload, auth: true });
+
+/** Deactivates one of the caller's own devices (logout on that device). */
+export const deactivatePushDevice = (id: string) =>
+  request<{ id: string; isActive: boolean }>(`/push/devices/${id}`, { method: 'DELETE', auth: true });
+
+export type NotificationPreferences = {
+  bookings: boolean;
+  orders: boolean;
+  payments: boolean;
+  reviews: boolean;
+  businessActivity: boolean;
+  account: boolean;
+};
+
+export const getNotificationPreferences = () =>
+  request<NotificationPreferences>('/notifications/preferences', { auth: true });
+
+export const updateNotificationPreferences = (prefs: NotificationPreferences) =>
+  request<NotificationPreferences>('/notifications/preferences', { method: 'PUT', body: prefs, auth: true });
+
 export const markNotificationRead = (id: string) =>
   request<Notification>(`/notifications/${id}/read`, { method: 'PATCH', auth: true });
 

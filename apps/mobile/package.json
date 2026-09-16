@@ -15,6 +15,7 @@
     "@capacitor/android": "^8.5.1",
     "@capacitor/core": "^8.5.1",
     "@capacitor/geolocation": "^8.2.2",
+    "@capacitor/push-notifications": "^8.1.2",
     "@nearbyorders/shared": "workspace:*",
     "@vitejs/plugin-react": "^4.3.4",
     "leaflet": "^1.9.4",

@@ -100,6 +100,9 @@ importers:
       '@capacitor/geolocation':
         specifier: ^8.2.2
         version: 8.2.2(@capacitor/core@8.5.1)
+      '@capacitor/push-notifications':
+        specifier: ^8.1.2
+        version: 8.1.2(@capacitor/core@8.5.1)
       '@nearbyorders/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -278,6 +281,11 @@ packages:
 
   '@capacitor/geolocation@8.2.2':
     resolution: {integrity: sha512-X8ryw6CfL4LspJnnfVL4++DUKKZVfdUIA9JljWVRljEDIQxZQZtz6xf7qstht+ymc+le6oa5EaUChVA6KsCYlA==}
+    peerDependencies:
+      '@capacitor/core': '>=8.0.0'
+
+  '@capacitor/push-notifications@8.1.2':
+    resolution: {integrity: sha512-TQl4XxqJfNF+KbSYBFMXYYT5WXUaleVKXlByhh/8+KySMVNjp+l5OqAUoGe/sY1IAnGXEuUeCjA/WLZEVvGwrA==}
     peerDependencies:
       '@capacitor/core': '>=8.0.0'
 
@@ -2290,6 +2298,10 @@ snapshots:
     dependencies:
       '@capacitor/core': 8.5.1
       '@capacitor/synapse': 1.0.4
+
+  '@capacitor/push-notifications@8.1.2(@capacitor/core@8.5.1)':
+    dependencies:
+      '@capacitor/core': 8.5.1
 
   '@capacitor/synapse@1.0.4': {}
 

@@ -69,7 +69,8 @@ import {
   LIVE_SUBSCRIPTION_STATUSES,
   evaluateSubscription,
 } from './lib.js';
-import type { AuthUser } from './lib.js';
+import type { AuthUser, NotificationInput } from './lib.js';
+import { dispatchPushNotifications } from './push.js';
 import type { SubscriptionStatus } from '@prisma/client';
 import { RECEIPT_ACCEPTED_TYPES, RECEIPT_KEY_PATTERN, RECEIPT_MAX_BYTES, readReceipt, receiptContentType, saveReceipt } from './receiptStorage.js';
 
@@ -1118,8 +1119,19 @@ export async function buildApp(): Promise<FastifyInstance> {
           tx,
         );
 
-        return { approved, subscription };
+        return { approved, subscription, ownerId: request.business.ownerId };
       });
+      // Push is an additional channel, dispatched only after commit.
+      void dispatchPushNotifications([
+        {
+          userId: result.ownerId,
+          type: NOTIFICATION_TYPES.SUBSCRIPTION_PAYMENT_APPROVED,
+          title: 'Subscription payment approved',
+          message: 'Your NearbyOrders Business subscription is now active.',
+          entityType: 'SubscriptionPaymentRequest',
+          entityId: result.approved.id,
+        },
+      ]).catch(() => undefined);
 
       await prisma.auditLog.create({
         data: { actorId: admin.id, action: 'SUBSCRIPTION_PAYMENT_APPROVED', entityType: 'SubscriptionPaymentRequest', entityId: result.approved.id, metadata: { businessId: result.approved.businessId, subscriptionId: result.subscription.id } },
@@ -1172,12 +1184,22 @@ export async function buildApp(): Promise<FastifyInstance> {
           ],
           tx,
         );
-        return rejected;
+        return { rejected, ownerId: request.business.ownerId };
       });
+      void dispatchPushNotifications([
+        {
+          userId: result.ownerId,
+          type: NOTIFICATION_TYPES.SUBSCRIPTION_PAYMENT_REJECTED,
+          title: 'Subscription payment rejected',
+          message: `Your NearbyOrders subscription payment was rejected. Reason: ${reason}`,
+          entityType: 'SubscriptionPaymentRequest',
+          entityId: result.rejected.id,
+        },
+      ]).catch(() => undefined);
       await prisma.auditLog.create({
-        data: { actorId: admin.id, action: 'SUBSCRIPTION_PAYMENT_REJECTED', entityType: 'SubscriptionPaymentRequest', entityId: result.id, metadata: { businessId: result.businessId } },
+        data: { actorId: admin.id, action: 'SUBSCRIPTION_PAYMENT_REJECTED', entityType: 'SubscriptionPaymentRequest', entityId: result.rejected.id, metadata: { businessId: result.rejected.businessId } },
       });
-      const full = await prisma.subscriptionPaymentRequest.findUniqueOrThrow({ where: { id: requestId }, include: PAYMENT_REQUEST_INCLUDE });
+      const full = await prisma.subscriptionPaymentRequest.findUniqueOrThrow({ where: { id: result.rejected.id }, include: PAYMENT_REQUEST_INCLUDE });
       return { data: adminPaymentRequest(full) };
     } catch (e) {
       const code = (e as { code?: string }).code;
@@ -1463,6 +1485,16 @@ export async function buildApp(): Promise<FastifyInstance> {
         entityId: created.id,
       },
     ]);
+    void dispatchPushNotifications([
+      {
+        userId: booking.business.ownerId,
+        type: NOTIFICATION_TYPES.BOOKING_PAYMENT_SUBMITTED,
+        title: 'Payment proof submitted',
+        message: `${user.firstName ?? 'A customer'} submitted an advance payment (Rs ${Math.round(d.amountMinor / 100)}) for ${booking.service?.name ?? 'a booking'}. Verify it to mark the payment as received.`,
+        entityType: 'BookingPayment',
+        entityId: created.id,
+      },
+    ]).catch(() => undefined);
     return r.status(201).send({ data: publicCustomerPayment(created) });
   });
 
@@ -1572,10 +1604,20 @@ export async function buildApp(): Promise<FastifyInstance> {
             entityId: payment.id,
           },
         ], tx);
-        return verified;
+        return { verified, customerId: payment.customerId, paymentId: payment.id };
       });
+      void dispatchPushNotifications([
+        {
+          userId: result.customerId,
+          type: NOTIFICATION_TYPES.BOOKING_PAYMENT_VERIFIED,
+          title: 'Payment verified',
+          message: 'Your payment has been verified by the business.',
+          entityType: 'BookingPayment',
+          entityId: result.paymentId,
+        },
+      ]).catch(() => undefined);
       await prisma.auditLog.create({
-        data: { actorId: owner.id, action: 'BOOKING_PAYMENT_VERIFIED', entityType: 'BookingPayment', entityId: result.id, metadata: { businessId: result.businessId, amountMinor: result.amountMinor } },
+        data: { actorId: owner.id, action: 'BOOKING_PAYMENT_VERIFIED', entityType: 'BookingPayment', entityId: result.verified.id, metadata: { businessId: result.verified.businessId, amountMinor: result.verified.amountMinor } },
       });
       const full = await prisma.bookingPayment.findUniqueOrThrow({ where: { id: paymentId }, include: { paymentMethod: PAYMENT_METHOD_SELECT } });
       return { data: publicCustomerPayment(full) };
@@ -1618,10 +1660,20 @@ export async function buildApp(): Promise<FastifyInstance> {
             entityId: payment.id,
           },
         ], tx);
-        return rejected;
+        return { rejected, customerId: payment.customerId, paymentId: payment.id };
       });
+      void dispatchPushNotifications([
+        {
+          userId: result.customerId,
+          type: NOTIFICATION_TYPES.BOOKING_PAYMENT_REJECTED,
+          title: 'Payment could not be verified',
+          message: 'The business could not verify your payment. You can submit a new payment.',
+          entityType: 'BookingPayment',
+          entityId: result.paymentId,
+        },
+      ]).catch(() => undefined);
       await prisma.auditLog.create({
-        data: { actorId: owner.id, action: 'BOOKING_PAYMENT_REJECTED', entityType: 'BookingPayment', entityId: result.id, metadata: { businessId: result.businessId, amountMinor: result.amountMinor } },
+        data: { actorId: owner.id, action: 'BOOKING_PAYMENT_REJECTED', entityType: 'BookingPayment', entityId: result.rejected.id, metadata: { businessId: result.rejected.businessId, amountMinor: result.rejected.amountMinor } },
       });
       const full = await prisma.bookingPayment.findUniqueOrThrow({ where: { id: paymentId }, include: { paymentMethod: PAYMENT_METHOD_SELECT } });
       return { data: publicCustomerPayment(full) };
@@ -1716,6 +1768,16 @@ export async function buildApp(): Promise<FastifyInstance> {
         entityId: created.id,
       },
     ]);
+    void dispatchPushNotifications([
+      {
+        userId: order.business.ownerId,
+        type: NOTIFICATION_TYPES.ORDER_PAYMENT_SUBMITTED,
+        title: 'Order payment proof submitted',
+        message: `${user.firstName ?? 'A customer'} submitted a payment (Rs ${Math.round(d.amountMinor / 100)}) for their order. Verify it to mark the payment as received.`,
+        entityType: 'OrderPayment',
+        entityId: created.id,
+      },
+    ]).catch(() => undefined);
     return r.status(201).send({ data: publicCustomerPayment(created) });
   });
 
@@ -1755,10 +1817,20 @@ export async function buildApp(): Promise<FastifyInstance> {
             entityId: payment.id,
           },
         ], tx);
-        return verified;
+        return { verified, customerId: payment.customerId, paymentId: payment.id };
       });
+      void dispatchPushNotifications([
+        {
+          userId: result.customerId,
+          type: NOTIFICATION_TYPES.ORDER_PAYMENT_VERIFIED,
+          title: 'Payment verified',
+          message: 'Your payment has been verified.',
+          entityType: 'OrderPayment',
+          entityId: result.paymentId,
+        },
+      ]).catch(() => undefined);
       await prisma.auditLog.create({
-        data: { actorId: owner.id, action: 'ORDER_PAYMENT_VERIFIED', entityType: 'OrderPayment', entityId: result.id, metadata: { businessId: result.businessId, amountMinor: result.amountMinor } },
+        data: { actorId: owner.id, action: 'ORDER_PAYMENT_VERIFIED', entityType: 'OrderPayment', entityId: result.verified.id, metadata: { businessId: result.verified.businessId, amountMinor: result.verified.amountMinor } },
       });
       const full = await prisma.orderPayment.findUniqueOrThrow({ where: { id: paymentId }, include: { paymentMethod: PAYMENT_METHOD_SELECT } });
       return { data: publicCustomerPayment(full) };
@@ -1801,10 +1873,20 @@ export async function buildApp(): Promise<FastifyInstance> {
             entityId: payment.id,
           },
         ], tx);
-        return rejected;
+        return { rejected, customerId: payment.customerId, paymentId: payment.id };
       });
+      void dispatchPushNotifications([
+        {
+          userId: result.customerId,
+          type: NOTIFICATION_TYPES.ORDER_PAYMENT_REJECTED,
+          title: 'Payment could not be verified',
+          message: 'The business could not verify your payment. You can submit a new payment.',
+          entityType: 'OrderPayment',
+          entityId: result.paymentId,
+        },
+      ]).catch(() => undefined);
       await prisma.auditLog.create({
-        data: { actorId: owner.id, action: 'ORDER_PAYMENT_REJECTED', entityType: 'OrderPayment', entityId: result.id, metadata: { businessId: result.businessId, amountMinor: result.amountMinor } },
+        data: { actorId: owner.id, action: 'ORDER_PAYMENT_REJECTED', entityType: 'OrderPayment', entityId: result.rejected.id, metadata: { businessId: result.rejected.businessId, amountMinor: result.rejected.amountMinor } },
       });
       const full = await prisma.orderPayment.findUniqueOrThrow({ where: { id: paymentId }, include: { paymentMethod: PAYMENT_METHOD_SELECT } });
       return { data: publicCustomerPayment(full) };
@@ -1860,6 +1942,16 @@ export async function buildApp(): Promise<FastifyInstance> {
         entityId: record.id,
       },
     ]);
+    void dispatchPushNotifications([
+      {
+        userId: order.customerId,
+        type: NOTIFICATION_TYPES.ORDER_PAYMENT_VERIFIED,
+        title: 'Payment received',
+        message: `${order.business.name} received your cash payment of Rs ${Math.round(due / 100)}. Thank you!`,
+        entityType: 'OrderPayment',
+        entityId: record.id,
+      },
+    ]).catch(() => undefined);
     const full = await prisma.orderPayment.findUniqueOrThrow({ where: { id: record.id }, include: { paymentMethod: PAYMENT_METHOD_SELECT } });
     return r.status(201).send({ data: publicCustomerPayment(full) });
   });
@@ -2202,6 +2294,16 @@ export async function buildApp(): Promise<FastifyInstance> {
       ], tx);
       return created;
     });
+    void dispatchPushNotifications([
+      {
+        userId: business.ownerId,
+        type: NOTIFICATION_TYPES.BOOKING_CREATED,
+        title: 'New booking request',
+        message: `${customer.firstName ?? customer.email.split('@')[0]} booked ${service.name} on ${d.date} at ${d.startTime}.`,
+        entityType: 'Booking',
+        entityId: booking.id,
+      },
+    ]).catch(() => undefined);
 
     return r.status(201).send({ data: publicBooking({ ...booking, business, service }) });
   });
@@ -2274,6 +2376,16 @@ export async function buildApp(): Promise<FastifyInstance> {
       ], tx);
       return updated;
     });
+    void dispatchPushNotifications([
+      {
+        userId: booking.business.ownerId,
+        type: NOTIFICATION_TYPES.BOOKING_CANCELLED,
+        title: 'Booking cancelled',
+        message: `${currentUser(q).firstName ?? 'A customer'} cancelled their ${booking.service?.name ?? 'booking'} on ${pktDateOf(booking.startAt)}.`,
+        entityType: 'Booking',
+        entityId: booking.id,
+      },
+    ]).catch(() => undefined);
     return { data: publicBooking({ ...cancelled, business: booking.business, service: booking.service }) };
   });
 
@@ -2317,9 +2429,21 @@ export async function buildApp(): Promise<FastifyInstance> {
           },
         ], tx);
       }
-      return row;
+      return { row, pushUserId: notice ? booking.customerId : null };
     });
-    return { data: publicBooking({ ...updated, business: booking.business, service: booking.service }) };
+    if (updated.pushUserId) {
+      void dispatchPushNotifications([
+        {
+          userId: updated.pushUserId,
+          type: notice!.type,
+          title: notice!.title,
+          message: notice!.message(booking.service?.name ?? 'booking', pktDateOf(booking.startAt)),
+          entityType: 'Booking',
+          entityId: booking.id,
+        },
+      ]).catch(() => undefined);
+    }
+    return { data: publicBooking({ ...updated.row, business: booking.business, service: booking.service }) };
   });
 
   /**
@@ -2410,6 +2534,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       return r.status(400).send({ error: { code: 'COD_UNAVAILABLE', message: 'Cash on delivery is not available for this business — choose a payment method' } });
     }
     const totalMinor = subtotalMinor + deliveryFeeMinor;
+    let pushNotice: NotificationInput | null = null;
     const created = await prisma.$transaction(async (tx) => {
       const order = await tx.order.create({
         data: {
@@ -2443,9 +2568,18 @@ export async function buildApp(): Promise<FastifyInstance> {
             entityId: order.id,
           },
         ], tx);
+        pushNotice = {
+          userId: owner.ownerId,
+          type: NOTIFICATION_TYPES.ORDER_CREATED,
+          title: 'New order received',
+          message: `${customer.firstName ?? 'A customer'} placed an order (${itemCount} item${itemCount === 1 ? '' : 's'}, Rs ${Math.round(totalMinor / 100)}${deliveryFeeMinor > 0 ? ' incl. delivery' : ''}).`,
+          entityType: 'Order',
+          entityId: order.id,
+        };
       }
       return order;
     });
+    if (pushNotice) void dispatchPushNotifications([pushNotice]).catch(() => undefined);
     return r.status(201).send({ data: publicOrder(created) });
   });
 
@@ -2548,6 +2682,18 @@ export async function buildApp(): Promise<FastifyInstance> {
         ], tx);
       }
     });
+    if (notice) {
+      void dispatchPushNotifications([
+        {
+          userId: notice.userId,
+          type: notice.type,
+          title: notice.title,
+          message: notice.message,
+          entityType: 'Order',
+          entityId: o.id,
+        },
+      ]).catch(() => undefined);
+    }
     // Refetch with the full include for the authoritative response.
     const fresh = await prisma.order.findUnique({ where: { id: o.id }, include: ORDER_INCLUDE });
     return { data: publicOrder(fresh!) };
@@ -2632,6 +2778,29 @@ export async function buildApp(): Promise<FastifyInstance> {
         },
         select: REVIEW_LIST_SELECT,
       });
+      // New event (Phase 13): the business owner learns about every review.
+      const owner = await prisma.business.findUniqueOrThrow({ where: { id: businessId }, select: { ownerId: true } });
+      const reviewerName = u.firstName ?? 'A customer';
+      await createNotifications(prisma, [
+        {
+          userId: owner.ownerId,
+          type: NOTIFICATION_TYPES.REVIEW_CREATED,
+          title: 'New review',
+          message: `${reviewerName} left a ${d.rating}-star review on your business.`,
+          entityType: 'Review',
+          entityId: businessId,
+        },
+      ]);
+      void dispatchPushNotifications([
+        {
+          userId: owner.ownerId,
+          type: NOTIFICATION_TYPES.REVIEW_CREATED,
+          title: 'New review',
+          message: `${reviewerName} left a ${d.rating}-star review on your business.`,
+          entityType: 'Review',
+          entityId: businessId,
+        },
+      ]).catch(() => undefined);
       return r.status(201).send({ data: publicReview(created) });
     } catch (e) {
       // The partial unique indexes make duplicate reviews impossible even
@@ -2815,6 +2984,111 @@ export async function buildApp(): Promise<FastifyInstance> {
     return { data: { updated: result.count } };
   });
 
+  /* ------------------ Push devices & preferences (13) ----------------- */
+
+  const deviceSelect = {
+    id: true,
+    platform: true,
+    deviceId: true,
+    isActive: true,
+    lastSeenAt: true,
+    createdAt: true,
+    // pushToken deliberately excluded: an opaque provider credential.
+  };
+
+  const deviceRegisterBodySchema = z
+    .object({
+      platform: z.enum(['android', 'ios', 'web']),
+      pushToken: z.string().min(16).max(4096),
+      deviceId: z.string().min(4).max(128).optional(),
+    })
+    .strict();
+
+  /**
+   * Registers (or re-activates) a push target for the signed-in user. The
+   * unique pushToken makes this idempotent: re-registering the same native
+   * token - including from a reinstalled app under a different user - flips
+   * it to this user and marks it active, never creating duplicates.
+   */
+  app.post('/api/v1/push/devices', { preHandler: auth }, async (q, r) => {
+    const u = currentUser(q);
+    const parsed = deviceRegisterBodySchema.safeParse(q.body);
+    if (!parsed.success)
+      return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid device payload' } });
+    const { platform, pushToken, deviceId } = parsed.data;
+    const device = await prisma.pushDevice.upsert({
+      where: { pushToken },
+      create: { userId: u.id, platform, pushToken, deviceId: deviceId ?? null },
+      // A token always belongs to exactly one live registration: if it was
+      // previously another user's (or deactivated), it now means THIS user.
+      update: { userId: u.id, platform, deviceId: deviceId ?? null, isActive: true, lastSeenAt: new Date() },
+      select: deviceSelect,
+    });
+    return r.status(201).send({ data: device });
+  });
+
+  /** Lists the caller's own registered devices (never the raw tokens). */
+  app.get('/api/v1/push/devices', { preHandler: auth }, async (q) => {
+    const devices = await prisma.pushDevice.findMany({
+      where: { userId: currentUser(q).id },
+      orderBy: { createdAt: 'desc' },
+      select: deviceSelect,
+    });
+    return { data: devices };
+  });
+
+  /** Deactivates one of the caller's own devices (404 for anyone else's). */
+  app.delete('/api/v1/push/devices/:id', { preHandler: auth }, async (q, r) => {
+    const u = currentUser(q);
+    const id = (q.params as { id: string }).id;
+    const existing = await prisma.pushDevice.findFirst({ where: { id, userId: u.id }, select: { id: true } });
+    if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Device not found' } });
+    await prisma.pushDevice.update({ where: { id }, data: { isActive: false } });
+    return { data: { id, isActive: false } };
+  });
+
+  const preferencesSchema = z
+    .object({
+      bookings: z.boolean(),
+      orders: z.boolean(),
+      payments: z.boolean(),
+      reviews: z.boolean(),
+      businessActivity: z.boolean(),
+      account: z.boolean(),
+    })
+    .strict();
+
+  /** Push preferences for the signed-in user (missing row = all on). */
+  app.get('/api/v1/notifications/preferences', { preHandler: auth }, async (q) => {
+    const u = currentUser(q);
+    const row = await prisma.notificationPreference.findUnique({ where: { userId: u.id } });
+    return {
+      data:
+        row ?? {
+          userId: u.id,
+          bookings: true,
+          orders: true,
+          payments: true,
+          reviews: true,
+          businessActivity: true,
+          account: true,
+        },
+    };
+  });
+
+  app.put('/api/v1/notifications/preferences', { preHandler: auth }, async (q, r) => {
+    const u = currentUser(q);
+    const parsed = preferencesSchema.safeParse(q.body);
+    if (!parsed.success)
+      return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid preferences payload' } });
+    const saved = await prisma.notificationPreference.upsert({
+      where: { userId: u.id },
+      create: { userId: u.id, ...parsed.data },
+      update: parsed.data,
+    });
+    return { data: saved };
+  });
+
   /* ------------------------------ Admin ------------------------------ */
   /**
    * Admin list endpoints for the web panel. Every route here requires the
@@ -2974,6 +3248,14 @@ export async function buildApp(): Promise<FastifyInstance> {
       pendingOrders: await prisma.order.count({ where: { status: 'PENDING' } }),
       pendingSubscriptionPayments: await prisma.subscriptionPaymentRequest.count({ where: { status: 'PENDING' } }),
       reviews: await prisma.review.count(),
+      // Phase 13: push fleet health — counts only, never tokens.
+      pushDevices: {
+        total: await prisma.pushDevice.count(),
+        active: await prisma.pushDevice.count({ where: { isActive: true } }),
+        android: await prisma.pushDevice.count({ where: { platform: 'android' } }),
+        ios: await prisma.pushDevice.count({ where: { platform: 'ios' } }),
+        web: await prisma.pushDevice.count({ where: { platform: 'web' } }),
+      },
     },
   }));
 

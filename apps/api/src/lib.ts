@@ -572,6 +572,7 @@ export const NOTIFICATION_TYPES = {
   ORDER_READY: 'ORDER_READY',
   ORDER_COMPLETED: 'ORDER_COMPLETED',
   ORDER_CANCELLED: 'ORDER_CANCELLED',
+  REVIEW_CREATED: 'REVIEW_CREATED',
   SUBSCRIPTION_PAYMENT_SUBMITTED: 'SUBSCRIPTION_PAYMENT_SUBMITTED',
   SUBSCRIPTION_PAYMENT_APPROVED: 'SUBSCRIPTION_PAYMENT_APPROVED',
   SUBSCRIPTION_PAYMENT_REJECTED: 'SUBSCRIPTION_PAYMENT_REJECTED',
@@ -591,7 +592,7 @@ export type NotificationInput = {
   type: NotificationType;
   title: string;
   message: string;
-  entityType: 'Booking' | 'Order' | 'SubscriptionPaymentRequest' | 'BookingPayment' | 'OrderPayment';
+  entityType: 'Booking' | 'Order' | 'SubscriptionPaymentRequest' | 'BookingPayment' | 'OrderPayment' | 'Review';
   entityId: string;
 };
 

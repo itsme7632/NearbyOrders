@@ -95,6 +95,8 @@ model User {
   sessions         RefreshToken[]
   auditActions     AuditLog[]                   @relation("AuditActor")
   notifications    Notification[]
+  pushDevices      PushDevice[]
+  notificationPrefs NotificationPreference?
   reviews             Review[]                     @relation("ReviewCustomer")
   reviewedPayments    SubscriptionPaymentRequest[] @relation("PaymentReviewer")
   bookingPayments     BookingPayment[]             @relation("BookingPaymentCustomer")
@@ -314,6 +316,42 @@ model Notification {
   @@unique([userId, type, entityId])
   @@index([userId, isRead])
   @@index([userId, createdAt])
+}
+
+/**
+ * A registered push target (Phase 13). Multiple devices per user; the unique
+ * pushToken prevents duplicate registrations of the same native token.
+ * Tokens are opaque provider credentials — never logged, never sent to clients.
+ */
+model PushDevice {
+  id         String   @id @default(uuid())
+  userId     String
+  platform   String
+  pushToken  String   @unique
+  deviceId   String?
+  isActive   Boolean  @default(true)
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+}
+
+/**
+ * Per-user push preferences (Phase 13). Missing row = all categories on:
+ * the absence of a record must never silently disable notifications.
+ */
+model NotificationPreference {
+  userId            String   @id
+  bookings          Boolean  @default(true)
+  orders            Boolean  @default(true)
+  payments          Boolean  @default(true)
+  reviews           Boolean  @default(true)
+  businessActivity  Boolean  @default(true)
+  account           Boolean  @default(true)
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model RefreshToken {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { businessTabs, navigationTabs, type BusinessTab, type Tab } from './navigation.js';
@@ -26,6 +26,7 @@ import { CartScreen } from './screens/Cart.js';
 import { OrdersScreen, OrderDetailScreen } from './screens/Orders.js';
 import { NotificationsScreen } from './screens/Notifications.js';
 import { useUnreadNotifications } from './useUnreadNotifications.js';
+import { usePushRegistration } from './usePushRegistration.js';
 
 initModeSessionSync();
 
@@ -117,10 +118,39 @@ export function App() {
     } else if (n.entityType === 'Order') {
       setTab('Orders');
       push(`/order/${n.entityId}`);
+    } else if (n.entityType === 'Review') {
+      setAppMode('BUSINESS');
+      push('/owner');
     } else {
       push('/notifications');
     }
   };
+
+  /** Phase 13: native push registration + tap deep links (optional, silent on failure). */
+  const handlePushDeepLink = useCallback(
+    (link: string) => {
+      // Only known-safe route shapes from the server's own deepLinkFor();
+      // anything else falls back to the notifications list.
+      if (link.startsWith('/booking/')) {
+        setTab('Bookings');
+        push(link);
+      } else if (link.startsWith('/order/')) {
+        setTab('Orders');
+        push(link);
+      } else if (link.startsWith('/business/')) {
+        setAppMode('BUSINESS');
+        push('/owner');
+      } else if (link === '/owner/subscription') {
+        setAppMode('BUSINESS');
+        push('/owner');
+      } else {
+        push('/notifications');
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  usePushRegistration(handlePushDeepLink);
 
   const goExplore = (seed: { category?: string; query?: string }) => {
     setTab('Explore');
