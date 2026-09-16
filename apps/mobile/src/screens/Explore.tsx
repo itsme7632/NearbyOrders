@@ -6,14 +6,20 @@ import { ExploreIcon, PinIcon } from '../components/icons.js';
 import { EmptyStateV3 } from '../components/EmptyStateV3.js';
 import { PopularBusinessCard } from './Home.js';
 import { requestCustomerLocation, locationOutcomeHint, type LocationOutcome } from '../location.js';
+import { DEFAULT_RADIUS_KM, RADIUS_OPTIONS_KM } from '@nearbyorders/shared';
+import { useMapProvider } from '../maps/useMapProvider.js';
+import { ExploreMapView } from './ExploreMapView.js';
+import type { LatLng } from '../maps/provider.js';
 
 /**
- * Explore with Phase 11 "Near You" discovery. Customer location is optional:
- * the default list is unaffected until the user explicitly turns on nearby
- * mode, and a denied/unavailable permission simply returns to that list. All
- * distances come from the server (Haversine over configured coordinates).
+ * Explore with Phase 11 "Near You" discovery and the Phase 12 map experience.
+ * Customer location is optional: the default list is unaffected until the user
+ * explicitly turns on nearby mode, and a denied/unavailable permission simply
+ * returns to that list. All distances come from the server (Haversine over
+ * configured coordinates); the map only renders the same server result set.
  */
 type DiscoveryMode = 'all' | 'nearby';
+type ViewMode = 'list' | 'map';
 
 export function ExploreScreen(props: {
   initialCategory?: string;
@@ -23,9 +29,13 @@ export function ExploreScreen(props: {
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>(props.initialCategory);
   const [query, setQuery] = useState(props.initialQuery ?? '');
   const [mode, setMode] = useState<DiscoveryMode>('all');
+  const [view, setView] = useState<ViewMode>('list');
+  const [radiusKm, setRadiusKm] = useState<number>(DEFAULT_RADIUS_KM);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locNote, setLocNote] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
+  const [selectedMarker, setSelectedMarker] = useState<string | null>(null);
+  const { handle: mapHandle } = useMapProvider();
 
   const categories = useAsyncData<Category[]>(() => listCategories(), []);
   const businesses = useAsyncData<Business[]>(
@@ -33,12 +43,12 @@ export function ExploreScreen(props: {
       // Nearby mode uses the dedicated endpoint (server-side distance + radius);
       // the default list keeps its existing search/filter behavior untouched.
       mode === 'nearby' && coords
-        ? listNearbyBusinesses({ lat: coords.lat, lng: coords.lng, radiusKm: 25, limit: 50 })
+        ? listNearbyBusinesses({ lat: coords.lat, lng: coords.lng, radiusKm, limit: 50 })
         : listBusinesses({
             q: query || undefined,
             category: selectedCategory,
           }),
-    [query, selectedCategory, mode, coords],
+    [query, selectedCategory, mode, coords, radiusKm],
   );
 
   const enableNearby = () => {
@@ -48,6 +58,7 @@ export function ExploreScreen(props: {
       .then((outcome: LocationOutcome) => {
         if (outcome.status === 'granted') {
           setCoords(outcome.coords);
+          setRadiusKm(DEFAULT_RADIUS_KM);
           setMode('nearby');
         } else {
           setLocNote(locationOutcomeHint(outcome));
@@ -60,10 +71,21 @@ export function ExploreScreen(props: {
     setMode('all');
     setCoords(null);
     setLocNote(null);
+    setSelectedMarker(null);
+  };
+
+  const searchThisArea = (center: LatLng) => {
+    // The visible map center becomes the new search center; distance stays
+    // server-authoritative. Nearby mode is required for a map search.
+    setCoords(center);
+    setSelectedMarker(null);
+    setLocNote(null);
+    if (mode !== 'nearby') setMode('nearby');
   };
 
   const results = businesses.data ?? [];
   const activeFilters = [selectedCategory ? 1 : 0, query ? 1 : 0].reduce((a, b) => a + b, 0);
+  const mapUsable = mode === 'nearby' && coords !== null;
 
   return (
     <div className="screen">
@@ -122,13 +144,60 @@ export function ExploreScreen(props: {
         </div>
       </section>
 
+      {/* Radius control: only meaningful in nearby mode; drives the server query. */}
+      {mode === 'nearby' ? (
+        <section aria-label="Search radius" style={{ marginTop: 10 }}>
+          <div className="filter-row" role="radiogroup" aria-label="Search radius">
+            {RADIUS_OPTIONS_KM.map((km) => (
+              <button
+                key={km}
+                type="button"
+                role="radio"
+                aria-checked={radiusKm === km}
+                className={`chip${radiusKm === km ? ' chip-active' : ''}`}
+                onClick={() => {
+                  setRadiusKm(km);
+                  setSelectedMarker(null);
+                }}
+              >
+                {km} km
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {/* List/map switch — only offered when a map result set exists. */}
+      {mapUsable ? (
+        <div className="view-switch" role="tablist" aria-label="Result view" style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'list'}
+            className={`chip${view === 'list' ? ' chip-active' : ''}`}
+            onClick={() => setView('list')}
+          >
+            List
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'map'}
+            className={`chip${view === 'map' ? ' chip-active' : ''}`}
+            onClick={() => setView('map')}
+          >
+            Map
+          </button>
+        </div>
+      ) : null}
+
       <SectionHeader
         title={mode === 'nearby' ? 'Near you' : selectedCategory ? (categories.data?.find((c) => c.slug === selectedCategory)?.name ?? 'Results') : query ? 'Search results' : 'All businesses'}
         action={
           businesses.loading ? null : (
             <span className="biz-distance">
               {results.length} {results.length === 1 ? 'business' : 'businesses'}
-              {mode === 'nearby' ? ' · closest first' : ''}
+              {mode === 'nearby' ? ` · closest first · within ${radiusKm} km` : ''}
             </span>
           )
         }
@@ -138,31 +207,57 @@ export function ExploreScreen(props: {
           {locNote}
         </p>
       ) : null}
+
       {businesses.loading ? (
-        <div className="popular-grid" aria-hidden>
-          {Array.from({ length: 4 }, (_, i) => (
-            <div key={i} className="skeleton-card" style={{ padding: 0, overflow: 'hidden' }}>
-              <div className="skeleton" style={{ height: 96, borderRadius: 0 }} />
-              <div style={{ padding: 12 }}>
-                <div className="skeleton skeleton-line w-60" />
-                <div className="skeleton skeleton-line w-40" style={{ marginTop: 8 }} />
+        view === 'map' && mapUsable ? (
+          <p className="hint" role="status" style={{ marginTop: 8 }}>
+            Loading nearby businesses…
+          </p>
+        ) : (
+          <div className="popular-grid" aria-hidden>
+            {Array.from({ length: 4 }, (_, i) => (
+              <div key={i} className="skeleton-card" style={{ padding: 0, overflow: 'hidden' }}>
+                <div className="skeleton" style={{ height: 96, borderRadius: 0 }} />
+                <div style={{ padding: 12 }}>
+                  <div className="skeleton skeleton-line w-60" />
+                  <div className="skeleton skeleton-line w-40" style={{ marginTop: 8 }} />
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )
       ) : businesses.error ? (
         <ErrorState message={businesses.error} onRetry={businesses.reload} />
       ) : !results.length ? (
-        <EmptyStateV3
-          icon={<ExploreIcon size={28} />}
-          title={mode === 'nearby' ? 'Nothing nearby yet' : 'Nothing found'}
-          body={
-            mode === 'nearby'
-              ? 'No businesses within 25 km of you have set a map location yet. Try All businesses instead.'
-              : activeFilters > 0
-                ? 'Try a different search term or category filter.'
-                : 'No businesses match yet. Check back soon.'
-          }
+        view === 'map' && mapUsable ? (
+          <div className="map-empty-note" style={{ marginTop: 10 }}>
+            <p className="hint" role="status" style={{ margin: 0 }}>
+              No businesses with map locations in this area yet. Pan the map and use “Search this area”, or switch back to
+              the list.
+            </p>
+          </div>
+        ) : (
+          <EmptyStateV3
+            icon={<ExploreIcon size={28} />}
+            title={mode === 'nearby' ? 'Nothing nearby yet' : 'Nothing found'}
+            body={
+              mode === 'nearby'
+                ? `No businesses within ${radiusKm} km of you have set a map location yet. Try All businesses instead.`
+                : activeFilters > 0
+                  ? 'Try a different search term or category filter.'
+                  : 'No businesses match yet. Check back soon.'
+            }
+          />
+        )
+      ) : view === 'map' && mapUsable ? (
+        <ExploreMapView
+          handle={mapHandle}
+          results={results}
+          searchCenter={coords}
+          selectedId={selectedMarker}
+          onSelect={setSelectedMarker}
+          onOpenBusiness={props.onOpenBusiness}
+          onSearchArea={searchThisArea}
         />
       ) : (
         <div className="popular-grid">

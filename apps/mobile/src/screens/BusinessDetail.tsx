@@ -8,6 +8,7 @@ import { addToCart, replaceWith } from '../cart.js';
 import { useCartCount } from '../useCartCount.js';
 import { Stars } from '../components/ReviewForm.js';
 import { directionsUrl, formatDistanceKm, hasCoordinates } from '../location.js';
+import { BusinessMapContext } from './BusinessMapContext.js';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
@@ -200,6 +201,7 @@ export function BusinessDetailScreen(props: {
               ) : null}
             </section>
           ) : null}
+          {hasCoordinates(b) ? <BusinessMapContext business={b} placeLabel={place} /> : null}
           {props.onBook && bookable ? (
             <Button full onClick={() => props.onBook?.()}>
               Book this service

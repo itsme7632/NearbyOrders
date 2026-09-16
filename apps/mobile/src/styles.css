@@ -2607,3 +2607,36 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   background: var(--card);
 }
 .quick-tile-icon { color: var(--brand); background: var(--brand-softer); }
+
+/* ---- Phase 12: Maps & Discovery 2.0 ---- */
+
+/* Map surface: quiet chrome so tiles stay the focus. */
+[data-map-canvas] { z-index: 0; }
+[data-map-canvas] .leaflet-container { height: 100%; width: 100%; border-radius: inherit; font: inherit; }
+.no-marker-styles { background: transparent; border: 0; }
+[data-map-canvas] .leaflet-control-attribution {
+  font-size: 9px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--muted);
+  border-radius: 6px 0 0 0;
+}
+
+/* "Search this area" affordance floats over the map top, above tiles. */
+.map-search-area {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 500;
+  box-shadow: 0 4px 14px rgba(17, 24, 39, 0.18);
+  white-space: nowrap;
+}
+
+/* Marker preview card overlaps the map bottom without covering it. */
+.map-preview-card { z-index: 500; }
+.map-preview-card .btn { min-width: 72px; }
+
+@media (max-width: 400px) {
+  .map-preview-card { flex-wrap: wrap; }
+  .map-search-area { font-size: 14px; padding: 8px 14px; }
+}
