@@ -68,6 +68,7 @@ import {
   PLAN_CATALOG,
   LIVE_SUBSCRIPTION_STATUSES,
   evaluateSubscription,
+  searchQuerySchema,
 } from './lib.js';
 import type { AuthUser, NotificationInput } from './lib.js';
 import { dispatchPushNotifications } from './push.js';
@@ -406,6 +407,286 @@ export async function buildApp(): Promise<FastifyInstance> {
       .sort((a, b) => a.distanceKm - b.distanceKm)
       .slice(0, take);
     return { data: withDistance };
+  });
+
+  /**
+   * Unified marketplace search (Phase 14). One server-side query answers
+   * "what can I book or buy?" across businesses, services, and products with
+   * a clearly typed result shape (`type: business | service | product`), so
+   * a customer searching "repair" can tell a repair BUSINESS from a specific
+   * repair SERVICE. Relevance is honest and transparent: exact name match >
+   * name prefix > word-prefix > substring, businesses before their own
+   * services/products. Distance, when requested, is always computed here —
+   * the client never supplies one. Results are cursor-paginated.
+   */
+  app.get('/api/v1/search', async (q, r) => {
+    const parsed = searchQuerySchema.safeParse(q.query);
+    if (!parsed.success)
+      return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Invalid search query' } });
+    const { q: term, categoryId, type, openNow, minRating, sort, limit, cursor, lat, lng, radiusKm } = parsed.data;
+
+    // Visibility first: only approved, non-archived businesses and their
+    // ACTIVE services/products are publicly discoverable — everywhere below.
+    const businessVisibility = { status: 'APPROVED' as const, archivedAt: null };
+    const activeCatalog = { isActive: true };
+
+    // Optional category scope: the authoritative identifier is the ID.
+    const categoryFilter = categoryId
+      ? { categories: { some: { category: { is: { id: categoryId, isActive: true } } } } }
+      : {};
+
+    // Text matching. Every token must be satisfied somewhere: the entity's
+    // own name/description, OR (for businesses) one of its active
+    // services/products — so "bike repair" surfaces a business offering bike
+    // repair even when the business name alone does not mention it.
+    // For services/products every token must land in the entity itself
+    // (AND across tokens), so "paginate works 123" never matches an unrelated
+    // business that merely shares the word "works".
+    const tokens = (term ?? '').split(/\s+/).filter((t) => t.length > 0);
+    const textMatch = (columns: { name: string; description: string }) =>
+      tokens.map((t) => ({
+        OR: [
+          { [columns.name]: { contains: t, mode: 'insensitive' as const } },
+          { [columns.description]: { contains: t, mode: 'insensitive' as const } },
+        ],
+      }));
+
+    // Distance support: when the customer's coordinates arrive, only real
+    // configured coordinates participate; bounding-box prefilter in SQL keeps
+    // the scan relevant, the exact Haversine decides inclusion and order.
+    const useDistance = lat !== undefined && lng !== undefined;
+    const radius = useDistance ? Math.min(Math.max(radiusKm ?? 10, 0.1), 50) : null;
+    const bbox = useDistance && radius ? boundingBoxKm(lat, lng, radius) : null;
+    const distanceWhere =
+      bbox && bbox.minLat > -90 && bbox.maxLat < 90
+        ? { latitude: { not: null, gte: bbox.minLat, lte: bbox.maxLat }, longitude: { not: null, gte: bbox.minLng, lte: bbox.maxLng } }
+        : useDistance
+          ? { latitude: { not: null }, longitude: { not: null } }
+          : {};
+
+    // --- Businesses -------------------------------------------------------
+    const bizWhere: Record<string, unknown> = { ...businessVisibility, ...categoryFilter, ...distanceWhere };
+    if (term)
+      // AND across tokens; per token, ANY of: own name/description, one of its
+      // active services, or one of its active products.
+      bizWhere.AND = tokens.map((t) => ({
+        OR: [
+          { name: { contains: t, mode: 'insensitive' as const } },
+          { description: { contains: t, mode: 'insensitive' as const } },
+          { services: { some: { isActive: true, OR: [{ name: { contains: t, mode: 'insensitive' as const } }, { description: { contains: t, mode: 'insensitive' as const } }] } } },
+          { products: { some: { isActive: true, OR: [{ name: { contains: t, mode: 'insensitive' as const } }, { description: { contains: t, mode: 'insensitive' as const } }] } } },
+        ],
+      }));
+
+    // --- Services / products (scoped to visible businesses) ---------------
+    const svcWhere: Record<string, unknown> = {
+      isActive: true,
+      business: { ...businessVisibility, ...categoryFilter, ...distanceWhere },
+    };
+    if (term) svcWhere.AND = textMatch({ name: 'name', description: 'description' });
+    const prodWhere: Record<string, unknown> = {
+      isActive: true,
+      business: { ...businessVisibility, ...categoryFilter, ...distanceWhere },
+    };
+    if (term) prodWhere.AND = textMatch({ name: 'name', description: 'description' });
+
+    const wantBusinesses = type === 'all' || type === 'business';
+    const wantServices = type === 'all' || type === 'service';
+    const wantProducts = type === 'all' || type === 'product';
+
+    const [bizRows, svcRows, prodRows] = await Promise.all([
+      wantBusinesses
+        ? prisma.business.findMany({
+            where: bizWhere,
+            // Services/products are fetched only for relevance scoring and the
+            // sample-services preview — never as authorization-bypassing data.
+            include: {
+              ...PUBLIC_BUSINESS_INCLUDE,
+              services: { where: activeCatalog, select: { id: true, name: true, description: true, priceMinor: true, currency: true, durationMinutes: true } },
+              products: { where: activeCatalog, select: { id: true, name: true, description: true } },
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 200,
+          })
+        : Promise.resolve([]),
+      wantServices
+        ? prisma.service.findMany({
+            where: svcWhere,
+            include: { business: { select: { id: true, name: true, slug: true, city: true, locality: true, latitude: true, longitude: true, currency: true, hours: true } } },
+            orderBy: { name: 'asc' },
+            take: 200,
+          })
+        : Promise.resolve([]),
+      wantProducts
+        ? prisma.product.findMany({
+            where: prodWhere,
+            include: { business: { select: { id: true, name: true, slug: true, city: true, locality: true, latitude: true, longitude: true, currency: true } } },
+            orderBy: { name: 'asc' },
+            take: 200,
+          })
+        : Promise.resolve([]),
+    ]);
+
+    // Rating summaries in one batch; the DB does the aggregation.
+    const involvedIds = [...new Set([...bizRows.map((b) => b.id), ...svcRows.map((s) => s.business.id), ...prodRows.map((p) => p.business.id)])];
+    const ratingRows = involvedIds.length
+      ? await prisma.review.groupBy({
+          by: ['businessId'],
+          where: { businessId: { in: involvedIds } },
+          _avg: { rating: true },
+          _count: { rating: true },
+        })
+      : [];
+    const ratings = new Map(ratingRows.map((row) => [row.businessId, { avg: row._avg.rating, count: row._count.rating }]));
+    const ratingOf = (id: string) => {
+      const r = ratings.get(id);
+      return { averageRating: r && r.avg !== null ? Math.round(r.avg * 10) / 10 : null, reviewCount: r?.count ?? 0 };
+    };
+
+    type Unified =
+      | { type: 'business'; id: string; businessId: string; businessName: string; businessSlug: string; name: string; description: string | null; imageUrl: string | null; city: string; locality: string | null; isVerified: boolean; isOpenNow: boolean; averageRating: number | null; reviewCount: number; categories: { id: string; name: string; slug: string }[]; distanceKm: number | null; sampleServices: { id: string; name: string; priceMinor: number; currency: string; durationMinutes: number | null }[]; score: number }
+      | { type: 'service'; id: string; businessId: string; businessName: string; businessSlug: string; name: string; description: string | null; priceMinor: number; currency: string; durationMinutes: number | null; distanceKm: number | null; averageRating: number | null; reviewCount: number; score: number }
+      | { type: 'product'; id: string; businessId: string; businessName: string; businessSlug: string; name: string; description: string | null; priceMinor: number; currency: string; imageUrl: string | null; distanceKm: number | null; averageRating: number | null; reviewCount: number; score: number };
+
+    const lower = (s: string) => s.toLowerCase();
+    const tokensLower = tokens.map(lower);
+    // Transparent relevance score: exact name match 400, name starts-with 300,
+    // name contains a whole token 200, name contains the token 100, plus 2
+    // when the term also appears in the description. Ties break on rating.
+    const scoreName = (name: string, description: string | null) => {
+      const n = lower(name);
+      let s = 0;
+      for (const t of tokensLower) {
+        if (n === t) s += 400;
+        else if (n.startsWith(t)) s += 300;
+        else if (new RegExp(`\\b${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(n)) s += 200;
+        else if (n.includes(t)) s += 100;
+        if (description && lower(description).includes(t)) s += 2;
+      }
+      return s;
+    };
+    // A business can match ONLY through its catalog ("bike repair" where the
+    // business name never mentions bikes): without catalog credit it would sit
+    // at score 0, buried under unrelated name matches. Catalog evidence ranks
+    // below a direct name hit (60/token) but above pure noise.
+    const businessCatalogScore = (b: {
+      name: string;
+      description: string | null;
+      services?: { name: string; description: string | null }[];
+      products?: { name: string; description: string | null }[];
+    }) => {
+      const tokensNotInProfile = tokensLower.filter(
+        (t) => !lower(b.name).includes(t) && !(b.description && lower(b.description).includes(t)),
+      );
+      if (tokensNotInProfile.length === 0) return 0;
+      const joinText = (arr: { name: string; description: string | null }[] | undefined) =>
+        (arr ?? []).map((r) => `${lower(r.name)} ${r.description ? lower(r.description) : ''}`).join(' \n ');
+      const catalog = `${joinText(b.services)} \n ${joinText(b.products)}`;
+      let s = 0;
+      for (const t of tokensNotInProfile) if (catalog.includes(t)) s += 60;
+      return s;
+    };
+    const distanceOf = (latitude: unknown, longitude: unknown): number | null => {
+      if (!useDistance || latitude === null || longitude === null) return null;
+      const d = distanceKm(lat!, lng!, Number(latitude), Number(longitude));
+      return radius && d > radius ? null : d;
+    };
+
+    const results: Unified[] = [];
+    for (const b of bizRows) {
+      const d = distanceOf(b.latitude, b.longitude);
+      if (useDistance && d === null) continue;
+      if (openNow === 'true' && !isOpenNow(b.hours)) continue;
+      const { averageRating, reviewCount } = ratingOf(b.id);
+      if (minRating !== undefined && (averageRating === null || averageRating < minRating)) continue;
+      results.push({
+        type: 'business',
+        id: b.id,
+        businessId: b.id,
+        businessName: b.name,
+        businessSlug: b.slug,
+        name: b.name,
+        description: b.description,
+        imageUrl: b.imageUrl,
+        city: b.city,
+        locality: b.locality,
+        isVerified: b.isVerified,
+        isOpenNow: isOpenNow(b.hours),
+        averageRating,
+        reviewCount,
+        categories: b.categories.map((bc) => ({ id: bc.category.id, name: bc.category.name, slug: bc.category.slug })),
+        distanceKm: d === null ? null : Math.round(d * 100) / 100,
+        sampleServices: b.services.slice(0, 3).map((s) => ({ id: s.id, name: s.name, priceMinor: s.priceMinor, currency: s.currency, durationMinutes: s.durationMinutes })),
+        score: scoreName(b.name, b.description) + businessCatalogScore(b),
+      });
+    }
+    for (const s of svcRows) {
+      const d = distanceOf(s.business.latitude, s.business.longitude);
+      if (useDistance && d === null) continue;
+      const { averageRating, reviewCount } = ratingOf(s.business.id);
+      if (minRating !== undefined && (averageRating === null || averageRating < minRating)) continue;
+      results.push({
+        type: 'service',
+        id: s.id,
+        businessId: s.business.id,
+        businessName: s.business.name,
+        businessSlug: s.business.slug,
+        name: s.name,
+        description: s.description,
+        priceMinor: s.priceMinor,
+        currency: s.business.currency,
+        durationMinutes: s.durationMinutes,
+        distanceKm: d === null ? null : Math.round(d * 100) / 100,
+        averageRating,
+        reviewCount,
+        score: scoreName(s.name, s.description),
+      });
+    }
+    for (const p of prodRows) {
+      const d = distanceOf(p.business.latitude, p.business.longitude);
+      if (useDistance && d === null) continue;
+      const { averageRating, reviewCount } = ratingOf(p.business.id);
+      if (minRating !== undefined && (averageRating === null || averageRating < minRating)) continue;
+      results.push({
+        type: 'product',
+        id: p.id,
+        businessId: p.business.id,
+        businessName: p.business.name,
+        businessSlug: p.business.slug,
+        name: p.name,
+        description: p.description,
+        priceMinor: p.priceMinor,
+        currency: p.business.currency,
+        imageUrl: p.imageUrl,
+        distanceKm: d === null ? null : Math.round(d * 100) / 100,
+        averageRating,
+        reviewCount,
+        score: scoreName(p.name, p.description),
+      });
+    }
+
+    // Ordering. `distance` without coordinates degrades honestly to
+    // relevance (the response echoes the effective sort); nothing else is
+    // implicit — labels match what actually happened.
+    const effectiveSort = sort === 'distance' && !useDistance ? 'relevance' : sort;
+    if (effectiveSort === 'distance') {
+      results.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity) || b.score - a.score);
+    } else if (effectiveSort === 'rating') {
+      results.sort((a, b) => (b.averageRating ?? -1) - (a.averageRating ?? -1) || b.reviewCount - a.reviewCount || b.score - a.score);
+    } else {
+      results.sort((a, b) => b.score - a.score || (b.averageRating ?? -1) - (a.averageRating ?? -1));
+    }
+
+    // Cursor pagination over the merged, ordered list: the cursor is the
+    // offset within THIS result set (stable for one query+filters combination).
+    let startIdx = 0;
+    if (cursor) {
+      const asInt = Number.parseInt(cursor, 10);
+      if (Number.isInteger(asInt) && asInt >= 0) startIdx = asInt;
+    }
+    const page = results.slice(startIdx, startIdx + limit);
+    const nextCursor = startIdx + limit < results.length ? String(startIdx + limit) : null;
+    return { data: { results: page, nextCursor, total: results.length, sort: effectiveSort } };
   });
 
   app.get('/api/v1/businesses/:id', async (q, r) => {

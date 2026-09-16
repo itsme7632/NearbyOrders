@@ -19,6 +19,7 @@ export type Route =
   | { name: 'cart' }
   | { name: 'order'; orderId: string }
   | { name: 'notifications' }
+  | { name: 'search'; initialQuery?: string }
   | { name: 'owner-dashboard'; justCreated?: boolean; justCreatedName?: string; justCreatedStatus?: string }
   | { name: 'owner-screen'; screen: OwnerScreenName; businessId: string }
   | { name: 'create-business' }
@@ -45,6 +46,11 @@ export function parseHash(hash: string): Route {
   }
   if (clean === 'cart') return { name: 'cart' };
   if (clean === 'notifications') return { name: 'notifications' };
+  if (clean === 'search') {
+    const params = new URLSearchParams(queryPart ?? '');
+    const q = params.get('q');
+    return q ? { name: 'search', initialQuery: q } : { name: 'search' };
+  }
   if (clean.startsWith('order/')) {
     const orderId = clean.slice('order/'.length);
     if (orderId) return { name: 'order', orderId };

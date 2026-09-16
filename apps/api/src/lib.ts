@@ -166,6 +166,35 @@ export const nearbyBusinessesQuerySchema = z
   })
   .strict();
 
+/**
+ * Unified marketplace search (Phase 14). One endpoint answers "what can I book
+ * or buy here?" across businesses, services, and products with a clearly
+ * typed result shape. All filters and ordering are server-authoritative:
+ * distance is computed server-side over configured coordinates, and every
+ * parameter is validated here before it reaches Prisma.
+ */
+export const searchQuerySchema = z
+  .object({
+    q: z.string().trim().min(1).max(120).optional(),
+    // Authoritative identifiers are category IDs (never names-as-ids).
+    categoryId: z.string().uuid().optional(),
+    type: z.enum(['all', 'business', 'service', 'product']).default('all'),
+    openNow: z.enum(['true', 'false']).optional(),
+    minRating: z.coerce.number().gte(0).lte(5).optional(),
+    sort: z.enum(['relevance', 'distance', 'rating']).default('relevance'),
+    limit: z.coerce.number().int().gt(0).lte(50).default(20),
+    cursor: z.string().max(400).optional(),
+    // Location is optional: search works fully without it, and distances are
+    // only ever computed server-side from these client-supplied coordinates.
+    lat: z.coerce.number().gte(-90).lte(90).refine((v) => Number.isFinite(v), { message: 'latitude must be finite' }).optional(),
+    lng: z.coerce.number().gte(-180).lte(180).refine((v) => Number.isFinite(v), { message: 'longitude must be finite' }).optional(),
+    radiusKm: z.coerce.number().gt(0).lte(50).optional(),
+  })
+  .strict()
+  .refine((v) => (v.lat !== undefined) === (v.lng !== undefined), {
+    message: 'latitude and longitude must be provided together',
+  });
+
 /** Owners may update profile content but never status, verification, slug or ownership. */
 export const businessUpdateSchema = z
   .object({

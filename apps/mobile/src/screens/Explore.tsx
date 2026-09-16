@@ -25,9 +25,12 @@ export function ExploreScreen(props: {
   initialCategory?: string;
   initialQuery?: string;
   onOpenBusiness: (id: string) => void;
+  /** Phase 14: opens the dedicated unified search screen. */
+  onOpenSearch?: (query: string) => void;
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>(props.initialCategory);
   const [query, setQuery] = useState(props.initialQuery ?? '');
+  const [input, setInput] = useState(props.initialQuery ?? '');
   const [mode, setMode] = useState<DiscoveryMode>('all');
   const [view, setView] = useState<ViewMode>('list');
   const [radiusKm, setRadiusKm] = useState<number>(DEFAULT_RADIUS_KM);
@@ -101,7 +104,9 @@ export function ExploreScreen(props: {
         role="search"
         onSubmit={(e) => {
           e.preventDefault();
-          // state change above already re-triggers the query via useAsyncData deps
+          // Phase 14: committed searches go to the dedicated unified search
+          // screen, which also matches services and products.
+          if (input.trim()) props.onOpenSearch?.(input.trim());
         }}
       >
         <div className="search-bar-v3">
@@ -109,8 +114,8 @@ export function ExploreScreen(props: {
             <ExploreIcon size={18} />
           </span>
           <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
             placeholder="Search food, services, shops…"
             aria-label="Search businesses"
           />

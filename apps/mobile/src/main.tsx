@@ -9,6 +9,7 @@ import { BellIcon, BookingsIcon, ExploreIcon, HomeIcon, OrdersIcon, ProfileIcon,
 import { EmptyState, Loading } from './components/ui.js';
 import { HomeScreen } from './screens/Home.js';
 import { ExploreScreen } from './screens/Explore.js';
+import { SearchScreen } from './screens/Search.js';
 import { BusinessDetailScreen } from './screens/BusinessDetail.js';
 import { BookServiceScreen } from './screens/BookService.js';
 import { BookingsScreen, BookingDetailScreen } from './screens/Bookings.js';
@@ -158,6 +159,12 @@ export function App() {
     push('/');
   };
 
+  /** Phase 14: Home's search submits to the unified search screen. */
+  const goSearch = (query: string) => {
+    if (!query.trim()) return;
+    push(`/search?q=${encodeURIComponent(query.trim())}`);
+  };
+
   /** Leaves Business mode and returns to the customer experience. */
   const switchToCustomer = () => {
     setAppMode('CUSTOMER');
@@ -198,6 +205,8 @@ export function App() {
     // Both roles open order detail here: a customer sees their order; the
     // owning business is authorized server-side for the same endpoint.
     content = session ? <OrderDetailScreen orderId={route.orderId} onBack={back} /> : null;
+  } else if (route.name === 'search') {
+    content = <SearchScreen initialQuery={route.initialQuery} onBack={back} onOpenBusiness={openBusiness} />;
   } else if (route.name === 'notifications') {
     content = session ? (
       <NotificationsScreen onOpenNotification={openNotification} onReadStateChange={unread.refresh} />
@@ -303,14 +312,22 @@ export function App() {
   } else if (tab === 'Home') {
     content = (
       <HomeScreen
-        onSearch={(query) => goExplore({ query })}
+        onSearch={goSearch}
         onOpenBusiness={openBusiness}
         onExploreCategory={(category) => goExplore({ category })}
         onSeeAllCategories={() => goExplore({})}
       />
     );
   } else if (tab === 'Explore') {
-    content = <ExploreScreen key={exploreSeed.nonce} initialCategory={exploreSeed.category} initialQuery={exploreSeed.query} onOpenBusiness={openBusiness} />;
+    content = (
+      <ExploreScreen
+        key={exploreSeed.nonce}
+        initialCategory={exploreSeed.category}
+        initialQuery={exploreSeed.query}
+        onOpenBusiness={openBusiness}
+        onOpenSearch={(q) => push(`/search?q=${encodeURIComponent(q)}`)}
+      />
+    );
   } else if (tab === 'Orders') {
     // Customer mode only: the person's own placed orders, whatever their role.
     content = session ? (

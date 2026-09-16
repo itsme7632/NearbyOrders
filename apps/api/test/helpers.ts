@@ -81,7 +81,7 @@ export async function ensureCategory(): Promise<{ id: string; slug: string }> {
 export async function createBusiness(
   app: FastifyInstance,
   token: string,
-  overrides: Partial<{ name: string; city: string; description: string; categoryIds: string[] }> = {},
+  overrides: Partial<{ name: string; city: string; description: string; categoryIds: string[]; latitude: number; longitude: number }> = {},
 ): Promise<{ id: string; slug: string }> {
   const category = await ensureCategory();
   const res = await app.inject({
@@ -93,8 +93,8 @@ export async function createBusiness(
       description: overrides.description ?? 'Created by test helper',
       address: '1 Test Street',
       city: overrides.city ?? 'Lahore',
-      latitude: 31.5204,
-      longitude: 74.3587,
+      latitude: overrides.latitude ?? 31.5204,
+      longitude: overrides.longitude ?? 74.3587,
       categoryIds: overrides.categoryIds ?? [category.id],
     },
   });

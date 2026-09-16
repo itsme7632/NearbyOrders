@@ -1,3 +1,5 @@
+import type { SearchPage } from '@nearbyorders/shared';
+
 /** Same-origin API base: the Vite dev proxy and the Capacitor https scheme both resolve this. */
 export const API_BASE = '/api/v1';
 
@@ -379,6 +381,54 @@ export function listNearbyBusinesses(query: NearbyQuery): Promise<Business[]> {
   if (query.radiusKm !== undefined) params.set('radiusKm', String(query.radiusKm));
   if (query.limit !== undefined) params.set('limit', String(query.limit));
   return request<Business[]>(`/businesses/nearby?${params}`);
+}
+
+/* --------------------- unified marketplace search (Phase 14) --------------------- */
+
+/** Mirrors the shared search contract — re-exported here for screen imports. */
+export type {
+  SearchSort,
+  SearchTypeFilter,
+  SearchPage,
+  SearchResult,
+  BusinessSearchResult,
+  ServiceSearchResult,
+  ProductSearchResult,
+} from '@nearbyorders/shared';
+
+/**
+ * Unified server-side search across businesses, services, and products.
+ * Distance is computed by the server from real coordinates when lat/lng are
+ * given; the effective sort is echoed back inside the page (`sort`).
+ */
+export function searchMarketplace(query: {
+  q?: string;
+  categoryId?: string;
+  type?: 'all' | 'business' | 'service' | 'product';
+  openNow?: boolean;
+  minRating?: number;
+  sort?: 'relevance' | 'distance' | 'rating';
+  limit?: number;
+  cursor?: string;
+  lat?: number;
+  lng?: number;
+  radiusKm?: number;
+}): Promise<SearchPage> {
+  const params = new URLSearchParams();
+  if (query.q) params.set('q', query.q);
+  if (query.categoryId) params.set('categoryId', query.categoryId);
+  if (query.type && query.type !== 'all') params.set('type', query.type);
+  if (query.openNow !== undefined) params.set('openNow', String(query.openNow));
+  if (query.minRating !== undefined) params.set('minRating', String(query.minRating));
+  if (query.sort && query.sort !== 'relevance') params.set('sort', query.sort);
+  if (query.limit !== undefined) params.set('limit', String(query.limit));
+  if (query.cursor) params.set('cursor', query.cursor);
+  if (query.lat !== undefined && query.lng !== undefined) {
+    params.set('lat', String(query.lat));
+    params.set('lng', String(query.lng));
+    if (query.radiusKm !== undefined) params.set('radiusKm', String(query.radiusKm));
+  }
+  return request<SearchPage>(`/search?${params.toString()}`);
 }
 
 export type BusinessLocation = {
