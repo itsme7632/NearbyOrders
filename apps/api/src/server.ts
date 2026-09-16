@@ -312,8 +312,9 @@ export async function buildApp(): Promise<FastifyInstance> {
       address: b.address,
       city: b.city,
       locality: b.locality,
-      latitude: b.latitude,
-      longitude: b.longitude,
+      // Decimals serialize as strings; coordinates are always JSON numbers.
+      latitude: b.latitude === null ? null : Number(b.latitude),
+      longitude: b.longitude === null ? null : Number(b.longitude),
       currency: b.currency,
       isOpenNow: isOpenNow(b.hours),
       averageRating: ratingSummaries[i].averageRating,
@@ -433,8 +434,9 @@ export async function buildApp(): Promise<FastifyInstance> {
         address: b.address,
         city: b.city,
         locality: b.locality,
-        latitude: b.latitude,
-        longitude: b.longitude,
+        // Decimals serialize as strings; coordinates are always JSON numbers.
+        latitude: b.latitude === null ? null : Number(b.latitude),
+        longitude: b.longitude === null ? null : Number(b.longitude),
         currency: b.currency,
         isOpenNow: isOpenNow(b.hours),
         hours: b.hours,
@@ -557,7 +559,14 @@ export async function buildApp(): Promise<FastifyInstance> {
         ? { latitude: null, longitude: null }
         : { latitude: parsed.data.latitude, longitude: parsed.data.longitude };
     await prisma.business.update({ where: { id }, data });
-    return { data: { ...data, isConfigured: data.latitude !== null } };
+    return {
+      data: {
+        // Echo back as JSON numbers, matching the GET endpoints.
+        latitude: data.latitude === null ? null : Number(data.latitude),
+        longitude: data.longitude === null ? null : Number(data.longitude),
+        isConfigured: data.latitude !== null,
+      },
+    };
   });
 
   app.get('/api/v1/businesses/:id/hours', async (q, r) => {

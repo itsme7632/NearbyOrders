@@ -120,6 +120,90 @@ describe('availability', () => {
     // …and every one of them is in the past, so none may be bookable.
     expect(data.slots.every((s) => !s.available)).toBe(true);
   });
+
+  it('a per-day closed schedule persists and rejects bookings only on the closed day', async () => {
+    const owner = await registerAndLogin(app, 'BUSINESS_OWNER');
+    const customer = await registerAndLogin(app, 'CUSTOMER');
+    const { id: businessId } = await createBusiness(app, owner.token);
+
+    // Open 09:00–18:00 every day EXCEPT Wednesday (dayOfWeek 3), which is
+    // closed with no times — exactly the "weekly schedule" shape the UI saves.
+    const weekWithClosedWednesday = Array.from({ length: 7 }, (_, dayOfWeek) =>
+      dayOfWeek === 3 ? { dayOfWeek, isClosed: true } : { dayOfWeek, isClosed: false, opensAt: '09:00', closesAt: '18:00' },
+    );
+    const put = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/businesses/${businessId}/hours`,
+      headers: authed(owner.token),
+      payload: weekWithClosedWednesday,
+    });
+    expect(put.statusCode).toBe(200);
+
+    // The saved schedule persists (server is the record; the UI only mirrors it).
+    const stored = await prisma.businessHour.findMany({ where: { businessId }, orderBy: { dayOfWeek: 'asc' } });
+    expect(stored).toHaveLength(7);
+    const wednesday = stored.find((h) => h.dayOfWeek === 3);
+    expect(wednesday?.isClosed).toBe(true);
+    expect(wednesday?.opensAt).toBeNull();
+    expect(wednesday?.closesAt).toBeNull();
+    expect(stored.find((h) => h.dayOfWeek === 4)?.isClosed).toBe(false);
+
+    // Customers receive the saved schedule, including the closed day.
+    await approveBusiness(businessId);
+    const publicHours = await app.inject({ method: 'GET', url: `/api/v1/businesses/${businessId}/hours` });
+    expect(publicHours.statusCode).toBe(200);
+    const publicWednesday = (JSON.parse(publicHours.body).data as { dayOfWeek: number; isClosed: boolean }[]).find(
+      (h) => h.dayOfWeek === 3,
+    );
+    expect(publicWednesday?.isClosed).toBe(true);
+
+    const service = await app.inject({
+      method: 'POST',
+      url: `/api/v1/businesses/${businessId}/services`,
+      headers: authed(owner.token),
+      payload: { name: 'Closed Wednesday Service', priceMinor: 50000, durationMinutes: 60 },
+    });
+    const serviceId = JSON.parse(service.body).data.id as string;
+
+    // A date falling on Wednesday PKT: availability is closed, no slots.
+    const wednesdayDate = new Date(Date.now() + 5 * 60 * 60 * 1000);
+    wednesdayDate.setUTCDate(wednesdayDate.getUTCDate() + ((3 - wednesdayDate.getUTCDay() + 7) % 7 || 7));
+    const wednesdayIso = wednesdayDate.toISOString().slice(0, 10);
+    const closedSlots = await app.inject({
+      method: 'GET',
+      url: `/api/v1/businesses/${businessId}/services/${serviceId}/availability?date=${wednesdayIso}`,
+    });
+    const closedData = JSON.parse(closedSlots.body).data as { closed: boolean; slots: unknown[] };
+    expect(closedData.closed).toBe(true);
+    expect(closedData.slots).toHaveLength(0);
+
+    // Direct booking attempts on the closed day are rejected…
+    const rejected = await createBooking(customer.token, { businessId, serviceId, date: wednesdayIso, startTime: '12:00' });
+    expect(rejected.statusCode).toBe(400);
+    expect(JSON.parse(rejected.body).error?.code ?? JSON.parse(rejected.body).code).toBe('CLOSED_DAY');
+
+    // …while the following open day still books normally.
+    const openDate = new Date(wednesdayDate.getTime() + 24 * 60 * 60 * 1000); // Thursday
+    const openIso = openDate.toISOString().slice(0, 10);
+    const accepted = await createBooking(customer.token, { businessId, serviceId, date: openIso, startTime: '12:00' });
+    expect(accepted.statusCode).toBe(201);
+
+    // Reopening the day works: save Wednesday open, then it books again.
+    const reopen = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/businesses/${businessId}/hours`,
+      headers: authed(owner.token),
+      payload: Array.from({ length: 7 }, (_, dayOfWeek) => ({ dayOfWeek, isClosed: false, opensAt: '09:00', closesAt: '18:00' })),
+    });
+    expect(reopen.statusCode).toBe(200);
+    const reopenedSlots = await app.inject({
+      method: 'GET',
+      url: `/api/v1/businesses/${businessId}/services/${serviceId}/availability?date=${wednesdayIso}`,
+    });
+    const reopenedData = JSON.parse(reopenedSlots.body).data as { closed: boolean; slots: unknown[] };
+    expect(reopenedData.closed).toBe(false);
+    expect(reopenedData.slots.length).toBeGreaterThan(0);
+  });
 });
 
 describe('booking creation', () => {

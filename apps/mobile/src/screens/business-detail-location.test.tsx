@@ -2,6 +2,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import { BusinessDetailScreen } from './BusinessDetail.js';
+import { BusinessMapContext } from './BusinessMapContext.js';
 import * as api from '../api.js';
 import type { Business } from '../api.js';
 
@@ -12,6 +13,27 @@ vi.mock('../api.js', async (importOriginal) => ({
   getBusiness: vi.fn(),
   listBusinessReviews: vi.fn(),
 }));
+
+// Map provider is mocked at the seam: the map-context card must pass the
+// business's authoritative coordinates to the provider untouched.
+const setMarkers = vi.fn();
+const panTo = vi.fn();
+const setDraggableMarker = vi.fn();
+vi.mock('../maps/useMapProvider.js', () => ({
+  useMapProvider: () => ({
+    handle: {
+      provider: { setMarkers, panTo, setDraggableMarker },
+      geocoding: {},
+      ready: true,
+      canvasRef: () => {},
+      onMapIdle: () => () => {},
+      onMarkerClick: () => () => {},
+      onMapClick: () => () => {},
+      onDraggableMarkerMove: () => () => {},
+    },
+  }),
+}));
+vi.mock('../maps/MapCanvas.js', () => ({ MapCanvas: () => null }));
 
 const business = (patch: Partial<Business> = {}): Business => ({
   id: 'biz-1',
@@ -85,5 +107,31 @@ describe('BusinessDetail location display (Phase 11)', () => {
     render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} />);
     await screen.findByText('Gulberg Grill');
     expect(screen.queryByRole('link', { name: /directions/i })).toBeNull();
+  });
+
+  it('renders no location map card when the business has no coordinates (no fake location)', async () => {
+    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} />);
+    await screen.findByText('Gulberg Grill');
+    expect(screen.queryByRole('region', { name: /location/i })).toBeNull();
+  });
+});
+
+describe('customer map context uses the exact saved coordinates (Phase 12.1)', () => {
+  // Regression guard: the marker must be created from the authoritative
+  // backend coordinates, never a rounded or substituted value.
+  const SAVED = { latitude: 31.520412, longitude: 74.358723 };
+
+  it('creates the marker from the exact saved coordinates', () => {
+    render(<BusinessMapContext business={business(SAVED)} placeLabel="Gulberg, Lahore" />);
+
+    expect(setMarkers).toHaveBeenCalledTimes(1);
+    const markers = setMarkers.mock.calls[0][0];
+    expect(markers).toHaveLength(1);
+    expect(markers[0].position).toEqual({ lat: 31.520412, lng: 74.358723 });
+    // The camera centers on the same authoritative coordinates.
+    expect(panTo).toHaveBeenCalledWith({ lat: 31.520412, lng: 74.358723 }, 15);
+    // The display-only marker must never be draggable on the customer side.
+    expect(setDraggableMarker).toHaveBeenCalledWith(null);
+    expect(screen.getByText(/12 Food Street/)).toBeTruthy();
   });
 });

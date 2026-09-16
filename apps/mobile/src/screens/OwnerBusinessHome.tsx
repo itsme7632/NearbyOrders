@@ -11,7 +11,7 @@ import {
 } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, ListSkeleton } from '../components/ui.js';
-import { AlertIcon, BookingsIcon, CheckIcon, OrdersIcon, StoreIcon } from '../components/icons.js';
+import { AlertIcon, BookingsIcon, CheckIcon, OrdersIcon, PinIcon, StoreIcon } from '../components/icons.js';
 import { OwnerHubRow, OwnerHubSection } from './owner-ui.js';
 import { SubscriptionBadge } from './subscription-badge.js';
 import { OrderThumb } from './Orders.js';
@@ -104,7 +104,8 @@ export function OwnerBusinessHome(props: {
       <h2 className="hub-manage-title">Manage my business</h2>
       <OwnerHubSection label="Business">
         <OwnerHubRow icon={<StoreIcon size={18} />} title="Business Profile" subtitle="Name, description, contact, categories" onClick={() => props.onOpen(`${base}/profile`)} />
-        <OwnerHubRow icon={<OrdersIcon size={18} />} title="Business Hours" subtitle="Opening times for each day" onClick={() => props.onOpen(`${base}/hours`)} />
+        <OwnerHubRow icon={<OrdersIcon size={18} />} title="Business Hours" subtitle="Opening times and closed days" onClick={() => props.onOpen(`${base}/hours`)} />
+        <OwnerHubRow icon={<PinIcon size={18} />} title="Location" subtitle="Map coordinates so nearby customers find you" onClick={() => props.onOpen(`${base}/location`)} />
         <OwnerHubRow icon={<OrdersIcon size={18} />} title="Delivery & COD" subtitle="Own-rider delivery and cash on delivery" onClick={() => props.onOpen(`${base}/delivery`)} />
       </OwnerHubSection>
       <OwnerHubSection label="Catalog">
