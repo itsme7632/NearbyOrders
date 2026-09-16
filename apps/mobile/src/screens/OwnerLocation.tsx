@@ -55,6 +55,9 @@ export function OwnerLocation(props: { businessId: string }) {
 
   if (location.loading) return <Loading label="Loading location…" />;
   if (location.error) return <ErrorState message={location.error} onRetry={location.reload} />;
+  // Keep the form hidden until hydration has actually filled the inputs, so a
+  // value typed before the load completes can never be clobbered by it.
+  if (location.data && hydratedFor !== props.businessId) return <Loading label="Loading location…" />;
   const configured = location.data?.isConfigured ?? false;
   const business = businesses.data?.find((b) => b.id === props.businessId);
 
