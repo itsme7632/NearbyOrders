@@ -430,15 +430,18 @@ model BusinessSubscription {
 /// two partial unique indexes below, which also block duplicate reviews for
 /// the same transaction.
 model Review {
-  id         String   @id @default(uuid())
+  id         String    @id @default(uuid())
   businessId String
   customerId String
-  bookingId  String?  @unique
-  orderId    String?  @unique
+  bookingId  String?   @unique
+  orderId    String?   @unique
   rating     Int
   comment    String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  /// Phase 15 moderation: when set, the review is hidden from every public
+  /// surface (business reviews, rating summaries, search). Null = public.
+  isHiddenAt DateTime?
   business   Business @relation(fields: [businessId], references: [id])
   customer   User     @relation("ReviewCustomer", fields: [customerId], references: [id])
   booking    Booking? @relation(fields: [bookingId], references: [id])
@@ -446,6 +449,7 @@ model Review {
 
   @@index([businessId, createdAt])
   @@index([customerId, createdAt])
+  @@index([businessId, isHiddenAt])
 }
 
 /**

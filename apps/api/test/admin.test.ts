@@ -15,7 +15,7 @@ afterAll(async () => {
 describe('admin panel API: authorization boundaries', () => {
   it('every admin endpoint rejects customers with 403', async () => {
     const customer = await registerAndLogin(app, 'CUSTOMER');
-    for (const url of ['/api/v1/admin/dashboard', '/api/v1/admin/users', '/api/v1/admin/businesses', '/api/v1/admin/orders', '/api/v1/admin/bookings', '/api/v1/admin/reviews', '/api/v1/admin/subscriptions', '/api/v1/admin/audit-log']) {
+    for (const url of ['/api/v1/admin/dashboard', '/api/v1/admin/users', '/api/v1/admin/businesses', '/api/v1/admin/orders', '/api/v1/admin/bookings', '/api/v1/admin/reviews', '/api/v1/admin/subscriptions', '/api/v1/admin/audit-log', '/api/v1/admin/categories']) {
       const res = await app.inject({ method: 'GET', url, headers: authed(customer.token) });
       expect([401, 403]).toContain(res.statusCode);
     }
@@ -45,6 +45,10 @@ describe('admin panel API: authorization boundaries', () => {
     expect([401, 403]).toContain(resStatus.statusCode);
     const resVerify = await app.inject({ method: 'PATCH', url: `/api/v1/admin/businesses/${businessId}/verification`, headers: authed(customer.token), payload: { verified: true } });
     expect([401, 403]).toContain(resVerify.statusCode);
+    const resReview = await app.inject({ method: 'PATCH', url: '/api/v1/admin/reviews/00000000-0000-4000-8000-000000000000/visibility', headers: authed(customer.token), payload: { hidden: true } });
+    expect([401, 403]).toContain(resReview.statusCode);
+    const resCategory = await app.inject({ method: 'PATCH', url: '/api/v1/admin/categories/00000000-0000-4000-8000-000000000000', headers: authed(customer.token), payload: { isActive: false } });
+    expect([401, 403]).toContain(resCategory.statusCode);
   });
 });
 
@@ -53,12 +57,19 @@ describe('admin panel API: dashboard and listings', () => {
     const admin = await registerAdminAndLogin(app);
     const res = await app.inject({ method: 'GET', url: '/api/v1/admin/dashboard', headers: authed(admin.token) });
     expect(res.statusCode).toBe(200);
-    const data = JSON.parse(res.body).data as Record<string, number>;
+    const data = JSON.parse(res.body).data as Record<string, unknown>;
     expect(typeof data.users).toBe('number');
+    expect(typeof data.customers).toBe('number');
+    expect(typeof data.businessOwners).toBe('number');
     expect(typeof data.businesses).toBe('number');
     expect(typeof data.activeBusinesses).toBe('number');
     expect(typeof data.pendingBusinesses).toBe('number');
     expect(typeof data.pendingSubscriptionPayments).toBe('number');
+    expect(typeof data.reviews).toBe('number');
+    expect(typeof data.hiddenReviews).toBe('number');
+    const push = data.pushDevices as Record<string, number>;
+    expect(typeof push.total).toBe('number');
+    expect(typeof push.active).toBe('number');
   });
 
   it('businesses list includes every status plus owner identity', async () => {
@@ -176,5 +187,72 @@ describe('admin panel API: moderation actions', () => {
     const res = await app.inject({ method: 'PATCH', url: `/api/v1/admin/businesses/${id}/status`, headers: authed(admin.token), payload: { status: 'APPROVED' } });
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body).data.status).toBe('APPROVED');
+  });
+
+  it('hiding a review removes it from public surfaces and ratings; restoring brings it back', async () => {
+    const admin = await registerAdminAndLogin(app);
+    const owner = await registerAndLogin(app, 'BUSINESS_OWNER');
+    const customer = await registerAndLogin(app, 'CUSTOMER');
+    const { id: businessId } = await createBusiness(app, owner.token);
+    await approveBusiness(businessId);
+    const review = await prisma.review.create({
+      data: { businessId, customerId: customer.userId, rating: 2, comment: 'Moderation test review' },
+    });
+
+    // Sanity: the review is public before moderation.
+    const before = await app.inject({ method: 'GET', url: `/api/v1/businesses/${businessId}/reviews` });
+    expect(JSON.parse(before.body).data.reviewCount).toBe(1);
+
+    const hide = await app.inject({ method: 'PATCH', url: `/api/v1/admin/reviews/${review.id}/visibility`, headers: authed(admin.token), payload: { hidden: true } });
+    expect(hide.statusCode).toBe(200);
+    expect(JSON.parse(hide.body).data.isHidden).toBe(true);
+
+    // Public list: gone. Rating summary: gone.
+    const after = await app.inject({ method: 'GET', url: `/api/v1/businesses/${businessId}/reviews` });
+    const publicData = JSON.parse(after.body).data as { items: unknown[]; reviewCount: number; averageRating: number | null };
+    expect(publicData.items).toHaveLength(0);
+    expect(publicData.reviewCount).toBe(0);
+    expect(publicData.averageRating).toBeNull();
+
+    // The admin still sees it, flagged hidden, and can filter to hidden only.
+    const adminList = await app.inject({ method: 'GET', url: '/api/v1/admin/reviews?status=hidden', headers: authed(admin.token) });
+    const hiddenRows = JSON.parse(adminList.body).data as { id: string; isHidden: boolean }[];
+    expect(hiddenRows.some((rv) => rv.id === review.id && rv.isHidden)).toBe(true);
+
+    // The customer's own review history is untouched by soft moderation.
+    const mine = await app.inject({ method: 'GET', url: '/api/v1/my-reviews', headers: authed(customer.token) });
+    const mineRows = JSON.parse(mine.body).data as { id: string }[];
+    expect(mineRows.some((rv) => rv.id === review.id)).toBe(true);
+
+    // Restore.
+    const restore = await app.inject({ method: 'PATCH', url: `/api/v1/admin/reviews/${review.id}/visibility`, headers: authed(admin.token), payload: { hidden: false } });
+    expect(JSON.parse(restore.body).data.isHidden).toBe(false);
+    const restored = await app.inject({ method: 'GET', url: `/api/v1/businesses/${businessId}/reviews` });
+    expect(JSON.parse(restored.body).data.reviewCount).toBe(1);
+
+    const audits = await prisma.auditLog.findMany({ where: { entityType: 'Review', entityId: review.id, action: { in: ['REVIEW_HIDDEN', 'REVIEW_RESTORED'] } } });
+    expect(audits.map((a) => a.action).sort()).toEqual(['REVIEW_HIDDEN', 'REVIEW_RESTORED']);
+  });
+
+  it('category updates are audit-logged including activate/deactivate', async () => {
+    const admin = await registerAdminAndLogin(app);
+    const fixtureSuffix = () => `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
+    const created = await app.inject({ method: 'POST', url: '/api/v1/admin/categories', headers: authed(admin.token), payload: { name: `Patio Furnishing ${fixtureSuffix()}` } });
+    expect(created.statusCode).toBe(201);
+    const { id } = JSON.parse(created.body).data as { id: string };
+
+    const off = await app.inject({ method: 'PATCH', url: `/api/v1/admin/categories/${id}`, headers: authed(admin.token), payload: { isActive: false } });
+    expect(off.statusCode).toBe(200);
+    expect(JSON.parse(off.body).data.isActive).toBe(false);
+    const on = await app.inject({ method: 'PATCH', url: `/api/v1/admin/categories/${id}`, headers: authed(admin.token), payload: { isActive: true } });
+    expect(JSON.parse(on.body).data.isActive).toBe(true);
+
+    const audits = await prisma.auditLog.findMany({ where: { entityType: 'Category', entityId: id, action: { in: ['CATEGORY_DEACTIVATED', 'CATEGORY_ACTIVATED'] } } });
+    expect(audits.map((a) => a.action).sort()).toEqual(['CATEGORY_ACTIVATED', 'CATEGORY_DEACTIVATED']);
+    const actor = audits.find((a) => a.action === 'CATEGORY_DEACTIVATED');
+    expect(actor?.actorId).toBe(admin.userId);
+
+    // Fixture cleanup: don't leave the created category in the shared test catalog.
+    await prisma.category.deleteMany({ where: { id } });
   });
 });

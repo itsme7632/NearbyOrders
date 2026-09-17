@@ -248,12 +248,14 @@ export async function buildApp(): Promise<FastifyInstance> {
     data: await prisma.category.findMany({ where: { isActive: true }, orderBy: { name: 'asc' } }),
   }));
 
-  app.get('/api/v1/admin/categories', { preHandler: roles('ADMIN') }, async () => ({
-    data: await prisma.category.findMany({
+  app.get('/api/v1/admin/categories', { preHandler: roles('ADMIN') }, async () => {
+    const rows = await prisma.category.findMany({
       orderBy: { name: 'asc' },
       include: { _count: { select: { businesses: true } } },
-    }),
-  }));
+    });
+    // Flat DTO: businessCount instead of Prisma's _count nesting.
+    return { data: rows.map(({ _count, ...c }) => ({ ...c, businessCount: _count.businesses })) };
+  });
 
   app.post('/api/v1/admin/categories', { preHandler: roles('ADMIN') }, async (q, r) => {
     const d = categoryCreateSchema.parse(q.body);
@@ -277,7 +279,19 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
     if (d.slug !== undefined) data.slug = d.slug;
     if (d.isActive !== undefined) data.isActive = d.isActive;
-    return { data: await prisma.category.update({ where: { id: existing.id }, data }) };
+    const category = await prisma.category.update({ where: { id: existing.id }, data });
+    // Moderation trail: every category change is attributable, including the
+    // activate/deactivate toggle that hides it from customer discovery.
+    await prisma.auditLog.create({
+      data: {
+        actorId: currentUser(q).id,
+        action: d.isActive === undefined ? 'CATEGORY_UPDATED' : d.isActive ? 'CATEGORY_ACTIVATED' : 'CATEGORY_DEACTIVATED',
+        entityType: 'Category',
+        entityId: category.id,
+        metadata: { name: category.name },
+      },
+    });
+    return { data: category };
   });
 
   /* ------------------------- Businesses (public) --------------------- */
@@ -532,7 +546,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     const ratingRows = involvedIds.length
       ? await prisma.review.groupBy({
           by: ['businessId'],
-          where: { businessId: { in: involvedIds } },
+          // Moderation (Phase 15): admin-hidden reviews never move ratings.
+          where: { businessId: { in: involvedIds }, isHiddenAt: null },
           _avg: { rating: true },
           _count: { rating: true },
         })
@@ -3010,7 +3025,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   /** Aggregates over the complete review set — never just the visible page. */
   const ratingSummary = async (businessId: string) => {
     const agg = await prisma.review.aggregate({
-      where: { businessId },
+      // Moderation (Phase 15): admin-hidden reviews never move public ratings.
+      where: { businessId, isHiddenAt: null },
       _avg: { rating: true },
       _count: { rating: true },
     });
@@ -3104,7 +3120,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       .parse(q.query ?? {});
     const [rows, summary] = await Promise.all([
       prisma.review.findMany({
-        where: { businessId },
+        where: { businessId, isHiddenAt: null },
         select: REVIEW_LIST_SELECT,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: query.limit + 1,
@@ -3478,14 +3494,55 @@ export async function buildApp(): Promise<FastifyInstance> {
     return { data: bookings.map(publicBooking) };
   });
 
-  /** All reviews for moderation, newest first. */
-  app.get('/api/v1/admin/reviews', { preHandler: roles('ADMIN') }, async () => {
+  /** All reviews for moderation, newest first, hidden state included. */
+  app.get('/api/v1/admin/reviews', { preHandler: roles('ADMIN') }, async (q) => {
+    const query = z.object({ status: z.enum(['visible', 'hidden']).optional(), limit: z.coerce.number().int().min(1).max(200).default(100) }).parse(q.query);
     const reviews = await prisma.review.findMany({
+      where: query.status === 'visible' ? { isHiddenAt: null } : query.status === 'hidden' ? { isHiddenAt: { not: null } } : {},
       include: { business: { select: { id: true, name: true } }, customer: { select: { id: true, email: true, firstName: true, lastName: true } } },
       orderBy: { createdAt: 'desc' },
-      take: 100,
+      take: query.limit,
     });
-    return { data: reviews };
+    return {
+      data: reviews.map((rv) => ({
+        id: rv.id,
+        rating: rv.rating,
+        comment: rv.comment,
+        createdAt: rv.createdAt,
+        isHidden: rv.isHiddenAt !== null,
+        hiddenAt: rv.isHiddenAt,
+        business: rv.business,
+        customer: rv.customer,
+      })),
+    };
+  });
+
+  /**
+   * Review moderation (Phase 15): hide a review from every public surface —
+   * business reviews list, rating summaries, search — or restore it. Hiding is
+   * reversible soft-moderation; the customer's review history is untouched.
+   * Every action is audit-logged with the acting admin.
+   */
+  app.patch('/api/v1/admin/reviews/:id/visibility', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const { hidden } = z.object({ hidden: z.boolean() }).strict().parse(q.body);
+    const id = (q.params as { id: string }).id;
+    const existing = await prisma.review.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Review not found' } });
+    const review = await prisma.review.update({
+      where: { id },
+      data: { isHiddenAt: hidden ? new Date() : null },
+      select: { id: true, isHiddenAt: true, business: { select: { id: true } } },
+    });
+    await prisma.auditLog.create({
+      data: {
+        actorId: currentUser(q).id,
+        action: hidden ? 'REVIEW_HIDDEN' : 'REVIEW_RESTORED',
+        entityType: 'Review',
+        entityId: id,
+        metadata: { businessId: review.business.id },
+      },
+    });
+    return { data: { id: review.id, isHidden: review.isHiddenAt !== null } };
   });
 
   /** Subscriptions across the platform with business identity. */
@@ -3519,6 +3576,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.get('/api/v1/admin/dashboard', { preHandler: roles('ADMIN') }, async () => ({
     data: {
       users: await prisma.user.count(),
+      customers: await prisma.user.count({ where: { role: 'CUSTOMER' } }),
+      businessOwners: await prisma.user.count({ where: { role: 'BUSINESS_OWNER' } }),
       businesses: await prisma.business.count(),
       activeBusinesses: await prisma.business.count({ where: { status: 'APPROVED' } }),
       pendingBusinesses: await prisma.business.count({ where: { status: 'PENDING' } }),
@@ -3529,6 +3588,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       pendingOrders: await prisma.order.count({ where: { status: 'PENDING' } }),
       pendingSubscriptionPayments: await prisma.subscriptionPaymentRequest.count({ where: { status: 'PENDING' } }),
       reviews: await prisma.review.count(),
+      hiddenReviews: await prisma.review.count({ where: { isHiddenAt: { not: null } } }),
       // Phase 13: push fleet health — counts only, never tokens.
       pushDevices: {
         total: await prisma.pushDevice.count(),

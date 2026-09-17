@@ -19,10 +19,48 @@ describe('admin panel', () => {
     expect(typeof api.listOrders).toBe('function');
     expect(typeof api.listBookings).toBe('function');
     expect(typeof api.listReviews).toBe('function');
+    expect(typeof api.setReviewVisibility).toBe('function');
+    expect(typeof api.listCategories).toBe('function');
+    expect(typeof api.createCategory).toBe('function');
+    expect(typeof api.setCategoryActive).toBe('function');
     expect(typeof api.listSubscriptions).toBe('function');
     expect(typeof api.approvePaymentRequest).toBe('function');
     expect(typeof api.rejectPaymentRequest).toBe('function');
+    expect(typeof api.fetchReceiptObjectUrl).toBe('function');
     expect(typeof api.listAuditLog).toBe('function');
+  });
+
+  it('review visibility and category actions send authenticated mutations', async () => {
+    const api = await import('./api.js');
+    api.setSession({ accessToken: 'tok', user: { id: 'a1', email: 'a@b.c', role: 'ADMIN' } });
+    const fetchMock = vi
+      .spyOn(window, 'fetch')
+      // A fresh Response per call: a Response body can only be read once.
+      .mockImplementation(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ data: { id: 'x1', isHidden: true, isActive: false, name: 'Home Services' } }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }) as unknown as Response,
+        ),
+      );
+    await api.setReviewVisibility('r1', true);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      expect.stringContaining('/api/v1/admin/reviews/r1/visibility'),
+      expect.objectContaining({ method: 'PATCH', headers: expect.objectContaining({ authorization: 'Bearer tok' }) }),
+    );
+    await api.setCategoryActive('c1', false);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      expect.stringContaining('/api/v1/admin/categories/c1'),
+      expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ isActive: false }) }),
+    );
+    await api.createCategory('Home Services');
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      expect.stringContaining('/api/v1/admin/categories'),
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ name: 'Home Services' }) }),
+    );
+    vi.restoreAllMocks();
+    api.logout();
   });
 
   it('stores an ADMIN session and rejects a non-admin login', async () => {

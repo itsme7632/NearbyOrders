@@ -74,6 +74,8 @@ export const logout = () => setSession(null);
 
 export type AdminDashboard = {
   users: number;
+  customers: number;
+  businessOwners: number;
   businesses: number;
   activeBusinesses: number;
   pendingBusinesses: number;
@@ -84,6 +86,8 @@ export type AdminDashboard = {
   pendingOrders: number;
   pendingSubscriptionPayments: number;
   reviews: number;
+  hiddenReviews: number;
+  pushDevices: { total: number; active: number; android: number; ios: number; web: number };
 };
 
 export const getDashboard = () => request<{ data: AdminDashboard }>('/admin/dashboard').then((r) => r.data);
@@ -173,11 +177,37 @@ export type AdminReview = {
   rating: number;
   comment: string | null;
   createdAt: string;
+  isHidden: boolean;
+  hiddenAt: string | null;
   business: { id: string; name: string };
   customer: { id: string; email: string; firstName: string | null; lastName: string | null };
 };
 
-export const listReviews = () => request<{ data: AdminReview[] }>('/admin/reviews').then((r) => r.data);
+export const listReviews = (status: '' | 'visible' | 'hidden') =>
+  request<{ data: AdminReview[] }>(`/admin/reviews${status ? `?status=${status}` : ''}`).then((r) => r.data);
+
+/** Soft-moderation: hides/restores a review from every public surface. */
+export const setReviewVisibility = (id: string, hidden: boolean) =>
+  request<{ data: { id: string; isHidden: boolean } }>(`/admin/reviews/${id}/visibility`, { method: 'PATCH', body: { hidden } }).then((r) => r.data);
+
+/* ------------------------------ categories ----------------------------- */
+
+export type AdminCategory = {
+  id: string;
+  name: string;
+  slug: string;
+  isActive: boolean;
+  createdAt: string;
+  businessCount: number;
+};
+
+export const listCategories = () => request<{ data: AdminCategory[] }>('/admin/categories').then((r) => r.data);
+
+export const createCategory = (name: string) =>
+  request<{ data: AdminCategory }>('/admin/categories', { method: 'POST', body: { name } }).then((r) => r.data);
+
+export const setCategoryActive = (id: string, isActive: boolean) =>
+  request<{ data: AdminCategory }>(`/admin/categories/${id}`, { method: 'PATCH', body: { isActive } }).then((r) => r.data);
 
 /* ----------------------------- subscriptions -------------------------- */
 
@@ -215,8 +245,20 @@ export const approvePaymentRequest = (id: string) =>
 export const rejectPaymentRequest = (id: string, reason: string) =>
   request<{ data: AdminPaymentRequest }>(`/admin/subscription/payment-requests/${id}/reject`, { method: 'POST', body: { reason } }).then((r) => r.data);
 
-/** Receipt image bytes; only the owning business and admins can read it. */
-export const receiptUrl = (storageKey: string) => `${API_BASE}/subscription/payment-receipts/${storageKey}`;
+/**
+ * Receipt image bytes; only the owning business and admins can read it. The
+ * endpoint requires the caller's Bearer token, so the panel fetches it with
+ * the session header and hands the image to the browser as a blob URL (never
+ * a raw link that would 401 without credentials).
+ */
+export const fetchReceiptObjectUrl = async (storageKey: string): Promise<string> => {
+  const session = getSession();
+  const res = await fetch(`${API_BASE}/subscription/payment-receipts/${storageKey}`, {
+    headers: session ? { authorization: `Bearer ${session.accessToken}` } : {},
+  });
+  if (!res.ok) throw new ApiError(res.status, 'RECEIPT_READ_FAILED', 'Could not load the receipt image.');
+  return URL.createObjectURL(await res.blob());
+};
 
 /* ------------------------------ audit log ----------------------------- */
 

@@ -11,6 +11,7 @@ type Section =
   | 'orders'
   | 'bookings'
   | 'reviews'
+  | 'categories'
   | 'subscriptions'
   | 'payments'
   | 'audit';
@@ -22,6 +23,7 @@ const SECTIONS: { key: Section; label: string }[] = [
   { key: 'orders', label: 'Orders' },
   { key: 'bookings', label: 'Bookings' },
   { key: 'reviews', label: 'Reviews' },
+  { key: 'categories', label: 'Categories' },
   { key: 'subscriptions', label: 'Subscriptions' },
   { key: 'payments', label: 'Payment requests' },
   { key: 'audit', label: 'Audit log' },
@@ -114,6 +116,8 @@ function Dashboard() {
   const d = stats.data!;
   const cards: { label: string; value: number | string }[] = [
     { label: 'Users', value: d.users },
+    { label: 'Customers', value: d.customers },
+    { label: 'Business owners', value: d.businessOwners },
     { label: 'Businesses', value: d.businesses },
     { label: 'Active businesses', value: d.activeBusinesses },
     { label: 'Pending businesses', value: d.pendingBusinesses },
@@ -124,16 +128,44 @@ function Dashboard() {
     { label: 'Pending bookings', value: d.pendingBookings },
     { label: 'Payment requests', value: d.pendingSubscriptionPayments },
     { label: 'Reviews', value: d.reviews },
+    { label: 'Hidden reviews', value: d.hiddenReviews },
+    { label: 'Push devices', value: d.pushDevices.total },
+    { label: 'Active push devices', value: d.pushDevices.active },
   ];
   return (
-    <div className="stat-grid">
-      {cards.map((c) => (
-        <div key={c.label} className="stat-card">
-          <span className="stat-num">{c.value}</span>
-          <span className="stat-label">{c.label}</span>
-        </div>
-      ))}
-    </div>
+    <>
+      <div className="stat-grid">
+        {cards.map((c) => (
+          <div key={c.label} className="stat-card">
+            <span className="stat-num">{c.value}</span>
+            <span className="stat-label">{c.label}</span>
+          </div>
+        ))}
+      </div>
+      <div className="panel">
+        <h2>Push fleet by platform</h2>
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>Android</th>
+              <th>iOS</th>
+              <th>Web</th>
+              <th>Total</th>
+              <th>Active</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>{d.pushDevices.android}</td>
+              <td>{d.pushDevices.ios}</td>
+              <td>{d.pushDevices.web}</td>
+              <td>{d.pushDevices.total}</td>
+              <td>{d.pushDevices.active}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
@@ -479,39 +511,186 @@ function Bookings() {
 /* -------------------------------- reviews ------------------------------- */
 
 function Reviews() {
-  const reviews = useAsync(() => api.listReviews(), []);
-  if (reviews.loading) return <div className="loading">Loading reviews…</div>;
-  if (reviews.error) return <div className="form-error">{reviews.error}</div>;
+  const [status, setStatus] = useState<'' | 'visible' | 'hidden'>('');
+  const reviews = useAsync(() => api.listReviews(status), [status]);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const toggle = async (r: api.AdminReview) => {
+    setBusyId(r.id);
+    setActionError(null);
+    try {
+      await api.setReviewVisibility(r.id, !r.isHidden);
+      reviews.reload();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Action failed.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
-    <div className="panel">
-      <h2>Reviews ({reviews.data!.length})</h2>
-      {reviews.data!.length === 0 ? (
-        <div className="empty">No reviews yet.</div>
+    <>
+      <div className="toolbar">
+        <select
+          className="admin-select"
+          value={status}
+          onChange={(e) => setStatus(e.target.value as '' | 'visible' | 'hidden')}
+          aria-label="Filter reviews by visibility"
+        >
+          <option value="">All reviews</option>
+          <option value="visible">Visible only</option>
+          <option value="hidden">Hidden only</option>
+        </select>
+      </div>
+      {actionError ? <div className="form-error" role="alert">{actionError}</div> : null}
+      {reviews.loading ? (
+        <div className="loading">Loading reviews…</div>
+      ) : reviews.error ? (
+        <div className="form-error">{reviews.error}</div>
       ) : (
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Business</th>
-              <th>Customer</th>
-              <th>Rating</th>
-              <th>Comment</th>
-            </tr>
-          </thead>
-          <tbody>
-            {reviews.data!.map((r) => (
-              <tr key={r.id}>
-                <td>{fmtDate(r.createdAt)}</td>
-                <td>{r.business.name}</td>
-                <td>{r.customer?.email}</td>
-                <td>{'★'.repeat(r.rating)}</td>
-                <td>{r.comment ?? <span className="muted">No comment</span>}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="panel">
+          <h2>Reviews ({reviews.data!.length})</h2>
+          {reviews.data!.length === 0 ? (
+            <div className="empty">No reviews match this filter.</div>
+          ) : (
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Business</th>
+                  <th>Customer</th>
+                  <th>Rating</th>
+                  <th>Comment</th>
+                  <th>Visibility</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reviews.data!.map((r) => (
+                  <tr key={r.id} className={r.isHidden ? 'row-hidden' : undefined}>
+                    <td>{fmtDate(r.createdAt)}</td>
+                    <td>{r.business.name}</td>
+                    <td>{r.customer?.email}</td>
+                    <td>{'★'.repeat(r.rating)}</td>
+                    <td className="review-comment">{r.comment ?? <span className="muted">No comment</span>}</td>
+                    <td>{r.isHidden ? <span className="badge badge-closed">Hidden</span> : <span className="badge badge-open">Public</span>}</td>
+                    <td>
+                      <button className={`btn btn-sm ${r.isHidden ? '' : 'btn-danger'}`} disabled={busyId === r.id} onClick={() => void toggle(r)}>
+                        {busyId === r.id ? 'Working…' : r.isHidden ? 'Restore' : 'Hide'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       )}
-    </div>
+    </>
+  );
+}
+
+/* ------------------------------ categories ------------------------------ */
+
+function Categories() {
+  const categories = useAsync(() => api.listCategories(), []);
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const create = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.createCategory(name.trim());
+      setName('');
+      categories.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create the category.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggle = async (c: api.AdminCategory) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.setCategoryActive(c.id, !c.isActive);
+      categories.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Action failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <form
+        className="toolbar"
+        onSubmit={(e) => void create(e)}
+      >
+        <input
+          className="admin-input"
+          placeholder="New category name (e.g. Home Services)"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          aria-label="New category name"
+          minLength={2}
+          maxLength={60}
+          required
+        />
+        <button className="btn" disabled={busy || name.trim().length < 2}>
+          Add category
+        </button>
+      </form>
+      {error ? <div className="form-error" role="alert">{error}</div> : null}
+      {categories.loading ? (
+        <div className="loading">Loading categories…</div>
+      ) : categories.error ? (
+        <div className="form-error">{categories.error}</div>
+      ) : (
+        <div className="panel">
+          <h2>Categories ({categories.data!.length})</h2>
+          {categories.data!.length === 0 ? (
+            <div className="empty">No categories yet.</div>
+          ) : (
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Slug</th>
+                  <th>Businesses</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {categories.data!.map((c) => (
+                  <tr key={c.id} className={c.isActive ? undefined : 'row-hidden'}>
+                    <td>
+                      <strong>{c.name}</strong>
+                    </td>
+                    <td className="mono">{c.slug}</td>
+                    <td>{c.businessCount}</td>
+                    <td>{c.isActive ? <span className="badge badge-open">Active</span> : <span className="badge badge-closed">Inactive</span>}</td>
+                    <td>
+                      <button className={`btn btn-sm ${c.isActive ? 'btn-danger' : ''}`} disabled={busy} onClick={() => void toggle(c)}>
+                        {c.isActive ? 'Deactivate' : 'Activate'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <p className="hint">Inactive categories disappear from customer discovery; existing businesses keep their links.</p>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -581,6 +760,26 @@ function PaymentRequests() {
   const [reasonFor, setReasonFor] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
+  const [receipt, setReceipt] = useState<{ url: string; error: string | null } | null>(null);
+  const [receiptLoading, setReceiptLoading] = useState(false);
+
+  const openReceipt = async (storageKey: string) => {
+    setReceiptLoading(true);
+    setReceipt(null);
+    try {
+      const url = await api.fetchReceiptObjectUrl(storageKey);
+      setReceipt({ url, error: null });
+    } catch (e) {
+      setReceipt({ url: '', error: e instanceof Error ? e.message : 'Could not load the receipt.' });
+    } finally {
+      setReceiptLoading(false);
+    }
+  };
+
+  const closeReceipt = () => {
+    if (receipt?.url) URL.revokeObjectURL(receipt.url);
+    setReceipt(null);
+  };
 
   const act = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -635,9 +834,9 @@ function PaymentRequests() {
                     <td className="mono">{p.transactionReference ?? '—'}</td>
                     <td>
                       {p.receiptStorageKey ? (
-                        <a href={api.receiptUrl(p.receiptStorageKey)} target="_blank" rel="noreferrer">
+                        <button className="btn btn-ghost btn-sm" disabled={receiptLoading} onClick={() => void openReceipt(p.receiptStorageKey!)}>
                           View
-                        </a>
+                        </button>
                       ) : (
                         <span className="muted">—</span>
                       )}
@@ -682,7 +881,28 @@ function PaymentRequests() {
           )}
         </div>
       )}
+      <ReceiptModal open={receipt !== null} url={receipt?.url ?? ''} error={receipt?.error ?? null} onClose={closeReceipt} />
     </>
+  );
+}
+
+/* ------------------------------ receipt viewer --------------------------- */
+
+function ReceiptModal(props: { open: boolean; url: string; error: string | null; onClose: () => void }) {
+  if (!props.open) return null;
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Payment receipt" onClick={props.onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2>Payment receipt</h2>
+          <button className="btn btn-ghost btn-sm" onClick={props.onClose}>
+            Close
+          </button>
+        </div>
+        {props.error ? <div className="form-error">{props.error}</div> : null}
+        {props.url ? <img className="receipt-img" src={props.url} alt="Uploaded payment receipt" /> : null}
+      </div>
+    </div>
   );
 }
 
@@ -776,6 +996,7 @@ function AdminApp() {
         {section === 'orders' ? <Orders /> : null}
         {section === 'bookings' ? <Bookings /> : null}
         {section === 'reviews' ? <Reviews /> : null}
+        {section === 'categories' ? <Categories /> : null}
         {section === 'subscriptions' ? <Subscriptions /> : null}
         {section === 'payments' ? <PaymentRequests /> : null}
         {section === 'audit' ? <AuditLog /> : null}
