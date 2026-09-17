@@ -5,7 +5,7 @@ import { businessTabs, navigationTabs, type BusinessTab, type Tab } from './navi
 import { getSession, onSessionChange, type Session } from './api.js';
 import { useRoute } from './hooks.js';
 import { applyDefaultModeForSession, initModeSessionSync, setAppMode, useAppMode } from './mode.js';
-import { BellIcon, BookingsIcon, ExploreIcon, HomeIcon, OrdersIcon, ProfileIcon, StoreIcon } from './components/icons.js';
+import { BellIcon, BookingsIcon, ExploreIcon, HomeIcon, OrdersIcon, PinIcon, ProfileIcon, StoreIcon } from './components/icons.js';
 import { EmptyState, Loading } from './components/ui.js';
 import { HomeScreen } from './screens/Home.js';
 import { ExploreScreen } from './screens/Explore.js';
@@ -378,7 +378,12 @@ export function App() {
       {!authFlow ? (
         <header className="app-header">
           <button className="logo" onClick={() => { setTab('Home'); setBusinessTab('Overview'); push('/'); }} aria-label="NearbyOrders home">
-            NearbyOrders
+            <span className="brand-mark" aria-hidden>
+              <PinIcon size={16} />
+            </span>
+            <span className="logo-word">
+              Nearby<b>Orders</b>
+            </span>
           </button>
           {isOwner ? (
             <button

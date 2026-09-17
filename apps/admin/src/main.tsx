@@ -4,6 +4,16 @@ import './styles.css';
 import * as api from './api.js';
 import type { AdminBusiness, AdminUser } from './api.js';
 
+/** Same map-pin brand glyph the mobile app uses (single inline copy). */
+function PinIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
+      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0Z" />
+      <circle cx="12" cy="10" r="3" />
+    </svg>
+  );
+}
+
 type Section =
   | 'dashboard'
   | 'users'
@@ -964,7 +974,14 @@ function AdminApp() {
   return (
     <div className="admin-shell">
       <aside className="admin-side">
-        <p className="admin-logo">NearbyOrders</p>
+        <p className="admin-logo">
+          <span className="admin-logo-mark" aria-hidden>
+            <PinIcon size={15} />
+          </span>
+          <span>
+            Nearby<b>Orders</b>
+          </span>
+        </p>
         <p className="admin-side-sub">Admin panel</p>
         <nav aria-label="Admin sections">
           {SECTIONS.map((s) => (
