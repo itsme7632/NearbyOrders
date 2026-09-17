@@ -46,22 +46,35 @@ async function createMethod(
   return JSON.parse(res.body).data as { id: string };
 }
 
-async function setHours(app: TestApp, token: string, businessId: string, closedSunday = true) {
+async function setHours(app: TestApp, token: string, businessId: string, closedSaturday = true) {
   await app.inject({
     method: 'PUT',
     url: `/api/v1/businesses/${businessId}/hours`,
     headers: authed(token),
     payload: Array.from({ length: 7 }, (_, day) => ({
       dayOfWeek: day,
-      isClosed: closedSunday && day === 6,
-      opensAt: closedSunday && day === 6 ? undefined : '09:00',
-      closesAt: closedSunday && day === 6 ? undefined : '17:00',
+      isClosed: closedSaturday && day === 6,
+      opensAt: closedSaturday && day === 6 ? undefined : '09:00',
+      closesAt: closedSaturday && day === 6 ? undefined : '17:00',
     })),
   });
 }
 
-const tomorrowPkt = () =>
-  new Date(Date.now() + 5 * 60 * 60 * 1000 + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+/**
+ * Next business-local (PKT) date the fixtures keep open. The fixtures below
+ * close day 6 (Saturday; JS getUTCDay convention 0=Sunday), so a naive
+ * "tomorrow" lands on the closed day once a week and every booking in this
+ * file fails with CLOSED_DAY. Skip any date that falls on the closed day.
+ */
+const tomorrowPkt = (): string => {
+  for (let addDays = 1; addDays <= 7; addDays += 1) {
+    const shifted = new Date(Date.now() + 5 * 60 * 60 * 1000 + addDays * 24 * 60 * 60 * 1000);
+    const date = shifted.toISOString().slice(0, 10);
+    const dayOfWeek = new Date(`${date}T00:00:00Z`).getUTCDay();
+    if (dayOfWeek !== 6) return date;
+  }
+  throw new Error('unreachable: no open day within a week');
+};
 
 describe('service advance creation', () => {
   it('owner can create NONE/FIXED/PERCENTAGE advance', async () => {
