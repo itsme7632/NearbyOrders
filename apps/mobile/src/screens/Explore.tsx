@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { listBusinesses, listCategories, listNearbyBusinesses, type Business, type Category } from '../api.js';
 import { useAsyncData } from '../hooks.js';
-import { EmptyState, ErrorState, SectionHeader } from '../components/ui.js';
+import { ErrorState, RatingChip, SectionHeader } from '../components/ui.js';
 import { ExploreIcon, PinIcon } from '../components/icons.js';
 import { EmptyStateV3 } from '../components/EmptyStateV3.js';
-import { PopularBusinessCard } from './Home.js';
 import { requestCustomerLocation, locationOutcomeHint, type LocationOutcome } from '../location.js';
 import { DEFAULT_RADIUS_KM, RADIUS_OPTIONS_KM } from '@nearbyorders/shared';
 import { useMapProvider } from '../maps/useMapProvider.js';
@@ -75,6 +74,7 @@ export function ExploreScreen(props: {
     setCoords(null);
     setLocNote(null);
     setSelectedMarker(null);
+    setView('list');
   };
 
   const searchThisArea = (center: LatLng) => {
@@ -91,43 +91,35 @@ export function ExploreScreen(props: {
   const mapUsable = mode === 'nearby' && coords !== null;
 
   return (
-    <div className="screen">
-      {/* Discovery header: title + major search control. */}
-      <section className="home-greeting" aria-label="Explore">
-        <h1 className="home-greeting-title" style={{ fontSize: 'clamp(22px, 6vw, 26px)' }}>
-          Explore <em>nearby</em>
-        </h1>
-        <p className="home-greeting-sub">Every approved business on NearbyOrders.</p>
-      </section>
-
-      <form
-        role="search"
-        onSubmit={(e) => {
-          e.preventDefault();
-          // Phase 14: committed searches go to the dedicated unified search
-          // screen, which also matches services and products.
-          if (input.trim()) props.onOpenSearch?.(input.trim());
-        }}
-      >
-        <div className="search-bar-v3">
-          <span className="search-hero-icon" style={{ position: 'static', transform: 'none' }} aria-hidden>
-            <ExploreIcon size={18} />
-          </span>
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Search food, services, shops…"
-            aria-label="Search businesses"
-          />
-          <button type="submit" className="search-go" aria-label="Search">
-            <ExploreIcon size={17} />
-          </button>
-        </div>
-      </form>
-
-      {/* Controls: Near You toggle + category chips, visually one control band. */}
-      <section aria-label="Filters" style={{ marginTop: 12 }}>
-        <div className="filter-row">
+    <div className="screen explore-screen">
+      {/* Sticky discovery controls: search commits to unified search; the
+          location pill toggles spatial nearby mode. */}
+      <div className="explore-top">
+        <form
+          role="search"
+          onSubmit={(e) => {
+            e.preventDefault();
+            // Phase 14: committed searches go to the dedicated unified search
+            // screen, which also matches services and products.
+            if (input.trim()) props.onOpenSearch?.(input.trim());
+          }}
+        >
+          <div className="search-bar-v3 explore-search">
+            <span className="search-hero-icon" style={{ position: 'static', transform: 'none' }} aria-hidden>
+              <ExploreIcon size={18} />
+            </span>
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Search this area"
+              aria-label="Search businesses"
+            />
+            <button type="submit" className="search-go" aria-label="Search">
+              <ExploreIcon size={16} />
+            </button>
+          </div>
+        </form>
+        <div className="filter-row explore-controls">
           {mode === 'nearby' ? (
             <button type="button" className="chip chip-active" onClick={disableNearby}>
               <PinIcon size={14} /> Near you ✓
@@ -137,6 +129,34 @@ export function ExploreScreen(props: {
               <PinIcon size={14} /> {locating ? 'Finding you…' : 'Near you'}
             </button>
           )}
+          {mapUsable ? (
+            <div className="view-switch" role="tablist" aria-label="Result view">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={view === 'list'}
+                className={`chip${view === 'list' ? ' chip-active' : ''}`}
+                onClick={() => setView('list')}
+              >
+                List
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={view === 'map'}
+                className={`chip${view === 'map' ? ' chip-active' : ''}`}
+                onClick={() => setView('map')}
+              >
+                Map
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Category band: secondary filters, compact. */}
+      <section aria-label="Category filters" style={{ marginTop: 10 }}>
+        <div className="filter-row">
           {categories.data?.slice(0, 8).map((c) => (
             <button
               key={c.id}
@@ -149,9 +169,9 @@ export function ExploreScreen(props: {
         </div>
       </section>
 
-      {/* Radius control: only meaningful in nearby mode; drives the server query. */}
+      {/* Radius: only meaningful in nearby mode; drives the server query. */}
       {mode === 'nearby' ? (
-        <section aria-label="Search radius" style={{ marginTop: 10 }}>
+        <section aria-label="Search radius" style={{ marginTop: 8 }}>
           <div className="filter-row" role="radiogroup" aria-label="Search radius">
             {RADIUS_OPTIONS_KM.map((km) => (
               <button
@@ -172,105 +192,170 @@ export function ExploreScreen(props: {
         </section>
       ) : null}
 
-      {/* List/map switch — only offered when a map result set exists. */}
-      {mapUsable ? (
-        <div className="view-switch" role="tablist" aria-label="Result view" style={{ display: 'flex', gap: 6, marginTop: 12 }}>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={view === 'list'}
-            className={`chip${view === 'list' ? ' chip-active' : ''}`}
-            onClick={() => setView('list')}
-          >
-            List
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={view === 'map'}
-            className={`chip${view === 'map' ? ' chip-active' : ''}`}
-            onClick={() => setView('map')}
-          >
-            Map
-          </button>
-        </div>
-      ) : null}
-
-      <SectionHeader
-        title={mode === 'nearby' ? 'Near you' : selectedCategory ? (categories.data?.find((c) => c.slug === selectedCategory)?.name ?? 'Results') : query ? 'Search results' : 'All businesses'}
-        action={
-          businesses.loading ? null : (
-            <span className="biz-distance">
-              {results.length} {results.length === 1 ? 'business' : 'businesses'}
-              {mode === 'nearby' ? ` · closest first · within ${radiusKm} km` : ''}
-            </span>
-          )
-        }
-      />
       {locNote ? (
         <p className="hint" role="status">
           {locNote}
         </p>
       ) : null}
 
-      {businesses.loading ? (
-        view === 'map' && mapUsable ? (
-          <p className="hint" role="status" style={{ marginTop: 8 }}>
-            Loading nearby businesses…
-          </p>
-        ) : (
-          <div className="popular-grid" aria-hidden>
-            {Array.from({ length: 4 }, (_, i) => (
-              <div key={i} className="skeleton-card" style={{ padding: 0, overflow: 'hidden' }}>
-                <div className="skeleton" style={{ height: 96, borderRadius: 0 }} />
-                <div style={{ padding: 12 }}>
-                  <div className="skeleton skeleton-line w-60" />
-                  <div className="skeleton skeleton-line w-40" style={{ marginTop: 8 }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        )
-      ) : businesses.error ? (
-        <ErrorState message={businesses.error} onRetry={businesses.reload} />
-      ) : !results.length ? (
-        view === 'map' && mapUsable ? (
-          <div className="map-empty-note" style={{ marginTop: 10 }}>
-            <p className="hint" role="status" style={{ margin: 0 }}>
-              No businesses with map locations in this area yet. Pan the map and use “Search this area”, or switch back to
-              the list.
+      {/* MAP-FIRST: when a spatial result set exists, the map is the hero and
+          results render as a bottom sheet over it. */}
+      {mapUsable && view === 'map' ? (
+        <div className="map-sheet">
+          {businesses.loading ? (
+            <p className="hint" role="status" style={{ marginTop: 8 }}>
+              Loading nearby businesses…
             </p>
-          </div>
-        ) : (
-          <EmptyStateV3
-            icon={<ExploreIcon size={28} />}
-            title={mode === 'nearby' ? 'Nothing nearby yet' : 'Nothing found'}
-            body={
-              mode === 'nearby'
-                ? `No businesses within ${radiusKm} km of you have set a map location yet. Try All businesses instead.`
-                : activeFilters > 0
-                  ? 'Try a different search term or category filter.'
-                  : 'No businesses match yet. Check back soon.'
+          ) : businesses.error ? (
+            <ErrorState message={businesses.error} onRetry={businesses.reload} />
+          ) : !results.length ? (
+            <div className="map-empty-note">
+              <p className="hint" role="status" style={{ margin: 0 }}>
+                No businesses with map locations in this area yet. Pan the map and use “Search this area”, or switch back to
+                the list.
+              </p>
+            </div>
+          ) : (
+            <>
+              <SectionHeader
+                title="Near you"
+                action={
+                  <span className="biz-distance">
+                    {results.length} {results.length === 1 ? 'business' : 'businesses'} · within {radiusKm} km · closest first
+                  </span>
+                }
+              />
+              <ExploreMapView
+                handle={mapHandle}
+                results={results}
+                searchCenter={coords}
+                selectedId={selectedMarker}
+                onSelect={setSelectedMarker}
+                onOpenBusiness={props.onOpenBusiness}
+                onSearchArea={searchThisArea}
+              />
+              <div className="sheet-rows">
+                {results.map((b) => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    className={`biz-row${selectedMarker === b.id ? ' biz-row-selected' : ''}`}
+                    onClick={() => props.onOpenBusiness(b.id)}
+                  >
+                    <span className="biz-row-media">
+                      {b.imageUrl ? (
+                        <img src={b.imageUrl} alt="" loading="lazy" />
+                      ) : (
+                        <span className="pop-card-initial" aria-hidden>
+                          {b.name[0]?.toUpperCase() ?? '?'}
+                        </span>
+                      )}
+                    </span>
+                    <span className="biz-row-main">
+                      <span className="biz-row-name">{b.name}</span>
+                      <span className="biz-row-meta">
+                        <RatingChip average={b.averageRating} count={b.reviewCount ?? undefined} />
+                        {b.categories[0] ? <span className="biz-row-cat">{b.categories[0].name}</span> : null}
+                        {b.distanceKm !== undefined && b.distanceKm !== null ? (
+                          <span className="biz-distance">{b.distanceKm.toFixed(1)} km</span>
+                        ) : null}
+                        {b.isOpenNow !== undefined ? (
+                          <span className={`biz-open${b.isOpenNow ? '' : ' biz-open-closed'}`}>{b.isOpenNow ? 'Open' : 'Closed'}</span>
+                        ) : null}
+                      </span>
+                    </span>
+                    <span className="biz-row-chevron" aria-hidden>
+                      ›
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      ) : null}
+
+      {/* LIST VIEW: full-height editorial rows (and the default for non-nearby). */}
+      {!(mapUsable && view === 'map') ? (
+        <>
+          <SectionHeader
+            title={mode === 'nearby' ? 'Near you' : selectedCategory ? (categories.data?.find((c) => c.slug === selectedCategory)?.name ?? 'Results') : query ? 'Search results' : 'All businesses'}
+            action={
+              businesses.loading ? null : (
+                <span className="biz-distance">
+                  {results.length} {results.length === 1 ? 'business' : 'businesses'}
+                  {mode === 'nearby' ? ` · closest first · within ${radiusKm} km` : ''}
+                </span>
+              )
             }
           />
-        )
-      ) : view === 'map' && mapUsable ? (
-        <ExploreMapView
-          handle={mapHandle}
-          results={results}
-          searchCenter={coords}
-          selectedId={selectedMarker}
-          onSelect={setSelectedMarker}
-          onOpenBusiness={props.onOpenBusiness}
-          onSearchArea={searchThisArea}
-        />
-      ) : (
-        <div className="popular-grid">
-          {results.map((b) => (
-            <PopularBusinessCard key={b.id} business={b} onOpen={() => props.onOpenBusiness(b.id)} />
-          ))}
-        </div>
-      )}
+          {businesses.loading ? (
+            <div className="biz-rows" aria-hidden>
+              {Array.from({ length: 4 }, (_, i) => (
+                <div key={i} className="biz-row" style={{ pointerEvents: 'none' }}>
+                  <span className="biz-row-media skeleton" />
+                  <span className="biz-row-main">
+                    <div className="skeleton skeleton-line w-60" />
+                    <div className="skeleton skeleton-line w-40" style={{ marginTop: 6 }} />
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : businesses.error ? (
+            <ErrorState message={businesses.error} onRetry={businesses.reload} />
+          ) : !results.length ? (
+            <EmptyStateV3
+              icon={<ExploreIcon size={28} />}
+              title={mode === 'nearby' ? 'Nothing nearby yet' : 'Nothing found'}
+              body={
+                mode === 'nearby'
+                  ? `No businesses within ${radiusKm} km of you have set a map location yet. Try All businesses instead.`
+                  : activeFilters > 0
+                    ? 'Try a different search term or category filter.'
+                    : 'No businesses match yet. Check back soon.'
+              }
+            />
+          ) : (
+            <div className="biz-rows">
+              {results.map((b) => (
+                <button
+                  key={b.id}
+                  type="button"
+                  className="biz-row"
+                  onClick={() => props.onOpenBusiness(b.id)}
+                >
+                  <span className="biz-row-media">
+                    {b.imageUrl ? (
+                      <img src={b.imageUrl} alt="" loading="lazy" />
+                    ) : (
+                      <span className="pop-card-initial" aria-hidden>
+                        {b.name[0]?.toUpperCase() ?? '?'}
+                      </span>
+                    )}
+                  </span>
+                  <span className="biz-row-main">
+                    <span className="biz-row-name">{b.name}</span>
+                    <span className="biz-row-meta">
+                      <RatingChip average={b.averageRating} count={b.reviewCount ?? undefined} />
+                      {b.categories[0] ? <span className="biz-row-cat">{b.categories[0].name}</span> : null}
+                      {b.distanceKm !== undefined && b.distanceKm !== null ? (
+                        <span className="biz-distance">{b.distanceKm.toFixed(1)} km</span>
+                      ) : null}
+                      {b.isOpenNow !== undefined ? (
+                        <span className={`biz-open${b.isOpenNow ? '' : ' biz-open-closed'}`}>{b.isOpenNow ? 'Open' : 'Closed'}</span>
+                      ) : null}
+                    </span>
+                    {b.description ? <span className="biz-row-desc">{b.description}</span> : null}
+                  </span>
+                  <span className="biz-row-chevron" aria-hidden>
+                    ›
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      ) : null}
     </div>
   );
 }

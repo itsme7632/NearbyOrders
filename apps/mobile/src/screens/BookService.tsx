@@ -156,9 +156,11 @@ export function BookServiceScreen(props: {
   }
 
   const place = [b.locality, b.city].filter(Boolean).join(', ');
+  const stepIndex = step === 'service' ? 0 : step === 'time' ? 1 : 2;
+  const stepNames = ['Service', 'Date & time', 'Review'];
 
   return (
-    <div className="screen">
+    <div className="screen booking-screen">
       <button className="back-link" onClick={step === 'summary' ? backToSlots : props.onBack}>
         ‹ {step === 'summary' ? 'Back to times' : 'Back'}
       </button>
@@ -170,6 +172,21 @@ export function BookServiceScreen(props: {
           {place ? <span className="booking-head-place"> · {place}</span> : null}
         </p>
       </header>
+      {step !== 'success' ? (
+        <div className="book-steps" aria-label={`Step ${stepIndex + 1} of ${stepNames.length}`} role="list">
+          {stepNames.map((name, i) => (
+            <span
+              key={name}
+              role="listitem"
+              className={`book-step${i === stepIndex ? ' book-step-now' : ''}${i < stepIndex ? ' book-step-done' : ''}`}
+            >
+              <span className="book-step-dot" aria-hidden>{i < stepIndex ? '✓' : i + 1}</span>
+              <span className="book-step-name">{name}</span>
+              <span className="book-step-bar" aria-hidden />
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       {/* Step 1 — service selection */}
       {step === 'service' ? (

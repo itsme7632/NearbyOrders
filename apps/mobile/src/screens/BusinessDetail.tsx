@@ -85,9 +85,10 @@ export function BusinessDetailScreen(props: {
         ‹ Back
       </button>
 
-      {/* Hero: large media with the logo chip overlapping its bottom edge. */}
-      <div className="detail-hero-v3">
-        <div className="detail-hero-media-v3" role="img" aria-label={b.imageUrl ? `${b.name} photo` : undefined}>
+      {/* Full-bleed hero: media behind, gradient scrim, identity overlaid —
+          then the floating action bar. Back control floats on the media. */}
+      <div className="biz-hero-full">
+        <div className="biz-hero-media" role="img" aria-label={b.imageUrl ? `${b.name} photo` : undefined}>
           {b.imageUrl ? (
             <img src={b.imageUrl} alt={`${b.name} photo`} />
           ) : (
@@ -95,55 +96,57 @@ export function BusinessDetailScreen(props: {
               {b.name[0]?.toUpperCase() ?? '?'}
             </span>
           )}
+          <div className="biz-hero-scrim" aria-hidden />
         </div>
-        <div className="detail-logo" aria-hidden>
-          {b.name[0]?.toUpperCase() ?? '?'}
-        </div>
+        <button className="back-float" onClick={props.onBack} aria-label="Back">
+          ‹
+        </button>
+
+        <header className="biz-hero-overlay">
+          <div className="biz-hero-overlay-badges">
+            <VerifiedBadge verified={b.isVerified} />
+            {b.isOpenNow !== undefined ? <OpenBadge open={b.isOpenNow} /> : null}
+            {closingNote && b.isOpenNow ? <span className="biz-hero-close">{closingNote}</span> : null}
+          </div>
+          <h1 className="biz-hero-name">{b.name}</h1>
+          <div className="biz-hero-meta">
+            <RatingLine businessId={b.id} fallbackAverage={b.averageRating} fallbackCount={b.reviewCount} />
+            <span className="biz-hero-meta-item">
+              {b.categories.map((c) => c.name).join(' • ') || 'Local business'}
+            </span>
+            {distanceLabel ? <span className="biz-hero-meta-item">📍 {distanceLabel} away</span> : place ? <span className="biz-hero-meta-item">📍 {place}</span> : null}
+          </div>
+        </header>
       </div>
 
-      <header className="biz-hero">
-        <div className="detail-title-row">
-          <h1 className="biz-hero-name">{b.name}</h1>
-        </div>
-        <div className="biz-hero-badges">
-          <VerifiedBadge verified={b.isVerified} />
-          {b.isOpenNow !== undefined ? <OpenBadge open={b.isOpenNow} /> : null}
-          {closingNote && b.isOpenNow ? <span className="detail-meta-line">· {closingNote}</span> : null}
-        </div>
-        <div className="detail-meta-lines">
-          <RatingLine businessId={b.id} fallbackAverage={b.averageRating} fallbackCount={b.reviewCount} />
-          <span className="detail-meta-line">
-            {b.categories.map((c) => c.name).join(' • ') || 'Local business'}
-            {distanceLabel ? (
-              <>
-                <span className="sep">|</span>📍 {distanceLabel} away
-              </>
-            ) : place ? (
-              <>
-                <span className="sep">|</span>📍 {place}
-              </>
-            ) : null}
-          </span>
-        </div>
-
-        {/* Quick actions: Call / Directions / Share. */}
-        <div className="quick-actions-v3">
-          {b.phone ? (
-            <a className="quick-circle" href={`tel:${b.phone.replace(/[^\d+]/g, '')}`}>
-              <span className="qc-icon" aria-hidden>📞</span>
-              Call
-            </a>
-          ) : null}
-          {/* Directions only when the business has usable location data. */}
-          {directions ? (
-            <a className="quick-circle" href={directions} target="_blank" rel="noreferrer">
-              <span className="qc-icon" aria-hidden>📍</span>
-              Directions
-            </a>
-          ) : null}
-          <ShareButton name={b.name} />
-        </div>
-      </header>
+      {/* Primary actions: Book / Order lead, utility actions follow. */}
+      <div className="biz-action-bar">
+        {props.onBook && bookable ? (
+          <button type="button" className="biz-action biz-action-primary" onClick={() => props.onBook?.()}>
+            Book a service
+          </button>
+        ) : null}
+        {props.canOrder && b.products?.length ? (
+          <button
+            type="button"
+            className={`biz-action${props.onBook && bookable ? '' : ' biz-action-primary'}`}
+            onClick={() => setTab('products')}
+          >
+            Order products
+          </button>
+        ) : null}
+        {b.phone ? (
+          <a className="biz-action biz-action-ghost" href={`tel:${b.phone.replace(/[^\d+]/g, '')}`}>
+            Call
+          </a>
+        ) : null}
+        {directions ? (
+          <a className="biz-action biz-action-ghost" href={directions} target="_blank" rel="noreferrer">
+            Directions
+          </a>
+        ) : null}
+        <ShareButton name={b.name} />
+      </div>
 
       {/* Primary content navigation: Reviews is a first-class tab. */}
       <div className="tab-strip" role="tablist" aria-label="Business sections">
@@ -371,8 +374,7 @@ function ShareButton(props: { name: string }) {
     }
   };
   return (
-    <button type="button" className="quick-circle" onClick={() => void share()}>
-      <span className="qc-icon" aria-hidden>🔗</span>
+    <button type="button" className="biz-action biz-action-ghost" onClick={() => void share()}>
       {shared ? 'Copied' : 'Share'}
     </button>
   );

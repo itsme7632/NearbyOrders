@@ -382,26 +382,30 @@ function AccountHub(props: {
 
   return (
     <div className="screen">
-      {/* v4 identity header: the person, clearly. Business management is a
-          distinct section below — never the identity itself. */}
-      <div className="card profile-hero-v4">
-        <div className="avatar-v4" aria-hidden>
-          {initial}
-        </div>
-        <div className="profile-hero-text">
-          <h2 className="profile-hero-name">{displayName || props.session.user.email}</h2>
-          <p className="profile-hero-email">{props.session.user.email}</p>
-          <span className="pill">{isOwner ? 'Business owner' : isAdmin ? 'Administrator' : 'Customer'}</span>
-        </div>
-        <Button sm variant="secondary" className="profile-edit-btn" onClick={props.onEditProfile}>
-          Edit profile
-        </Button>
-        {isOwner ? (
-          <button type="button" className="manage-cta" onClick={props.onOwnerDashboard}>
-            <StoreIcon size={16} />
-            Manage my business
+      {/* Identity band: the person, clearly, on the brand surface. Business
+          management is a distinct section below — never the identity. */}
+      <div className="me-band">
+        <div className="me-band-row">
+          <div className="avatar-v4" aria-hidden>
+            {initial}
+          </div>
+          <div className="profile-hero-text">
+            <h2 className="profile-hero-name">{displayName || props.session.user.email}</h2>
+            <p className="profile-hero-email">{props.session.user.email}</p>
+          </div>
+          <button type="button" className="btn btn-sm me-edit-btn" onClick={props.onEditProfile}>
+            Edit profile
           </button>
-        ) : null}
+        </div>
+        <div className="me-band-foot">
+          <span className="me-role">{isOwner ? 'Business owner' : isAdmin ? 'Administrator' : 'Customer'}</span>
+          {isOwner ? (
+            <button type="button" className="manage-cta" onClick={props.onOwnerDashboard}>
+              <StoreIcon size={15} />
+              Manage my business
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <HubSection label="Account">

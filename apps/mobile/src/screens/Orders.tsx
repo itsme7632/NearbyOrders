@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   getMyOrder,
   listMyOrders,
@@ -57,8 +57,16 @@ const itemCount = (o: Order) => o.items.reduce((sum, i) => sum + i.quantity, 0);
 const formatWhen = (iso: string) =>
   new Date(iso).toLocaleString('en-PK', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 
+/** In-flight statuses surface at the top under "Active"; the rest is history. */
+const isActiveStatus = (s: OrderStatus) => !['COMPLETED', 'CANCELLED', 'REJECTED'].includes(s);
+
 export function OrdersScreen(props: { onOpenOrder: (id: string) => void; onBrowse: () => void }) {
   const orders = useAsyncData<Order[]>(() => listMyOrders(), []);
+  const [view, setView] = useState<'active' | 'all'>('active');
+
+  const all = orders.data ?? [];
+  const activeCount = all.filter((o) => isActiveStatus(o.status)).length;
+  const visible = view === 'active' ? all.filter((o) => isActiveStatus(o.status)) : all;
 
   return (
     <div className="screen">
@@ -77,36 +85,117 @@ export function OrdersScreen(props: { onOpenOrder: (id: string) => void; onBrows
           action={<Button onClick={props.onBrowse}>Find businesses</Button>}
         />
       ) : (
-        <ul className="order-list" style={{ display: 'grid', gap: 10 }}>
-          {orders.data.map((o) => {
-            const label = orderLabel(o.status);
-            return (
-              <li key={o.id}>
-                <button className="order-card-v3" onClick={() => props.onOpenOrder(o.id)}>
-                  <span className="oc-top">
-                    <OrderThumb name={o.business.name} imageUrl={o.business.imageUrl} />
-                    <span className="oc-main">
-                      <span className="oc-name">{o.business.name}</span>
-                      <span className="oc-sub">
-                        {orderNumber(o)} · {itemCount(o)} item{itemCount(o) === 1 ? '' : 's'}
-                      </span>
-                    </span>
-                    <span className="oc-side">
-                      <Money minor={o.totalMinor ?? o.subtotalMinor} currency={o.currency} />
-                      <span className={`badge ${label.cls}`}>{label.text}</span>
-                    </span>
-                  </span>
-                  <span className="oc-bottom">
-                    <span className="oc-when">Placed {formatWhen(o.createdAt)}</span>
-                    <span className="oc-when" aria-hidden>›</span>
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        <>
+          {/* Status scopes: Active is the default lens; All is the archive. */}
+          <div className="seg-tabs" role="tablist" aria-label="Order view">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'active'}
+              className={`seg-tab${view === 'active' ? ' seg-tab-active' : ''}`}
+              onClick={() => setView('active')}
+            >
+              Active{activeCount > 0 ? <span className="seg-count">{activeCount}</span> : null}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={view === 'all'}
+              className={`seg-tab${view === 'all' ? ' seg-tab-active' : ''}`}
+              onClick={() => setView('all')}
+            >
+              All
+            </button>
+          </div>
+
+          {!visible.length ? (
+            <EmptyState
+              icon={<OrdersIcon size={28} />}
+              title="No active orders"
+              body="Orders in progress will appear here until they are completed."
+            />
+          ) : (
+            <ul className="order-list">
+              {visible.map((o) => (
+                <li key={o.id}>
+                  <OrderStatusCard order={o} onOpen={() => props.onOpenOrder(o.id)} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </div>
+  );
+}
+
+/**
+ * Order card with a meaningful status strip: business identity, items and
+ * total on one row, then the status progression dots underneath — the state
+ * the customer cares about, always visible without opening the order.
+ */
+function OrderStatusCard(props: { order: Order; onOpen: () => void }) {
+  const o = props.order;
+  const label = orderLabel(o.status);
+  return (
+    <button type="button" className="order-card-v3" onClick={props.onOpen}>
+      <span className="oc-top">
+        <OrderThumb name={o.business.name} imageUrl={o.business.imageUrl} />
+        <span className="oc-main">
+          <span className="oc-name">{o.business.name}</span>
+          <span className="oc-sub">
+            {orderNumber(o)} · {itemCount(o)} item{itemCount(o) === 1 ? '' : 's'}
+          </span>
+        </span>
+        <span className="oc-side">
+          <Money minor={o.totalMinor ?? o.subtotalMinor} currency={o.currency} />
+        </span>
+      </span>
+      <span className="oc-track">
+        <OrderTrack status={o.status} />
+        <span className={`badge ${label.cls}`}>{label.text}</span>
+      </span>
+      <span className="oc-bottom">
+        <span className="oc-when">Placed {formatWhen(o.createdAt)}</span>
+        <span className="oc-when" aria-hidden>
+          ›
+        </span>
+      </span>
+    </button>
+  );
+}
+
+const TRACK_STEPS: { key: OrderStatus; label: string }[] = [
+  { key: 'PENDING', label: 'Placed' },
+  { key: 'ACCEPTED', label: 'Accepted' },
+  { key: 'PREPARING', label: 'Preparing' },
+  { key: 'READY', label: 'Ready' },
+  { key: 'COMPLETED', label: 'Completed' },
+];
+
+/**
+ * Status progression for order cards and detail. Terminal negative states
+ * (cancelled/rejected) show a simple declined mark instead of a fake
+ * progression — never invents a step that did not happen.
+ */
+export function OrderTrack(props: { status: OrderStatus; compact?: boolean }) {
+  if (props.status === 'CANCELLED' || props.status === 'REJECTED') {
+    return <span className={`track track-halted${props.compact ? ' track-compact' : ''}`} aria-label="Order cancelled" />;
+  }
+  const currentIdx = TRACK_STEPS.findIndex((s) => s.key === props.status);
+  return (
+    <span
+      className={`track${props.compact ? ' track-compact' : ''}`}
+      role="img"
+      aria-label={`Order progress: ${TRACK_STEPS[Math.max(currentIdx, 0)].label}`}
+    >
+      {TRACK_STEPS.map((s, i) => (
+        <span
+          key={s.key}
+          className={`track-dot${i <= currentIdx ? ' track-done' : ''}${i === currentIdx ? ' track-now' : ''}`}
+        />
+      ))}
+    </span>
   );
 }
 
@@ -131,9 +220,13 @@ export function OrderDetailScreen(props: { orderId: string; onBack: () => void }
       <button className="back-link" onClick={props.onBack}>
         ‹ Back
       </button>
+      {/* Status hero: the state first, the identity right under it. */}
+      <section className="order-status-hero" aria-label="Order status">
+        <span className={`badge ${label.cls}`}>{label.text}</span>
+        <OrderTrack status={o.status} />
+      </section>
       <header className="owner-head">
         <h1>Order {orderNumber(o)}</h1>
-        <span className={`badge ${label.cls}`}>{label.text}</span>
       </header>
       <p className="order-meta">
         {o.business.name} · {formatWhen(o.createdAt)}

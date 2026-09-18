@@ -26,6 +26,19 @@ type Section =
   | 'payments'
   | 'audit';
 
+const SECTION_ICONS: Record<Section, string> = {
+  dashboard: '▦',
+  users: '◉',
+  businesses: '⌂',
+  orders: '▣',
+  bookings: '▤',
+  reviews: '★',
+  categories: '⌗',
+  subscriptions: '⟳',
+  payments: '₨',
+  audit: '☰',
+};
+
 const SECTIONS: { key: Section; label: string }[] = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'users', label: 'Users' },
@@ -145,12 +158,15 @@ function Dashboard() {
   return (
     <>
       <div className="stat-grid">
-        {cards.map((c) => (
-          <div key={c.label} className="stat-card">
-            <span className="stat-num">{c.value}</span>
-            <span className="stat-label">{c.label}</span>
-          </div>
-        ))}
+        {cards.map((c) => {
+          const attention = /Pending|Hidden|Suspended/.test(c.label) && Number(c.value) > 0;
+          return (
+            <div key={c.label} className={`stat-card${attention ? ' stat-attention' : ''}`}>
+              <span className="stat-num">{c.value}</span>
+              <span className="stat-label">{c.label}</span>
+            </div>
+          );
+        })}
       </div>
       <div className="panel">
         <h2>Push fleet by platform</h2>
@@ -986,6 +1002,9 @@ function AdminApp() {
         <nav aria-label="Admin sections">
           {SECTIONS.map((s) => (
             <button key={s.key} className={`admin-nav-item${section === s.key ? ' active' : ''}`} onClick={() => setSection(s.key)}>
+              <span className="admin-nav-glyph" aria-hidden>
+                {SECTION_ICONS[s.key]}
+              </span>
               {s.label}
             </button>
           ))}

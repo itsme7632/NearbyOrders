@@ -398,6 +398,7 @@ export function App() {
               {businessMode ? 'Overview' : 'My business'}
             </button>
           ) : null}
+          <span className="header-spacer" aria-hidden />
           {session ? (
             <button
               type="button"
@@ -405,7 +406,7 @@ export function App() {
               onClick={() => push('/notifications')}
               aria-label={unread.count > 0 ? `Notifications, ${unread.count} unread` : 'Notifications'}
             >
-              <BellIcon size={22} />
+              <BellIcon size={21} />
               {unread.count > 0 ? <span className="bell-badge">{unread.count > 99 ? '99+' : unread.count}</span> : null}
             </button>
           ) : null}
@@ -429,7 +430,7 @@ export function App() {
                     push('/');
                   }}
                 >
-                  <IconCmp size={22} />
+                  <IconCmp size={21} />
                   <span>{t}</span>
                 </button>
               );
@@ -451,7 +452,7 @@ export function App() {
                     push('/');
                   }}
                 >
-                  <IconCmp size={22} />
+                  <IconCmp size={21} />
                   <span>{t}</span>
                 </button>
               );

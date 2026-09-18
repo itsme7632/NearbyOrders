@@ -32,24 +32,32 @@ export function BookingStatusBadge(props: { status: BookingStatus }) {
   return <span className={`booking-status booking-status-${props.status.toLowerCase()}`}>{STATUS_LABEL[props.status]}</span>;
 }
 
+/**
+ * Booking list row with a real date block: day-of-month + month stay visually
+ * anchored left so scanning "when is my next booking" is instant. Status sits
+ * as a compact badge on the identity line, not as a full-width card.
+ */
 function BookingCard(props: { booking: Booking; onOpen: () => void }) {
   const b = props.booking;
+  const d = new Date(`${b.bookingDate}T00:00:00`);
+  const dayNum = d.getDate();
+  const month = d.toLocaleDateString('en-PK', { month: 'short' });
   return (
-    <button type="button" className="order-card-v3" onClick={props.onOpen}>
-      <span className="oc-top">
-        <BookingThumb name={b.businessName} imageUrl={b.businessImageUrl} />
-        <span className="oc-main">
-          <span className="oc-name">{b.businessName}</span>
-          <span className="oc-sub">{b.serviceName ?? 'Booking'}</span>
-          <span className="oc-sub booking-card-when">
-            {longDateLabel(b.bookingDate)} · {formatSlotTime(b.startTime)}
-            {b.endTime ? ` – ${formatSlotTime(b.endTime)}` : ''}
-          </span>
+    <button type="button" className="bk-row" onClick={props.onOpen}>
+      <span className="bk-date" aria-hidden>
+        <span className="bk-date-num">{dayNum}</span>
+        <span className="bk-date-month">{month}</span>
+      </span>
+      <span className="bk-main">
+        <span className="bk-service">{b.serviceName ?? 'Booking'}</span>
+        <span className="bk-biz">
+          <BookingThumb name={b.businessName} imageUrl={b.businessImageUrl} /> {b.businessName}
         </span>
-        <span className="oc-side">
-          {b.priceMinor !== null ? <Money minor={b.priceMinor} currency={b.currency} /> : null}
-          <BookingStatusBadge status={b.status} />
-        </span>
+        <span className="bk-when">{formatSlotTime(b.startTime)}{b.endTime ? ` – ${formatSlotTime(b.endTime)}` : ''}</span>
+      </span>
+      <span className="bk-side">
+        {b.priceMinor !== null ? <span className="bk-price"><Money minor={b.priceMinor} currency={b.currency} /></span> : null}
+        <BookingStatusBadge status={b.status} />
       </span>
     </button>
   );
@@ -107,6 +115,10 @@ export function BookingsScreen(props: { onOpenBooking: (id: string) => void; onE
 
   return (
     <div className="screen">
+      <header className="owner-head">
+        <h1>My bookings</h1>
+      </header>
+
       {groups.upcoming.length ? (
         <section aria-label="Upcoming bookings">
           <div className="section-head">
@@ -183,6 +195,16 @@ export function BookingDetailScreen(props: { bookingId: string; onBack: () => vo
       </button>
 
       <div className="card booking-detail">
+        <div className="booking-detail-when" aria-hidden>
+          <span className="bk-date">
+            <span className="bk-date-num">{new Date(`${data.bookingDate}T00:00:00`).getDate()}</span>
+            <span className="bk-date-month">{new Date(`${data.bookingDate}T00:00:00`).toLocaleDateString('en-PK', { month: 'short' })}</span>
+          </span>
+          <span className="booking-detail-when-main">
+            <span className="booking-detail-when-time">{longDateLabel(data.bookingDate)}</span>
+            <span className="booking-detail-when-day">{data.serviceName ?? 'Booking'}</span>
+          </span>
+        </div>
         <div className="booking-detail-head">
           <h1>{data.businessName}</h1>
           <BookingStatusBadge status={data.status} />

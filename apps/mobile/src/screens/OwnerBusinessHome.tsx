@@ -52,13 +52,13 @@ export function OwnerBusinessHome(props: {
       <header className="owner-head">
         <h1>Business Overview</h1>
       </header>
-      {/* Selected business identity: image, name, place, switcher. */}
+      {/* Identity band: the operating business, its state, and the switcher. */}
       <section aria-label="Selected business" style={{ marginTop: 4 }}>
-        <div className="owner-biz-card" style={{ boxShadow: 'var(--shadow)', borderRadius: 'var(--radius-lg)' }}>
+        <div className="biz-identity">
           <OrderThumb name={active.name} imageUrl={active.imageUrl} />
-          <span className="oc-main">
-            <span className="oc-name">{active.name}</span>
-            <span className="oc-sub">{place || active.address}</span>
+          <span className="biz-identity-main">
+            <span className="biz-identity-name">{active.name}</span>
+            <span className="biz-identity-sub">{place || active.address}</span>
           </span>
           <span className={`badge ${active.status === 'APPROVED' ? 'badge-open' : 'badge-closed'}`}>
             {active.status ?? 'PENDING'}
@@ -88,20 +88,17 @@ export function OwnerBusinessHome(props: {
         onOpenReviews={() => props.onOpen(`${base}/reviews`)}
       />
 
-      {/* Quick actions. */}
-      <section aria-label="Quick actions">
-        <div className="section-head-v3">
-          <h2>Quick actions</h2>
-        </div>
-        <div className="quick-grid">
-          <QuickTile icon={<OrdersIcon size={20} />} label="Orders" onClick={() => props.onOpen(`${base}/orders`)} />
-          <QuickTile icon={<BookingsIcon size={20} />} label="Bookings" onClick={() => props.onOpen(`${base}/bookings`)} />
-          <QuickTile icon={<StoreIcon size={20} />} label="Services" onClick={() => props.onOpen(`${base}/services`)} />
-          <QuickTile icon={<StoreIcon size={20} />} label="Products" onClick={() => props.onOpen(`${base}/products`)} />
+      {/* Manage band: dense icon rail into the catalog + operations. */}
+      <section aria-label="Quick actions" style={{ marginTop: 14 }}>
+        <div className="manage-rail">
+          <QuickTile icon={<OrdersIcon size={19} />} label="Orders" onClick={() => props.onOpen(`${base}/orders`)} />
+          <QuickTile icon={<BookingsIcon size={19} />} label="Bookings" onClick={() => props.onOpen(`${base}/bookings`)} />
+          <QuickTile icon={<StoreIcon size={19} />} label="Services" onClick={() => props.onOpen(`${base}/services`)} />
+          <QuickTile icon={<StoreIcon size={19} />} label="Products" onClick={() => props.onOpen(`${base}/products`)} />
         </div>
       </section>
 
-      <h2 className="hub-manage-title">Manage my business</h2>
+      <h2 className="hub-manage-title">Manage</h2>
       <OwnerHubSection label="Business">
         <OwnerHubRow icon={<StoreIcon size={18} />} title="Business Profile" subtitle="Name, description, contact, categories" onClick={() => props.onOpen(`${base}/profile`)} />
         <OwnerHubRow icon={<OrdersIcon size={18} />} title="Business Hours" subtitle="Opening times and closed days" onClick={() => props.onOpen(`${base}/hours`)} />
