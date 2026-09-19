@@ -64,6 +64,9 @@ export function BusinessDetailScreen(props: {
   const distanceLabel =
     b.distanceKm !== undefined && b.distanceKm !== null && hasCoordinates(b) ? formatDistanceKm(b.distanceKm) : null;
   const directions = directionsUrl(b);
+  // The street address surfaces as text only when the map context card (which
+  // already prints it) is absent — the address never appears twice on screen.
+  const infoAddress = b.address && !hasCoordinates(b) ? b.address : null;
   const closings = b.hours?.length
     ? b.hours
         .filter((h) => !h.isClosed && h.closesAt)
@@ -83,10 +86,6 @@ export function BusinessDetailScreen(props: {
 
   return (
     <div className="screen">
-      <button className="back-link" onClick={props.onBack}>
-        ‹ Back
-      </button>
-
       {/* Full-bleed hero: media behind, gradient scrim, identity overlaid —
           then the floating action bar. Back control floats on the media. */}
       <div className="biz-hero-full">
@@ -169,16 +168,47 @@ export function BusinessDetailScreen(props: {
       {activeTab === 'overview' ? (
         <>
           {b.description ? (
-            <section className="card" aria-label="About">
-              <h2>About</h2>
-              <p className="biz-hero-desc" style={{ margin: 0 }}>
-                {b.description}
-              </p>
+            <section className="detail-section" aria-label="About">
+              <h2 className="detail-section-title">About</h2>
+              <p className="detail-section-text">{b.description}</p>
+            </section>
+          ) : null}
+          {infoAddress || b.phone || b.email ? (
+            <section className="detail-section" aria-label="Business information">
+              <h2 className="detail-section-title">Information</h2>
+              <dl className="info-rows">
+                {infoAddress ? (
+                  <div className="info-row">
+                    <dt>Address</dt>
+                    <dd>{infoAddress}</dd>
+                  </div>
+                ) : null}
+                {b.phone ? (
+                  <div className="info-row">
+                    <dt>Phone</dt>
+                    <dd>
+                      <a className="info-row-link" href={`tel:${b.phone.replace(/[^\d+]/g, '')}`}>
+                        {b.phone}
+                      </a>
+                    </dd>
+                  </div>
+                ) : null}
+                {b.email ? (
+                  <div className="info-row">
+                    <dt>Email</dt>
+                    <dd>
+                      <a className="info-row-link" href={`mailto:${b.email}`}>
+                        {b.email}
+                      </a>
+                    </dd>
+                  </div>
+                ) : null}
+              </dl>
             </section>
           ) : null}
           {b.hours?.length ? (
-            <section className="card" aria-label="Opening hours">
-              <h2>Opening hours</h2>
+            <section className="detail-section" aria-label="Opening hours">
+              <h2 className="detail-section-title">Opening hours</h2>
               <ul className="hours-list">
                 {[1, 2, 3, 4, 5, 6, 0].map((day) => {
                   const h = b.hours!.find((x) => x.dayOfWeek === day);
@@ -194,8 +224,8 @@ export function BusinessDetailScreen(props: {
             </section>
           ) : null}
           {b.services?.length ? (
-            <section className="card" aria-label="Top services" style={{ paddingBottom: 8 }}>
-              <h2>Popular services</h2>
+            <section className="detail-section" aria-label="Top services">
+              <h2 className="detail-section-title">Popular services</h2>
               <ServicePreviewList
                 services={b.services.slice(0, 3)}
                 onBook={props.onBook}
@@ -209,34 +239,33 @@ export function BusinessDetailScreen(props: {
           ) : null}
           {hasCoordinates(b) ? <BusinessMapContext business={b} placeLabel={place} /> : null}
           {props.onBook && bookable ? (
-            <Button full onClick={() => props.onBook?.()}>
-              Book this service
-            </Button>
+            <div className="detail-cta">
+              <Button full onClick={() => props.onBook?.()}>
+                Book this service
+              </Button>
+            </div>
           ) : null}
         </>
       ) : null}
 
       {activeTab === 'services' && b.services?.length ? (
-        <section className="card" aria-label="Services">
-          <h2>Services</h2>
-          <div className="svc-list">
+        <section className="detail-section detail-section-tab" aria-label="Services">
+          <div className="svc-rows">
             {b.services.map((s) => (
-              <div key={s.id} className="svc-card">
-                <div className="svc-card-row">
-                  <div className="svc-main">
-                    <div className="item-row">
-                      <span className="item-name">{s.name}</span>
-                      <Money minor={s.priceMinor} currency={s.currency} />
-                    </div>
-                    {s.description ? <p className="item-desc">{s.description}</p> : null}
-                    <div className="svc-tags">
-                      {s.durationMinutes ? <span className="pill">{s.durationMinutes} min</span> : null}
-                      {props.onBook && s.isActive && s.durationMinutes ? (
-                        <button type="button" className="pill pill-action" onClick={() => props.onBook?.(s.id)}>
-                          Book
-                        </button>
-                      ) : null}
-                    </div>
+              <div key={s.id} className="svc-row">
+                <div className="svc-main">
+                  <div className="item-row">
+                    <span className="item-name">{s.name}</span>
+                    <Money minor={s.priceMinor} currency={s.currency} />
+                  </div>
+                  {s.description ? <p className="item-desc">{s.description}</p> : null}
+                  <div className="svc-tags">
+                    {s.durationMinutes ? <span className="pill">{s.durationMinutes} min</span> : null}
+                    {props.onBook && s.isActive && s.durationMinutes ? (
+                      <button type="button" className="pill pill-action" onClick={() => props.onBook?.(s.id)}>
+                        Book
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -255,8 +284,7 @@ export function BusinessDetailScreen(props: {
       ) : null}
 
       {activeTab === 'products' && b.products?.length ? (
-        <section className="card" aria-label="Products">
-          <h2>Products</h2>
+        <section className="detail-section detail-section-tab" aria-label="Products">
           {cartNotice ? (
             <div className="cart-notice" role="status">
               <span>{cartNotice}</span>
@@ -284,36 +312,34 @@ export function BusinessDetailScreen(props: {
               </div>
             </div>
           ) : null}
-          <div className="svc-list">
+          <div className="svc-rows">
             {b.products.map((p) => (
-              <div key={p.id} className="svc-card">
-                <div className="svc-card-row">
-                  {p.imageUrl ? (
-                    <img className="svc-thumb" src={p.imageUrl} alt="" loading="lazy" />
-                  ) : (
-                    <span className="svc-thumb pop-card-initial" aria-hidden>
-                      {p.name[0]?.toUpperCase() ?? '?'}
-                    </span>
-                  )}
-                  <div className="svc-main">
-                    <div className="item-row">
-                      <span className="item-name">{p.name}</span>
-                      <Money minor={p.priceMinor} currency={p.currency} />
-                    </div>
-                    {p.description ? <p className="item-desc">{p.description}</p> : null}
-                    {props.canOrder ? (
-                      <div className="svc-tags">
-                        <button
-                          type="button"
-                          className="pill pill-action"
-                          onClick={() => handleAdd(p)}
-                          aria-label={`Add ${p.name} to cart`}
-                        >
-                          + Add
-                        </button>
-                      </div>
-                    ) : null}
+              <div key={p.id} className="svc-row">
+                {p.imageUrl ? (
+                  <img className="svc-thumb" src={p.imageUrl} alt="" loading="lazy" />
+                ) : (
+                  <span className="svc-thumb pop-card-initial" aria-hidden>
+                    {p.name[0]?.toUpperCase() ?? '?'}
+                  </span>
+                )}
+                <div className="svc-main">
+                  <div className="item-row">
+                    <span className="item-name">{p.name}</span>
+                    <Money minor={p.priceMinor} currency={p.currency} />
                   </div>
+                  {p.description ? <p className="item-desc">{p.description}</p> : null}
+                  {props.canOrder ? (
+                    <div className="svc-tags">
+                      <button
+                        type="button"
+                        className="pill pill-action"
+                        onClick={() => handleAdd(p)}
+                        aria-label={`Add ${p.name} to cart`}
+                      >
+                        + Add
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             ))}
@@ -333,9 +359,8 @@ export function BusinessDetailScreen(props: {
       {activeTab === 'reviews' ? <ReviewsTab businessId={b.id} /> : null}
 
       {activeTab === 'photos' && b.imageUrl ? (
-        <section className="card" aria-label="Photos">
-          <h2>Photos</h2>
-          <div className="detail-hero-media-v3" style={{ height: 220, marginTop: 10 }}>
+        <section className="detail-section detail-section-tab" aria-label="Photos">
+          <div className="detail-hero-media-v3" style={{ height: 220 }}>
             <img src={b.imageUrl} alt={`${b.name} photo`} />
           </div>
         </section>
@@ -460,16 +485,14 @@ function ReviewsTab(props: { businessId: string }) {
   if (page.loading && !state) return <ListSkeleton count={3} />;
   if (page.error && !state)
     return (
-      <section className="card" aria-label="Reviews">
-        <h2>Reviews</h2>
+      <section className="detail-section detail-section-tab" aria-label="Reviews">
         <ErrorState message={page.error} onRetry={page.reload} />
       </section>
     );
   if (!state) return null;
 
   return (
-    <section className="card" aria-label="Reviews">
-      <h2>Reviews</h2>
+    <section className="detail-section detail-section-tab" aria-label="Reviews">
       <div className="rating-summary">
         <span className="rating-average">{state.avg !== null ? state.avg.toFixed(1) : '—'}</span>
         <Stars value={state.avg} count={state.count} />

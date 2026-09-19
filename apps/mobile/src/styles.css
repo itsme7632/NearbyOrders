@@ -540,6 +540,49 @@ h1 {
 }
 .svc-main { flex: 1; min-width: 0; }
 .svc-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+
+/* ---- Business detail v7.2: flat editorial sections, no card-in-card ---- */
+.detail-section {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+}
+.detail-section:last-child { border-bottom: 0; }
+.detail-section-tab { padding-top: 14px; border-bottom: 0; }
+.detail-section-title {
+  margin: 0 0 8px;
+  font-size: var(--font-h3);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.detail-section-text { margin: 0; font-size: 14px; line-height: 1.55; color: var(--ink-2); }
+.detail-cta { padding: 16px 0 4px; }
+
+/* Trust information: labelled definition rows, hairline-separated. */
+.info-rows { margin: 0; display: flex; flex-direction: column; }
+.info-row {
+  display: flex;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: 13.5px;
+}
+.info-row:last-child { border-bottom: 0; }
+.info-row dt { flex: 0 0 72px; color: var(--muted); font-weight: 600; }
+.info-row dd { margin: 0; min-width: 0; color: var(--ink); overflow-wrap: anywhere; }
+.info-row-link { color: var(--brand); font-weight: 600; text-decoration: none; }
+.info-row-link:hover { text-decoration: underline; }
+
+/* Flat service/product rows (replaces boxed svc-card on the detail screen). */
+.svc-rows { display: flex; flex-direction: column; margin-bottom: 12px; }
+.svc-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.svc-row:last-child { border-bottom: 0; }
 .muted { color: var(--muted); }
 p { overflow-wrap: break-word; }
 
