@@ -184,6 +184,50 @@ export function Toggle(props: { checked: boolean; onChange: (v: boolean) => void
 }
 
 /**
+ * Editorial business row: the primary scanning unit across discovery screens
+ * (Home lists, Explore results, map sheet). Media thumbnail left; name, rating,
+ * category, distance and honest open/closed state in a compact meta line;
+ * optional one-line description. Purely presentational — all data is real.
+ */
+export function BusinessRow(props: { business: Business; onOpen: () => void; selected?: boolean; showDescription?: boolean }) {
+  const b = props.business;
+  return (
+    <button
+      type="button"
+      className={`biz-row${props.selected ? ' biz-row-selected' : ''}`}
+      onClick={props.onOpen}
+    >
+      <span className="biz-row-media">
+        {b.imageUrl ? (
+          <img src={b.imageUrl} alt="" loading="lazy" />
+        ) : (
+          <span className="pop-card-initial" aria-hidden>
+            {b.name[0]?.toUpperCase() ?? '?'}
+          </span>
+        )}
+      </span>
+      <span className="biz-row-main">
+        <span className="biz-row-name">{b.name}</span>
+        <span className="biz-row-meta">
+          <RatingChip average={b.averageRating} count={b.reviewCount ?? undefined} />
+          {b.categories[0] ? <span className="biz-row-cat">{b.categories[0].name}</span> : null}
+          {b.distanceKm !== undefined && b.distanceKm !== null ? (
+            <span className="biz-distance">{formatDistanceKm(b.distanceKm)}</span>
+          ) : null}
+          {b.isOpenNow !== undefined ? (
+            <span className={`biz-open${b.isOpenNow ? '' : ' biz-open-closed'}`}>{b.isOpenNow ? 'Open' : 'Closed'}</span>
+          ) : null}
+        </span>
+        {props.showDescription && b.description ? <span className="biz-row-desc">{b.description}</span> : null}
+      </span>
+      <span className="biz-row-chevron" aria-hidden>
+        ›
+      </span>
+    </button>
+  );
+}
+
+/**
  * Marketplace business card: cover image (with graceful brand-gradient
  * fallback), category tag, name, rating when available, locality/distance
  * and open/closed status. Purely presentational: all data comes from the API.

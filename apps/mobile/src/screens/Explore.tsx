@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { listBusinesses, listCategories, listNearbyBusinesses, type Business, type Category } from '../api.js';
 import { useAsyncData } from '../hooks.js';
-import { ErrorState, RatingChip, SectionHeader } from '../components/ui.js';
+import { BusinessRow, ErrorState, SectionHeader } from '../components/ui.js';
 import { ExploreIcon, PinIcon } from '../components/icons.js';
 import { EmptyStateV3 } from '../components/EmptyStateV3.js';
 import { requestCustomerLocation, locationOutcomeHint, type LocationOutcome } from '../location.js';
@@ -236,38 +236,7 @@ export function ExploreScreen(props: {
               />
               <div className="sheet-rows">
                 {results.map((b) => (
-                  <button
-                    key={b.id}
-                    type="button"
-                    className={`biz-row${selectedMarker === b.id ? ' biz-row-selected' : ''}`}
-                    onClick={() => props.onOpenBusiness(b.id)}
-                  >
-                    <span className="biz-row-media">
-                      {b.imageUrl ? (
-                        <img src={b.imageUrl} alt="" loading="lazy" />
-                      ) : (
-                        <span className="pop-card-initial" aria-hidden>
-                          {b.name[0]?.toUpperCase() ?? '?'}
-                        </span>
-                      )}
-                    </span>
-                    <span className="biz-row-main">
-                      <span className="biz-row-name">{b.name}</span>
-                      <span className="biz-row-meta">
-                        <RatingChip average={b.averageRating} count={b.reviewCount ?? undefined} />
-                        {b.categories[0] ? <span className="biz-row-cat">{b.categories[0].name}</span> : null}
-                        {b.distanceKm !== undefined && b.distanceKm !== null ? (
-                          <span className="biz-distance">{b.distanceKm.toFixed(1)} km</span>
-                        ) : null}
-                        {b.isOpenNow !== undefined ? (
-                          <span className={`biz-open${b.isOpenNow ? '' : ' biz-open-closed'}`}>{b.isOpenNow ? 'Open' : 'Closed'}</span>
-                        ) : null}
-                      </span>
-                    </span>
-                    <span className="biz-row-chevron" aria-hidden>
-                      ›
-                    </span>
-                  </button>
+                  <BusinessRow key={b.id} business={b} selected={selectedMarker === b.id} onOpen={() => props.onOpenBusiness(b.id)} />
                 ))}
               </div>
             </>
@@ -318,39 +287,7 @@ export function ExploreScreen(props: {
           ) : (
             <div className="biz-rows">
               {results.map((b) => (
-                <button
-                  key={b.id}
-                  type="button"
-                  className="biz-row"
-                  onClick={() => props.onOpenBusiness(b.id)}
-                >
-                  <span className="biz-row-media">
-                    {b.imageUrl ? (
-                      <img src={b.imageUrl} alt="" loading="lazy" />
-                    ) : (
-                      <span className="pop-card-initial" aria-hidden>
-                        {b.name[0]?.toUpperCase() ?? '?'}
-                      </span>
-                    )}
-                  </span>
-                  <span className="biz-row-main">
-                    <span className="biz-row-name">{b.name}</span>
-                    <span className="biz-row-meta">
-                      <RatingChip average={b.averageRating} count={b.reviewCount ?? undefined} />
-                      {b.categories[0] ? <span className="biz-row-cat">{b.categories[0].name}</span> : null}
-                      {b.distanceKm !== undefined && b.distanceKm !== null ? (
-                        <span className="biz-distance">{b.distanceKm.toFixed(1)} km</span>
-                      ) : null}
-                      {b.isOpenNow !== undefined ? (
-                        <span className={`biz-open${b.isOpenNow ? '' : ' biz-open-closed'}`}>{b.isOpenNow ? 'Open' : 'Closed'}</span>
-                      ) : null}
-                    </span>
-                    {b.description ? <span className="biz-row-desc">{b.description}</span> : null}
-                  </span>
-                  <span className="biz-row-chevron" aria-hidden>
-                    ›
-                  </span>
-                </button>
+                <BusinessRow key={b.id} business={b} onOpen={() => props.onOpenBusiness(b.id)} showDescription />
               ))}
             </div>
           )}

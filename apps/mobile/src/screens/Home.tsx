@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { listBusinesses, listCategories, type Business, type Category } from '../api.js';
+import { getSession, listBusinesses, listCategories, whoami, type Business, type Category, type MyProfile } from '../api.js';
 import { useAsyncData } from '../hooks.js';
-import { ErrorState, RatingChip, SectionHeader } from '../components/ui.js';
+import { BusinessRow, ErrorState, RatingChip, SectionHeader } from '../components/ui.js';
 import { BookingsIcon, ExploreIcon, HomeIcon, OrdersIcon, PinIcon, ProfileIcon, StoreIcon } from '../components/icons.js';
 import { EmptyStateV3 } from '../components/EmptyStateV3.js';
 
@@ -28,6 +28,37 @@ function categoryIcon(slug: string, name: string, size = 20) {
   return (key ? CATEGORY_ICONS[key] : (s: number) => <StoreIcon size={s} />)(size);
 }
 
+/** Time-of-day greeting derived from the real clock — never fabricated. */
+function daypartGreeting(date = new Date()): string {
+  const h = date.getHours();
+  if (h < 5) return 'Up late';
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+/**
+ * Area context for the location bar: the locality/city most common among the
+ * loaded businesses. Honest by construction — it can only name a place that
+ * the real result set actually contains, so it never invents a location.
+ */
+function dominantPlace(businesses: Business[]): string | null {
+  const counts = new Map<string, number>();
+  for (const b of businesses) {
+    const place = b.locality?.trim() || b.city?.trim();
+    if (place) counts.set(place, (counts.get(place) ?? 0) + 1);
+  }
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const [place, count] of counts) {
+    if (count > bestCount) {
+      best = place;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
 export function HomeScreen(props: {
   onSearch: (q: string) => void;
   onOpenBusiness: (id: string) => void;
@@ -37,15 +68,46 @@ export function HomeScreen(props: {
   const [query, setQuery] = useState('');
   const categories = useAsyncData<Category[]>(() => listCategories(), []);
   const businesses = useAsyncData<Business[]>(() => listBusinesses({ q: '', limit: 20 }), []);
+  // Signed-in customers get a personal greeting; signed-out sessions skip the
+  // profile fetch entirely. A profile failure degrades to the generic greeting.
+  const signedIn = getSession() !== null;
+  const me = useAsyncData<MyProfile | null>(() => (signedIn ? whoami().catch(() => null) : Promise.resolve(null)), []);
 
   const homeCategories = categories.data?.slice(0, HOME_CATEGORY_LIMIT) ?? [];
   const popular = businesses.data ?? [];
-  const [spotlight, ...rest] = popular;
+
+  // Actionable hierarchy: businesses the server says are open right now form
+  // their own section; everything else continues below as the discovery feed.
+  const openNow = popular.filter((b) => b.isOpenNow === true);
+  const hasStatusData = popular.some((b) => b.isOpenNow !== undefined);
+  const showOpenNow = hasStatusData && openNow.length > 0;
+  const spotlightPool = showOpenNow ? openNow : popular;
+  const [spotlight, ...spotlightRest] = spotlightPool;
+  const feed = showOpenNow ? popular.filter((b) => b.isOpenNow !== true) : spotlightRest;
+  const place = dominantPlace(popular);
+  const firstName = me.data?.firstName?.trim() || null;
 
   return (
     <div className="screen">
+      {/* Location context: where the customer is, answered by real data. */}
+      <div className="home-context" aria-label="Location context">
+        <span className="home-context-place">
+          <PinIcon size={13} />
+          {place ? `Around ${place}` : 'Your neighborhood'}
+        </span>
+        {showOpenNow ? (
+          <span className="home-context-open">
+            {openNow.length} open now
+          </span>
+        ) : null}
+      </div>
+
       {/* Hero: editorial greeting fused with the primary search control. */}
       <section className="home-hero" aria-label="Welcome">
+        <p className="home-hero-kicker">
+          {daypartGreeting()}
+          {firstName ? `, ${firstName}` : ''}
+        </p>
         <h1 className="home-hero-title">
           Find the best <em>near you</em>
         </h1>
@@ -107,8 +169,9 @@ export function HomeScreen(props: {
         )}
       </section>
 
-      {/* Spotlight: the top business gets a full editorial card; the rest ride
-          a horizontal rail of compact cards. Real data only. */}
+      {/* Discovery feed: an actionable "open now" lead when the server provides
+          open/closed status, followed by the remaining places as a scannable
+          editorial list. Real data only. */}
       {businesses.loading ? (
         <section aria-label="Businesses" className="rail-section">
           <SectionHeader title="Popular near you" />
@@ -133,9 +196,9 @@ export function HomeScreen(props: {
         </section>
       ) : (
         <>
-          <section aria-label="Featured business" className="rail-section">
+          <section aria-label={showOpenNow ? 'Open now' : 'Featured business'} className="rail-section">
             <SectionHeader
-              title="Popular near you"
+              title={showOpenNow ? 'Open now near you' : 'Popular near you'}
               action={
                 <button type="button" className="see-all-link" onClick={props.onSeeAllCategories}>
                   See all
@@ -143,14 +206,32 @@ export function HomeScreen(props: {
               }
             />
             <SpotlightCard business={spotlight} onOpen={() => props.onOpenBusiness(spotlight.id)} />
-            {rest.length ? (
-              <div className="mini-rail" style={{ marginTop: 12 }}>
-                {rest.slice(0, 8).map((b) => (
-                  <MiniBusinessCard key={b.id} business={b} onOpen={() => props.onOpenBusiness(b.id)} />
+            {showOpenNow && spotlightRest.length ? (
+              <div className="biz-rows home-feed-rows">
+                {spotlightRest.slice(0, 3).map((b) => (
+                  <BusinessRow key={b.id} business={b} onOpen={() => props.onOpenBusiness(b.id)} />
                 ))}
               </div>
             ) : null}
           </section>
+
+          {feed.length ? (
+            <section aria-label="More businesses" className="rail-section">
+              <SectionHeader
+                title={showOpenNow ? 'More to explore' : 'More near you'}
+                action={
+                  <button type="button" className="see-all-link" onClick={props.onSeeAllCategories}>
+                    See all
+                  </button>
+                }
+              />
+              <div className="biz-rows home-feed-rows">
+                {feed.slice(0, 10).map((b) => (
+                  <BusinessRow key={b.id} business={b} onOpen={() => props.onOpenBusiness(b.id)} showDescription />
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           {/* Support-local strip: platform message, kept small and purposeful. */}
           <button type="button" className="support-strip" onClick={props.onSeeAllCategories}>
@@ -198,37 +279,9 @@ function SpotlightCard(props: { business: Business; onOpen: () => void }) {
         <span className="spotlight-kicker">{category ?? 'Local business'}</span>
         <span className="spotlight-name">{b.name}</span>
         <RatingChip average={b.averageRating} count={b.reviewCount ?? undefined} />
+        {b.description ? <span className="spotlight-desc">{b.description}</span> : null}
         {place ? <span className="spotlight-place">📍 {place}</span> : null}
       </span>
-    </button>
-  );
-}
-
-/**
- * Compact rail card: slim vertical tile with a fixed media block, name and
- * rating — several visible per viewport width.
- */
-function MiniBusinessCard(props: { business: Business; onOpen: () => void }) {
-  const b = props.business;
-  return (
-    <button type="button" className="mini-card" onClick={props.onOpen}>
-      <span className="mini-card-media">
-        {b.imageUrl ? (
-          <img src={b.imageUrl} alt="" loading="lazy" />
-        ) : (
-          <span className="pop-card-initial" aria-hidden>
-            {b.name[0]?.toUpperCase() ?? '?'}
-          </span>
-        )}
-      </span>
-      <span className="mini-card-name">{b.name}</span>
-      {b.averageRating !== null && b.averageRating !== undefined ? (
-        <span className="mini-card-rating">
-          ★ {b.averageRating.toFixed(1)}
-        </span>
-      ) : (
-        <span className="mini-card-rating mini-card-rating-empty">{b.categories[0]?.name ?? ''}</span>
-      )}
     </button>
   );
 }
