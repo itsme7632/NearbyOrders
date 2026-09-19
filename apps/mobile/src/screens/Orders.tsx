@@ -68,6 +68,18 @@ export function OrdersScreen(props: { onOpenOrder: (id: string) => void; onBrows
   const activeCount = all.filter((o) => isActiveStatus(o.status)).length;
   const visible = view === 'active' ? all.filter((o) => isActiveStatus(o.status)) : all;
 
+  // The archive ("All") reads as a hierarchy, not one undifferentiated list:
+  // in-flight work first, then completed, then cancelled/rejected history.
+  const historyGroups = useMemo(
+    () =>
+      [
+        { key: 'progress', title: 'In progress', items: all.filter((o) => isActiveStatus(o.status)) },
+        { key: 'completed', title: 'Completed', items: all.filter((o) => o.status === 'COMPLETED') },
+        { key: 'cancelled', title: 'Cancelled & rejected', items: all.filter((o) => o.status === 'CANCELLED' || o.status === 'REJECTED') },
+      ].filter((g) => g.items.length > 0),
+    [all],
+  );
+
   return (
     <div className="screen">
       <header className="owner-head">
@@ -114,7 +126,7 @@ export function OrdersScreen(props: { onOpenOrder: (id: string) => void; onBrows
               title="No active orders"
               body="Orders in progress will appear here until they are completed."
             />
-          ) : (
+          ) : view === 'active' ? (
             <ul className="order-list">
               {visible.map((o) => (
                 <li key={o.id}>
@@ -122,6 +134,24 @@ export function OrdersScreen(props: { onOpenOrder: (id: string) => void; onBrows
                 </li>
               ))}
             </ul>
+          ) : (
+            historyGroups.map((g) => (
+              <section key={g.key} aria-label={`${g.title} orders`} className="order-group">
+                <div className="section-head section-head-sm">
+                  <h2>{g.title}</h2>
+                  <span className="biz-distance">
+                    {g.items.length} {g.items.length === 1 ? 'order' : 'orders'}
+                  </span>
+                </div>
+                <ul className="order-list">
+                  {g.items.map((o) => (
+                    <li key={o.id}>
+                      <OrderStatusCard order={o} onOpen={() => props.onOpenOrder(o.id)} />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))
           )}
         </>
       )}
@@ -232,8 +262,8 @@ export function OrderDetailScreen(props: { orderId: string; onBack: () => void }
         {o.business.name} · {formatWhen(o.createdAt)}
       </p>
 
-      <section className="card" aria-label="Order items">
-        <h2>Items</h2>
+      <section className="detail-section" aria-label="Order items">
+        <h2 className="detail-section-title">Items</h2>
         <ul className="item-list">
           {o.items.map((i) => (
             <li key={i.id}>
@@ -265,8 +295,8 @@ export function OrderDetailScreen(props: { orderId: string; onBack: () => void }
         </div>
       </section>
       {o.fulfillmentType === 'DELIVERY' && o.deliveryAddressText ? (
-        <section className="card" aria-label="Delivery address">
-          <h2>Deliver to</h2>
+        <section className="detail-section" aria-label="Delivery address">
+          <h2 className="detail-section-title">Deliver to</h2>
           <p className="order-addr">{o.deliveryAddressText}</p>
         </section>
       ) : null}
@@ -331,15 +361,15 @@ export function OrderPaymentPanel(props: { order: Order; onChanged: () => void }
   // With any payment record we still show the summary + history below.
   if (!hasDue && !pending && !(payments.data ?? []).length)
     return (
-      <section className="card" aria-label="Payment">
-        <h2>Payment</h2>
+      <section className="detail-section" aria-label="Payment">
+        <h2 className="detail-section-title">Payment</h2>
         <p className="hint">{paid >= total ? 'Paid in full.' : 'Pay cash when you receive the order.'}</p>
       </section>
     );
 
   return (
-    <section className="card" aria-label="Payment">
-      <h2>Payment</h2>
+    <section className="detail-section" aria-label="Payment">
+      <h2 className="detail-section-title">Payment</h2>
       {error ? <ErrorState message={error} /> : null}
       <div className="cart-summary">
         <div className="cart-line">

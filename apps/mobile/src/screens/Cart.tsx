@@ -171,7 +171,13 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
       </p>
       {error ? <ErrorState message={error} /> : null}
 
-      <section className="card">
+      <section className="checkout-step" aria-label="Items">
+        <h2 className="checkout-step-title">
+          <span className="checkout-step-num" aria-hidden>
+            1
+          </span>
+          Your items
+        </h2>
         <ul className="cart-list">
           {cart.items.map((item) => (
             <li key={item.productId} className="cart-item">
@@ -224,8 +230,13 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
       </section>
 
       {/* Fulfillment: pickup or delivery (fee comes from business settings). */}
-      <section className="card" aria-label="How do you want to receive the order?">
-        <h2>Receiving</h2>
+      <section className="checkout-step" aria-label="How do you want to receive the order?">
+        <h2 className="checkout-step-title">
+          <span className="checkout-step-num" aria-hidden>
+            2
+          </span>
+          Receiving
+        </h2>
         <div className="pay-methods" role="radiogroup" aria-label="Receiving option">
           {(['PICKUP', 'DELIVERY'] as const).map((kind) => (
             <button
@@ -263,8 +274,13 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
 
       {/* Payment method: cash flows need nothing; digital needs proof. */}
       {digitalMethods.length > 0 ? (
-        <section className="card" aria-label="Payment method">
-          <h2>Pay by</h2>
+        <section className="checkout-step" aria-label="Payment method">
+          <h2 className="checkout-step-title">
+            <span className="checkout-step-num" aria-hidden>
+              3
+            </span>
+            Payment
+          </h2>
           <div className="pay-methods" role="radiogroup" aria-label="Payment method">
             <button
               type="button"
@@ -345,10 +361,20 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
         </p>
       )}
 
-      <Button full onClick={place} disabled={busy || (!!selected && (!reference.trim() || !receiptFile))}>
-        {busy ? 'Placing order…' : selected ? 'Submit order + payment proof' : 'Place order'}
-      </Button>
-      <div className="btn-row" style={{ marginTop: 8 }}>
+      {/* Checkout footer: restate the total beside the commitment so the
+          price is unmissable at the moment of decision. */}
+      <div className="checkout-footer">
+        <div className="checkout-footer-total">
+          <span className="checkout-footer-label">
+            {fulfillment === 'DELIVERY' ? 'Total · delivery fee confirmed by the business' : 'Total'}
+          </span>
+          <strong className="checkout-footer-value">
+            <Money minor={cartSubtotal(cart)} currency="PKR" />
+          </strong>
+        </div>
+        <Button full onClick={place} disabled={busy || (!!selected && (!reference.trim() || !receiptFile))}>
+          {busy ? 'Placing order…' : selected ? 'Submit order + payment proof' : 'Place order'}
+        </Button>
         <Button full variant="ghost" onClick={clearCart} disabled={busy}>
           Clear cart
         </Button>
