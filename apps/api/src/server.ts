@@ -1808,6 +1808,227 @@ export async function buildApp(): Promise<FastifyInstance> {
     return { data: rows.map(publicOrder) };
   });
 
+  /* ------------- Owner operations & analytics (Phase 16) ------------- */
+  /**
+   * Server-authoritative business metrics. The client previously derived
+   * "today" from UTC dates over truncated (take: 100) lists — wrong for PKT
+   * businesses and silently incomplete. These endpoints compute every number
+   * from the database inside the business-local (Asia/Karachi) day window;
+   * ownership is enforced by `ownedBusiness` (404 for anyone else's business).
+   */
+
+  /** Business-local [from, to] date strings (inclusive) for an analytics period. */
+  const pktPeriodDates = (period: 'today' | 'week' | 'month'): { from: string; to: string } => {
+    const now = new Date();
+    const today = pktDateOf(now);
+    if (period === 'today') return { from: today, to: today };
+    if (period === 'week') {
+      // Business-local Monday..Sunday containing today (pktDayOfWeek: 0=Sunday).
+      const daysSinceMonday = (pktDayOfWeek(now) + 6) % 7;
+      return { from: pktDateOf(new Date(now.getTime() - daysSinceMonday * 86_400_000)), to: today };
+    }
+    return { from: `${today.slice(0, 7)}-01`, to: today };
+  };
+
+  /** Inclusive UTC window covering the business-local dates [from, to]. */
+  const pktDatesWindowUtc = (from: string, to: string): { gte: Date; lt: Date } => ({
+    gte: pktToUtc(from, 0),
+    lt: pktToUtc(to, 24 * 60),
+  });
+
+  app.get('/api/v1/owner/businesses/:id/overview', { preHandler: roles('BUSINESS_OWNER') }, async (q) => {
+    const id = (q.params as { id: string }).id;
+    const business = await ownedBusiness(q, id);
+    const now = new Date();
+    const today = pktDateOf(now);
+    const day = pktDayWindowUtc(today);
+
+    const [
+      pendingOrders,
+      todayOrders,
+      todayOrderRevenue,
+      todayBookingRevenue,
+      pendingBookings,
+      todayBookings,
+      pendingBookingPayments,
+      pendingOrderPayments,
+      upcoming,
+      recentOrders,
+      recentBookings,
+      hoursCount,
+      activeServices,
+      activeProducts,
+    ] = await Promise.all([
+      prisma.order.count({ where: { businessId: id, status: 'PENDING' } }),
+      prisma.order.count({
+        where: { businessId: id, createdAt: { gte: day.from, lt: day.to }, status: { notIn: ['CANCELLED', 'REJECTED'] } },
+      }),
+      prisma.order.aggregate({
+        where: { businessId: id, status: 'COMPLETED', completedAt: { gte: day.from, lt: day.to } },
+        _sum: { totalMinor: true },
+      }),
+      prisma.booking.aggregate({
+        where: { businessId: id, status: 'COMPLETED', completedAt: { gte: day.from, lt: day.to } },
+        _sum: { servicePriceMinor: true },
+      }),
+      prisma.booking.count({ where: { businessId: id, status: 'PENDING' } }),
+      prisma.booking.count({
+        where: {
+          businessId: id,
+          bookingDate: { gte: new Date(`${today}T00:00:00Z`), lte: new Date(`${today}T00:00:00Z`) },
+          status: { in: ['PENDING', 'CONFIRMED'] },
+        },
+      }),
+      prisma.bookingPayment.count({ where: { businessId: id, status: 'PENDING_VERIFICATION' } }),
+      prisma.orderPayment.count({ where: { businessId: id, status: 'PENDING_VERIFICATION' } }),
+      prisma.booking.findMany({
+        where: { businessId: id, status: { in: ['PENDING', 'CONFIRMED'] }, startAt: { gte: now } },
+        include: { service: { select: { name: true } }, customer: { select: { firstName: true, lastName: true } } },
+        orderBy: { startAt: 'asc' },
+        take: 5,
+      }),
+      prisma.order.findMany({
+        where: { businessId: id },
+        include: ORDER_INCLUDE,
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
+      prisma.booking.findMany({
+        where: { businessId: id },
+        include: BOOKING_INCLUDE,
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
+      prisma.businessHour.count({ where: { businessId: id } }),
+      prisma.service.count({ where: { businessId: id, isActive: true } }),
+      prisma.product.count({ where: { businessId: id, isActive: true } }),
+    ]);
+
+    // Completeness from persisted fields only; "catalog" flags a business
+    // with nothing bookable or orderable at all. Never a fake percentage.
+    const profileMissing: string[] = [];
+    if (!business.description) profileMissing.push('description');
+    if (!business.phone) profileMissing.push('phone');
+    if (!business.imageUrl) profileMissing.push('image');
+    if (hoursCount === 0) profileMissing.push('hours');
+    if (business.latitude === null || business.longitude === null) profileMissing.push('location');
+    if (activeServices === 0 && activeProducts === 0) profileMissing.push('catalog');
+
+    return {
+      data: {
+        business: {
+          id: business.id,
+          name: business.name,
+          status: business.status,
+          isVerified: business.isVerified,
+          currency: business.currency,
+          imageUrl: business.imageUrl,
+        },
+        today: {
+          orders: todayOrders,
+          bookings: todayBookings,
+          revenueMinor: (todayOrderRevenue._sum.totalMinor ?? 0) + (todayBookingRevenue._sum.servicePriceMinor ?? 0),
+        },
+        needsAttention: {
+          pendingOrders,
+          pendingBookings,
+          pendingPayments: pendingBookingPayments + pendingOrderPayments,
+        },
+        upcomingBookings: upcoming.map((b) => ({
+          id: b.id,
+          serviceName: b.service?.name ?? null,
+          customerName: [b.customer.firstName, b.customer.lastName].filter(Boolean).join(' ') || 'Customer',
+          date: pktDateOf(b.startAt),
+          startTime: formatMinutes(pktMinutesOf(b.startAt)),
+          status: b.status,
+        })),
+        recentOrders: recentOrders.map(publicOrder),
+        recentBookings: recentBookings.map((b) => publicBooking(b)),
+        profileMissing,
+      },
+    };
+  });
+
+  /** Activity + revenue for today / this week / this month (business-local). */
+  app.get('/api/v1/owner/businesses/:id/analytics', { preHandler: roles('BUSINESS_OWNER') }, async (q) => {
+    const id = (q.params as { id: string }).id;
+    const business = await ownedBusiness(q, id);
+    const { period } = z.object({ period: z.enum(['today', 'week', 'month']).default('today') }).parse(q.query ?? {});
+    const { from, to } = pktPeriodDates(period);
+    const created = pktDatesWindowUtc(from, to);
+    const dateOnly = { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) };
+
+    const [ordersTotal, ordersCompleted, ordersCancelled, orderRevenue, bookingsTotal, bookingsCompleted, bookingsCancelled, bookingRevenue, activeServices, activeProducts] = await Promise.all([
+      prisma.order.count({ where: { businessId: id, createdAt: created } }),
+      prisma.order.count({ where: { businessId: id, status: 'COMPLETED', completedAt: created } }),
+      prisma.order.count({ where: { businessId: id, status: { in: ['CANCELLED', 'REJECTED'] }, createdAt: created } }),
+      prisma.order.aggregate({ where: { businessId: id, status: 'COMPLETED', completedAt: created }, _sum: { totalMinor: true } }),
+      prisma.booking.count({ where: { businessId: id, bookingDate: dateOnly } }),
+      prisma.booking.count({ where: { businessId: id, status: 'COMPLETED', completedAt: created } }),
+      prisma.booking.count({ where: { businessId: id, status: { in: ['CANCELLED', 'REJECTED'] }, bookingDate: dateOnly } }),
+      prisma.booking.aggregate({ where: { businessId: id, status: 'COMPLETED', completedAt: created }, _sum: { servicePriceMinor: true } }),
+      prisma.service.count({ where: { businessId: id, isActive: true } }),
+      prisma.product.count({ where: { businessId: id, isActive: true } }),
+    ]);
+
+    return {
+      data: {
+        period,
+        window: { from, to },
+        orders: { total: ordersTotal, completed: ordersCompleted, cancelled: ordersCancelled, revenueMinor: orderRevenue._sum.totalMinor ?? 0 },
+        bookings: { total: bookingsTotal, completed: bookingsCompleted, cancelled: bookingsCancelled, revenueMinor: bookingRevenue._sum.servicePriceMinor ?? 0 },
+        catalog: { activeServices, activeProducts },
+      },
+    };
+  });
+
+  /**
+   * Collected revenue: only COMPLETED transactions, valued at the frozen
+   * order total / booking price snapshot. Cancelled, rejected, and unpaid
+   * amounts are never "earnings"; pending payment proofs are reported
+   * separately as awaiting verification, never as collected money.
+   */
+  app.get('/api/v1/owner/businesses/:id/earnings', { preHandler: roles('BUSINESS_OWNER') }, async (q) => {
+    const id = (q.params as { id: string }).id;
+    const business = await ownedBusiness(q, id);
+
+    const [completedOrders, completedBookings, openOrders, pendingBookingPayments, pendingOrderPayments] = await Promise.all([
+      prisma.order.aggregate({ where: { businessId: id, status: 'COMPLETED' }, _sum: { totalMinor: true }, _count: { id: true } }),
+      prisma.booking.aggregate({ where: { businessId: id, status: 'COMPLETED' }, _sum: { servicePriceMinor: true }, _count: { id: true } }),
+      prisma.order.findMany({
+        where: { businessId: id, status: { in: ['PENDING', 'ACCEPTED', 'PREPARING', 'READY'] } },
+        select: { totalMinor: true },
+      }),
+      prisma.bookingPayment.aggregate({ where: { businessId: id, status: 'PENDING_VERIFICATION' }, _sum: { amountMinor: true }, _count: { id: true } }),
+      prisma.orderPayment.aggregate({ where: { businessId: id, status: 'PENDING_VERIFICATION' }, _sum: { amountMinor: true }, _count: { id: true } }),
+    ]);
+
+    const ordersRevenueMinor = completedOrders._sum.totalMinor ?? 0;
+    const bookingsRevenueMinor = completedBookings._sum.servicePriceMinor ?? 0;
+    const pendingCount = pendingBookingPayments._count.id + pendingOrderPayments._count.id;
+
+    return {
+      data: {
+        currency: business.currency,
+        collected: {
+          ordersRevenueMinor,
+          bookingsRevenueMinor,
+          totalMinor: ordersRevenueMinor + bookingsRevenueMinor,
+          completedOrders: completedOrders._count.id,
+          completedBookings: completedBookings._count.id,
+        },
+        inProgress: {
+          orders: openOrders.length,
+          valueMinor: openOrders.reduce((s, o) => s + o.totalMinor, 0),
+        },
+        awaitingVerification: {
+          count: pendingCount,
+          amountMinor: (pendingBookingPayments._sum.amountMinor ?? 0) + (pendingOrderPayments._sum.amountMinor ?? 0),
+        },
+      },
+    };
+  });
+
   app.get('/api/v1/owner/payments', { preHandler: roles('BUSINESS_OWNER') }, async (q) => {
     const query = z
       .object({
@@ -2712,7 +2933,12 @@ export async function buildApp(): Promise<FastifyInstance> {
     };
     const notice = customerNotice[status];
     const updated = await prisma.$transaction(async (tx) => {
-      const row = await tx.booking.update({ where: { id: booking.id }, data: { status } });
+      // completedAt is stamped once, atomically with the status change, so
+      // revenue windows can be derived honestly (Phase 16).
+      const row = await tx.booking.update({
+        where: { id: booking.id },
+        data: { status, ...(status === 'COMPLETED' ? { completedAt: new Date() } : {}) },
+      });
       if (notice) {
         await createNotifications(prisma, [
           {
@@ -2964,7 +3190,12 @@ export async function buildApp(): Promise<FastifyInstance> {
     };
     const notice = noticeFor(status);
     await prisma.$transaction(async (tx) => {
-      await tx.order.update({ where: { id: o.id }, data: { status } });
+      // completedAt is stamped once, atomically with the status change, so
+      // revenue windows can be derived honestly (Phase 16).
+      await tx.order.update({
+        where: { id: o.id },
+        data: { status, ...(status === 'COMPLETED' ? { completedAt: new Date() } : {}) },
+      });
       if (notice) {
         await createNotifications(prisma, [
           {
@@ -3445,11 +3676,17 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (query.status) where.status = query.status;
     const businesses = await prisma.business.findMany({
       where,
-      select: { id: true, name: true, slug: true, status: true, isVerified: true, city: true, address: true, createdAt: true, owner: { select: { id: true, email: true, firstName: true, lastName: true } } },
+      select: {
+        id: true, name: true, slug: true, status: true, isVerified: true, city: true, address: true, createdAt: true,
+        owner: { select: { id: true, email: true, firstName: true, lastName: true } },
+        // Operational activity counts (Phase 16): real aggregates, no tokens,
+        // no customer data — just how alive this business is on the platform.
+        _count: { select: { orders: true, bookings: true, services: true, products: true, reviews: true } },
+      },
       orderBy: { createdAt: 'desc' },
       take: query.limit,
     });
-    return { data: businesses };
+    return { data: businesses.map(({ _count, ...b }) => ({ ...b, counts: _count })) };
   });
 
   /** Verify/unverify a business (trust badge), separate from approval status. */

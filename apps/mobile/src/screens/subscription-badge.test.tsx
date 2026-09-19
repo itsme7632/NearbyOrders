@@ -8,6 +8,24 @@ afterEach(cleanup);
 vi.mock('../api.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api.js')>()),
   getBusinessSubscription: vi.fn(),
+  // Phase 16: the overview hub reads the server snapshot instead of
+  // deriving metrics client-side.
+  getOwnerOverview: vi.fn().mockResolvedValue({
+    business: { id: 'biz-1', name: 'Butt Spices', status: 'APPROVED', isVerified: false, currency: 'PKR', imageUrl: null },
+    today: { orders: 0, bookings: 0, revenueMinor: 0 },
+    needsAttention: { pendingOrders: 0, pendingBookings: 0, pendingPayments: 0 },
+    upcomingBookings: [],
+    recentOrders: [],
+    recentBookings: [],
+    profileMissing: [],
+  }),
+  getOwnerAnalytics: vi.fn().mockResolvedValue({
+    period: 'today',
+    window: { from: '2026-09-19', to: '2026-09-19' },
+    orders: { total: 0, completed: 0, cancelled: 0, revenueMinor: 0 },
+    bookings: { total: 0, completed: 0, cancelled: 0, revenueMinor: 0 },
+    catalog: { activeServices: 0, activeProducts: 0 },
+  }),
 }));
 
 const business = (patch: Partial<Business> = {}): Business => ({

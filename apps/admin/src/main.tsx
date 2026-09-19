@@ -366,6 +366,7 @@ function Businesses() {
                   <th>City</th>
                   <th>Status</th>
                   <th>Verified</th>
+                  <th>Activity</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -385,6 +386,9 @@ function Businesses() {
                       <StatusBadge value={b.status} />
                     </td>
                     <td>{b.isVerified ? <span className="badge badge-info">✓ Verified</span> : <span className="muted">—</span>}</td>
+                    <td className="mono muted" title="orders · bookings · services · products · reviews">
+                      {b.counts ? `${b.counts.orders}o · ${b.counts.bookings}b · ${b.counts.services}s · ${b.counts.products}p · ${b.counts.reviews}r` : '—'}
+                    </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {b.status !== 'APPROVED' ? (
                         <button className="btn btn-sm" onClick={() => void change(b, 'APPROVED')}>

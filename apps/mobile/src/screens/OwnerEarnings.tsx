@@ -1,13 +1,7 @@
 import { useState } from 'react';
-import {
-  getMyBusinesses,
-  listBusinessBookings,
-  listBusinessOrders,
-  type Booking,
-  type Order,
-} from '../api.js';
+import { getMyBusinesses, getOwnerEarnings, type OwnerEarnings as OwnerEarningsData } from '../api.js';
 import { useAsyncData } from '../hooks.js';
-import { Button, EmptyState, ErrorState, ListSkeleton, Loading, Money } from '../components/ui.js';
+import { Button, EmptyState, ErrorState, ListSkeleton, Money } from '../components/ui.js';
 import { StoreIcon } from '../components/icons.js';
 
 /**
@@ -50,24 +44,13 @@ export function OwnerEarnings(props: { onListBusiness?: () => void }) {
 }
 
 function EarningsForBusiness(props: { businessId: string; switcher?: React.ReactNode }) {
-  const orders = useAsyncData<Order[]>(() => listBusinessOrders(props.businessId), [props.businessId]);
-  const bookings = useAsyncData<Booking[]>(() => listBusinessBookings(props.businessId), [props.businessId]);
+  const earnings = useAsyncData<OwnerEarningsData>(() => getOwnerEarnings(props.businessId), [props.businessId]);
 
-  if (orders.loading || bookings.loading) return <ListSkeleton count={3} />;
-  if (orders.error) return <ErrorState message={orders.error} onRetry={orders.reload} />;
-  if (bookings.error) return <ErrorState message={bookings.error} onRetry={bookings.reload} />;
-
-  const ordersHere = (orders.data ?? []).filter((o) => o.business.id === props.businessId);
-  const completedOrders = ordersHere.filter((o) => o.status === 'COMPLETED');
-  // Collected revenue: completed order totals the business received.
-  const orderRevenue = completedOrders.reduce((sum, o) => sum + (o.totalMinor ?? o.subtotalMinor), 0);
-  const openOrders = ordersHere.filter((o) => !['CANCELLED', 'REJECTED', 'COMPLETED'].includes(o.status));
-  const openValue = openOrders.reduce((sum, o) => sum + (o.totalMinor ?? o.subtotalMinor), 0);
-
-  const bookingsHere = bookings.data ?? [];
-  const completedBookings = bookingsHere.filter((b) => b.status === 'COMPLETED');
-  const bookingRevenue = completedBookings.reduce((sum, b) => sum + (b.amountPaidMinor ?? b.priceMinor ?? 0), 0);
-  const currency = ordersHere[0]?.currency ?? bookingsHere[0]?.currency ?? 'PKR';
+  if (earnings.loading) return <ListSkeleton count={3} />;
+  if (earnings.error) return <ErrorState message={earnings.error} onRetry={earnings.reload} />;
+  if (!earnings.data) return null;
+  const e = earnings.data;
+  const currency = e.currency;
 
   return (
     <div className="screen">
@@ -80,39 +63,47 @@ function EarningsForBusiness(props: { businessId: string; switcher?: React.React
         <div className="metric-grid" style={{ marginTop: 10 }}>
           <div className="metric-card">
             <span className="metric-num">
-              <Money minor={orderRevenue + bookingRevenue} currency={currency} />
+              <Money minor={e.collected.totalMinor} currency={currency} />
             </span>
             <span className="metric-label">Total collected</span>
           </div>
           <div className="metric-card">
-            <span className="metric-num">{completedOrders.length + completedBookings.length}</span>
+            <span className="metric-num">{e.collected.completedOrders + e.collected.completedBookings}</span>
             <span className="metric-label">Completed transactions</span>
           </div>
         </div>
         <div className="cart-summary">
           <div className="cart-line">
-            <span>Completed orders ({completedOrders.length})</span>
-            <Money minor={orderRevenue} currency={currency} />
+            <span>Completed orders ({e.collected.completedOrders})</span>
+            <Money minor={e.collected.ordersRevenueMinor} currency={currency} />
           </div>
           <div className="cart-line">
-            <span>Completed bookings ({completedBookings.length})</span>
-            <Money minor={bookingRevenue} currency={currency} />
+            <span>Completed bookings ({e.collected.completedBookings})</span>
+            <Money minor={e.collected.bookingsRevenueMinor} currency={currency} />
           </div>
         </div>
-        {openOrders.length > 0 ? (
+        {e.awaitingVerification.count > 0 ? (
+          <div className="cart-summary">
+            <div className="cart-line">
+              <span>Awaiting verification ({e.awaitingVerification.count})</span>
+              <Money minor={e.awaitingVerification.amountMinor} currency={currency} />
+            </div>
+          </div>
+        ) : null}
+        {e.inProgress.orders > 0 ? (
           <>
             <h2>In progress</h2>
             <div className="cart-summary">
               <div className="cart-line">
-                <span>Active orders ({openOrders.length})</span>
-                <Money minor={openValue} currency={currency} />
+                <span>Active orders ({e.inProgress.orders})</span>
+                <Money minor={e.inProgress.valueMinor} currency={currency} />
               </div>
             </div>
             <p className="hint">These amounts are still with customers or awaiting verification; they are not collected yet.</p>
           </>
         ) : null}
         <p className="hint">
-          Customers pay you directly. NearbyOrders never holds customer money and takes no cut of these amounts.
+          Collected counts only completed orders and bookings, at their frozen totals. Cancelled, rejected and unpaid amounts are never counted. Customers pay you directly — NearbyOrders never holds customer money and takes no cut of these amounts.
         </p>
       </section>
     </div>

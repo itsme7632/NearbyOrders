@@ -1,22 +1,21 @@
 import { useState } from 'react';
 import {
   getMyBusinesses,
-  listBusinessBookings,
-  listBusinessOrders,
-  listBusinessReviews,
-  listOwnerPayments,
-  type Booking,
+  getOwnerAnalytics,
+  getOwnerOverview,
   type Business,
-  type Order,
+  type OwnerAnalytics,
+  type OwnerAnalyticsPeriod,
+  type OwnerOverview,
 } from '../api.js';
 import { useAsyncData } from '../hooks.js';
-import { Button, EmptyState, ErrorState, ListSkeleton } from '../components/ui.js';
+import { Button, EmptyState, ErrorState, ListSkeleton, Money } from '../components/ui.js';
 import { AlertIcon, BookingsIcon, CheckIcon, OrdersIcon, PinIcon, StoreIcon } from '../components/icons.js';
 import { OwnerHubRow, OwnerHubSection } from './owner-ui.js';
 import { SubscriptionBadge } from './subscription-badge.js';
 import { OrderThumb } from './Orders.js';
 
-/** Business-mode Overview (/owner): real numbers, real activity, real state. */
+/** Business-mode Overview (/owner): server-computed metrics, never invented. */
 export function OwnerBusinessHome(props: {
   onOpen: (path: string) => void;
   onListBusiness?: () => void;
@@ -78,15 +77,8 @@ export function OwnerBusinessHome(props: {
       {/* Business plan: the real subscription state from the backend. */}
       <PlanCard businessId={active.id} onOpen={() => props.onOpen(`${base}/subscription`)} />
 
-      <OverviewStats businessId={active.id} onOpen={props.onOpen} base={base} />
-
-      <RecentActivity
-        businessId={active.id}
-        onOpenOrder={props.onOpenOrder}
-        onOpenBooking={props.onOpenBooking}
-        onOpenPayments={() => props.onOpen(`${base}/payments`)}
-        onOpenReviews={() => props.onOpen(`${base}/reviews`)}
-      />
+      <OverviewData businessId={active.id} onOpen={props.onOpen} base={base} onOpenBooking={props.onOpenBooking} />
+      <PeriodAnalytics businessId={active.id} />
 
       {/* Manage band: dense icon rail into the catalog + operations. */}
       <section aria-label="Quick actions" style={{ marginTop: 14 }}>
@@ -160,173 +152,189 @@ function PlanCard(props: { businessId: string; onOpen: () => void }) {
   );
 }
 
-/** Real metrics for the selected business; cards link to their screens. */
-function OverviewStats(props: { businessId: string; onOpen: (path: string) => void; base: string }) {
-  const orders = useAsyncData<Order[]>(() => listBusinessOrders(props.businessId), [props.businessId]);
-  const bookings = useAsyncData<Booking[]>(() => listBusinessBookings(props.businessId), [props.businessId]);
+/**
+ * Everything on the overview that comes from the server snapshot: metrics,
+ * today's completed revenue, pending-verification nudge, upcoming bookings
+ * and profile gaps. ONE fetch, passed down — no duplicate requests.
+ */
+function OverviewData(props: {
+  businessId: string;
+  onOpen: (path: string) => void;
+  base: string;
+  onOpenBooking: (id: string) => void;
+}) {
+  const overview = useAsyncData<OwnerOverview>(() => getOwnerOverview(props.businessId), [props.businessId]);
 
-  if (orders.loading || bookings.loading) return <ListSkeleton count={2} />;
-  if (orders.error || bookings.error)
-    return <ErrorState message={orders.error ?? bookings.error ?? 'Could not load your numbers.'} />;
-
-  // Metrics come straight from the scoped endpoints — never invented.
-  const ordersHere = (orders.data ?? []).filter((o) => o.business.id === props.businessId);
-  const today = new Date().toISOString().slice(0, 10);
-  const pendingOrders = ordersHere.filter((o) => o.status === 'PENDING');
-  const todaysOrders = ordersHere.filter((o) => o.createdAt.slice(0, 10) === today && !['CANCELLED', 'REJECTED'].includes(o.status));
-  const pendingBookings = (bookings.data ?? []).filter((b) => b.status === 'PENDING');
-  const todaysBookings = (bookings.data ?? []).filter((b) => b.bookingDate === today && ['PENDING', 'CONFIRMED'].includes(b.status));
+  if (overview.loading) return <ListSkeleton count={2} />;
+  if (overview.error) return <ErrorState message={overview.error} onRetry={overview.reload} />;
+  if (!overview.data) return null;
+  const o = overview.data;
 
   return (
-    <section aria-label="Overview metrics" style={{ marginTop: 12 }}>
-      <div className="metric-grid-v3">
-        <button type="button" className="metric-card-v3" onClick={() => props.onOpen(`${props.base}/orders`)}>
-          <span className="metric-card-v3-top">
-            <span className="metric-card-v3-icon" aria-hidden>
-              <OrdersIcon size={16} />
+    <>
+      <section aria-label="Overview metrics" style={{ marginTop: 12 }}>
+        <div className="metric-grid-v3">
+          <button type="button" className="metric-card-v3" onClick={() => props.onOpen(`${props.base}/orders`)}>
+            <span className="metric-card-v3-top">
+              <span className="metric-card-v3-icon" aria-hidden>
+                <OrdersIcon size={16} />
+              </span>
+              <span className="metric-card-v3-label">Today's orders</span>
             </span>
-            <span className="metric-card-v3-label">Today's orders</span>
-          </span>
-          <span className="metric-card-v3-num">{todaysOrders.length}</span>
-          <span className="metric-card-v3-label">{pendingOrders.length} pending</span>
-        </button>
-        <button type="button" className="metric-card-v3" onClick={() => props.onOpen(`${props.base}/bookings`)}>
-          <span className="metric-card-v3-top">
-            <span className="metric-card-v3-icon" aria-hidden>
-              <BookingsIcon size={16} />
+            <span className="metric-card-v3-num">{o.today.orders}</span>
+            <span className="metric-card-v3-label">{o.needsAttention.pendingOrders} pending</span>
+          </button>
+          <button type="button" className="metric-card-v3" onClick={() => props.onOpen(`${props.base}/bookings`)}>
+            <span className="metric-card-v3-top">
+              <span className="metric-card-v3-icon" aria-hidden>
+                <BookingsIcon size={16} />
+              </span>
+              <span className="metric-card-v3-label">Today's bookings</span>
             </span>
-            <span className="metric-card-v3-label">Today's bookings</span>
+            <span className="metric-card-v3-num">{o.today.bookings}</span>
+            <span className="metric-card-v3-label">{o.needsAttention.pendingBookings} pending</span>
+          </button>
+        </div>
+      </section>
+
+      {/* Completed revenue today, straight from the server's PKT day window. */}
+      <section aria-label="Today's revenue" className="card" style={{ marginTop: 12 }}>
+        <div className="cart-line">
+          <span>Completed revenue today</span>
+          <span className="metric-num">
+            <Money minor={o.today.revenueMinor} currency={o.business.currency} />
           </span>
-          <span className="metric-card-v3-num">{todaysBookings.length}</span>
-          <span className="metric-card-v3-label">{pendingBookings.length} pending</span>
-        </button>
+        </div>
+        {o.needsAttention.pendingPayments > 0 ? (
+          <button type="button" className="cart-line attention-row" onClick={() => props.onOpen(`${props.base}/payments`)}>
+            <span className="attention-text">
+              <strong>{o.needsAttention.pendingPayments}</strong> payment proof{o.needsAttention.pendingPayments === 1 ? '' : 's'} awaiting verification
+            </span>
+            <span aria-hidden>›</span>
+          </button>
+        ) : null}
+      </section>
+
+      {o.upcomingBookings.length > 0 ? (
+        <section aria-label="Upcoming bookings" style={{ marginTop: 18 }}>
+          <div className="section-head-v3">
+            <h2>Upcoming</h2>
+          </div>
+          <div className="activity-card">
+            {o.upcomingBookings.map((b) => (
+              <button key={b.id} type="button" className="activity-row" onClick={() => props.onOpenBooking(b.id)}>
+                <span className="activity-icon tone-green" aria-hidden>
+                  <BookingsIcon size={18} />
+                </span>
+                <span className="activity-main">
+                  <span className="activity-title">{b.serviceName ?? 'Booking'}</span>
+                  <span className="activity-sub">
+                    {b.date} · {b.startTime} · {b.customerName} · {b.status.toLowerCase()}
+                  </span>
+                </span>
+                <span className="activity-when" aria-hidden>›</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {renderProfileGaps(o.profileMissing, props.base, props.onOpen)}
+    </>
+  );
+}
+
+/** Missing profile pieces computed from persisted fields — honest, tappable. */
+const GAP_LABELS: Record<string, { title: string; suffix: string }> = {
+  description: { title: 'Add a business description', suffix: 'profile' },
+  phone: { title: 'Add a contact phone number', suffix: 'profile' },
+  image: { title: 'Add a business image', suffix: 'profile' },
+  hours: { title: 'Set your opening hours', suffix: 'hours' },
+  location: { title: 'Set your map location', suffix: 'location' },
+  catalog: { title: 'Add your first service or product', suffix: 'services' },
+};
+
+function renderProfileGaps(missing: string[], base: string, onOpen: (path: string) => void) {
+  if (!missing.length) return null;
+  return (
+    <section aria-label="Profile gaps" style={{ marginTop: 18 }}>
+      <div className="section-head-v3">
+        <h2>Complete your profile</h2>
+      </div>
+      <div className="activity-card">
+        {missing.map((key) => {
+          const gap = GAP_LABELS[key];
+          if (!gap) return null;
+          return (
+            <button key={key} type="button" className="activity-row" onClick={() => onOpen(`${base}/${gap.suffix}`)}>
+              <span className="activity-icon tone-orange" aria-hidden>
+                <AlertIcon size={18} />
+              </span>
+              <span className="activity-main">
+                <span className="activity-title">{gap.title}</span>
+                <span className="activity-sub">Customers see complete businesses first</span>
+              </span>
+              <span className="activity-when" aria-hidden>›</span>
+            </button>
+          );
+        })}
       </div>
     </section>
   );
 }
 
-type ActivityItem =
-  | { kind: 'order'; id: string; title: string; sub: string; when: string }
-  | { kind: 'booking'; id: string; title: string; sub: string; when: string }
-  | { kind: 'payment'; count: number; title: string; sub: string }
-  | { kind: 'review'; title: string; sub: string; when: string };
-
-/**
- * Recent activity built ONLY from real records: the newest orders, bookings,
- * pending payment proofs and reviews for the selected business.
- */
-function RecentActivity(props: {
-  businessId: string;
-  onOpenOrder: (id: string) => void;
-  onOpenBooking: (id: string) => void;
-  onOpenPayments: () => void;
-  onOpenReviews: () => void;
-}) {
-  const orders = useAsyncData<Order[]>(() => listBusinessOrders(props.businessId), [props.businessId]);
-  const bookings = useAsyncData<Booking[]>(() => listBusinessBookings(props.businessId), [props.businessId]);
-  const payments = useAsyncData(() => listOwnerPayments('PENDING_VERIFICATION'), [props.businessId]);
-  const reviews = useAsyncData(() => listBusinessReviews(props.businessId, 3), [props.businessId]);
-
-  if (orders.loading || bookings.loading || payments.loading || reviews.loading) return <ListSkeleton count={2} />;
-  // Individual feed failures don't sink the whole card; skip the failed source.
-  const items: ActivityItem[] = [];
-
-  const rel = (iso: string) => {
-    const mins = Math.floor((Date.now() - Date.parse(iso)) / 60_000);
-    if (mins < 1) return 'Just now';
-    if (mins < 60) return `${mins}m ago`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    if (days < 7) return `${days}d ago`;
-    return new Date(iso).toLocaleDateString('en-PK', { day: 'numeric', month: 'short' });
-  };
-
-  const customerName = (o: Order) => [o.customer?.firstName, o.customer?.lastName].filter(Boolean).join(' ') || 'Customer';
-
-  for (const o of (orders.data ?? []).filter((x) => x.business.id === props.businessId).slice(0, 3)) {
-    items.push({ kind: 'order', id: o.id, title: `New order: ${customerName(o)}`, sub: `${o.items.length} item(s)`, when: rel(o.createdAt) });
-  }
-  for (const bk of (bookings.data ?? []).filter((x) => x.businessId === props.businessId).slice(0, 2)) {
-    items.push({ kind: 'booking', id: bk.id, title: 'New booking', sub: bk.serviceName ?? 'Service', when: rel(bk.createdAt) });
-  }
-  const orderPayments = payments.data?.orderPayments ?? [];
-  const bookingPayments = payments.data?.bookingPayments ?? [];
-  const pendingCount = orderPayments.length + bookingPayments.length;
-  if (pendingCount > 0) {
-    items.push({
-      kind: 'payment',
-      count: pendingCount,
-      title: 'Payment proof submitted',
-      sub: 'Waiting for your verification',
-    });
-  }
-  for (const rv of reviews.data?.items.slice(0, 2) ?? []) {
-    items.push({ kind: 'review', title: 'New review', sub: `${rv.rating}★ from ${rv.reviewerName}`, when: rel(rv.createdAt) });
-  }
-
-  if (!items.length) return null;
+/** Today / this week / this month performance, server-computed per period. */
+function PeriodAnalytics(props: { businessId: string }) {
+  const [period, setPeriod] = useState<OwnerAnalyticsPeriod>('today');
+  const analytics = useAsyncData<OwnerAnalytics>(() => getOwnerAnalytics(props.businessId, period), [props.businessId, period]);
 
   return (
-    <section aria-label="Recent activity" style={{ marginTop: 18 }}>
+    <section aria-label="Performance" style={{ marginTop: 18 }}>
       <div className="section-head-v3">
-        <h2>Recent activity</h2>
+        <h2>Performance</h2>
       </div>
-      <div className="activity-card">
-        {items.slice(0, 6).map((item) => {
-          if (item.kind === 'order')
-            return (
-              <button key={`o-${item.id}`} type="button" className="activity-row" onClick={() => props.onOpenOrder(item.id)}>
-                <span className="activity-icon tone-indigo" aria-hidden>
-                  <OrdersIcon size={18} />
-                </span>
-                <span className="activity-main">
-                  <span className="activity-title">{item.title}</span>
-                  <span className="activity-sub">{item.sub}</span>
-                </span>
-                <span className="activity-when">{item.when}</span>
-              </button>
-            );
-          if (item.kind === 'booking')
-            return (
-              <button key={`b-${item.id}`} type="button" className="activity-row" onClick={() => props.onOpenBooking(item.id)}>
-                <span className="activity-icon tone-green" aria-hidden>
-                  <BookingsIcon size={18} />
-                </span>
-                <span className="activity-main">
-                  <span className="activity-title">{item.title}</span>
-                  <span className="activity-sub">{item.sub}</span>
-                </span>
-                <span className="activity-when">{item.when}</span>
-              </button>
-            );
-          if (item.kind === 'payment')
-            return (
-              <button key="pay" type="button" className="activity-row" onClick={props.onOpenPayments}>
-                <span className="activity-icon tone-orange" aria-hidden>
-                  <AlertIcon size={18} />
-                </span>
-                <span className="activity-main">
-                  <span className="activity-title">{item.title}</span>
-                  <span className="activity-sub">{item.count} awaiting verification</span>
-                </span>
-                <span className="activity-when" aria-hidden>›</span>
-              </button>
-            );
-          return (
-            <button key={`r-${item.sub}`} type="button" className="activity-row" onClick={props.onOpenReviews}>
-              <span className="activity-icon tone-yellow" aria-hidden>
-                ★
-              </span>
-              <span className="activity-main">
-                <span className="activity-title">{item.title}</span>
-                <span className="activity-sub">{item.sub}</span>
-              </span>
-              <span className="activity-when">{item.when}</span>
-            </button>
-          );
-        })}
+      <div className="filter-row" role="tablist" aria-label="Performance period">
+        {(['today', 'week', 'month'] as const).map((p) => (
+          <button key={p} type="button" role="tab" aria-selected={period === p} className={`chip${period === p ? ' chip-active' : ''}`} onClick={() => setPeriod(p)}>
+            {p === 'today' ? 'Today' : p === 'week' ? 'This week' : 'This month'}
+          </button>
+        ))}
       </div>
+      {analytics.loading ? (
+        <ListSkeleton count={1} />
+      ) : analytics.error ? (
+        <ErrorState message={analytics.error} onRetry={analytics.reload} />
+      ) : analytics.data ? (
+        <div className="card">
+          <div className="cart-line">
+            <span>Orders</span>
+            <span>
+              {analytics.data.orders.total} total · {analytics.data.orders.completed} completed
+            </span>
+          </div>
+          <div className="cart-line">
+            <span>Bookings</span>
+            <span>
+              {analytics.data.bookings.total} total · {analytics.data.bookings.completed} completed
+            </span>
+          </div>
+          <div className="cart-line">
+            <span>Completed revenue</span>
+            <span className="metric-num">
+              <Money minor={analytics.data.orders.revenueMinor + analytics.data.bookings.revenueMinor} currency="PKR" />
+            </span>
+          </div>
+          <div className="cart-line">
+            <span>Active catalog</span>
+            <span>
+              {analytics.data.catalog.activeServices} services · {analytics.data.catalog.activeProducts} products
+            </span>
+          </div>
+          <p className="hint">
+            {analytics.data.window.from === analytics.data.window.to ? analytics.data.window.from : `${analytics.data.window.from} – ${analytics.data.window.to}`} · business-local dates
+          </p>
+        </div>
+      ) : null}
     </section>
   );
 }

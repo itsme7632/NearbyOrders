@@ -123,6 +123,8 @@ export type AdminBusiness = {
   address: string;
   createdAt: string;
   owner: { id: string; email: string; firstName: string | null; lastName: string | null };
+  /** Phase 16 operational activity — real aggregates from the server. */
+  counts: { orders: number; bookings: number; services: number; products: number; reviews: number };
 };
 
 export const listBusinesses = (params: { q?: string; status?: string }) => {

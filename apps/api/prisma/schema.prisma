@@ -245,6 +245,9 @@ model Booking {
   amountPaidMinor      Int @default(0)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+  // Set (once) when the booking reaches COMPLETED; null otherwise. Owner
+  // analytics/earnings derive revenue windows from this instant (Phase 16).
+  completedAt DateTime?
   customer    User          @relation(fields: [customerId], references: [id])
   business    Business      @relation(fields: [businessId], references: [id])
   service     Service?      @relation(fields: [serviceId], references: [id])
@@ -254,6 +257,7 @@ model Booking {
   @@index([businessId, status])
   @@index([customerId, status])
   @@index([businessId, bookingDate])
+  @@index([businessId, completedAt])
 }
 
 model Order {
@@ -274,6 +278,9 @@ model Order {
   notes           String?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
+  // Set (once) when the order reaches COMPLETED; null otherwise. Owner
+  // analytics/earnings derive revenue windows from this instant (Phase 16).
+  completedAt     DateTime?
   customer        User        @relation(fields: [customerId], references: [id])
   business        Business    @relation(fields: [businessId], references: [id])
   paymentMethod   BusinessPaymentMethod? @relation(fields: [paymentMethodId], references: [id])
@@ -283,6 +290,7 @@ model Order {
 
   @@index([businessId, status])
   @@index([customerId, status])
+  @@index([businessId, completedAt])
 }
 
 model OrderItem {

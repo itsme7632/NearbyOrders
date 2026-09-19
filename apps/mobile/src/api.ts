@@ -828,3 +828,44 @@ export const createReview = (businessId: string, source: ReviewSource, rating: n
 export const listMyReviews = () => request<MyReview[]>('/my-reviews', { auth: true });
 
 export const listMyBusinessReviews = () => request<OwnerReview[]>('/my-business-reviews', { auth: true });
+
+/* ------------- Business operations & analytics (Phase 16) ------------- */
+
+/** Server-authoritative operational snapshot for one owned business. */
+export type OwnerOverview = {
+  business: { id: string; name: string; status: string; isVerified: boolean; currency: string; imageUrl: string | null };
+  today: { orders: number; bookings: number; revenueMinor: number };
+  needsAttention: { pendingOrders: number; pendingBookings: number; pendingPayments: number };
+  upcomingBookings: { id: string; serviceName: string | null; customerName: string; date: string; startTime: string; status: BookingStatus }[];
+  recentOrders: Order[];
+  recentBookings: Booking[];
+  /** Persisted fields the business is missing — honest gaps, never invented. */
+  profileMissing: string[];
+};
+
+export type OwnerAnalyticsPeriod = 'today' | 'week' | 'month';
+
+export type OwnerAnalytics = {
+  period: OwnerAnalyticsPeriod;
+  window: { from: string; to: string };
+  orders: { total: number; completed: number; cancelled: number; revenueMinor: number };
+  bookings: { total: number; completed: number; cancelled: number; revenueMinor: number };
+  catalog: { activeServices: number; activeProducts: number };
+};
+
+/** Collected money only — completed transactions at their frozen values. */
+export type OwnerEarnings = {
+  currency: string;
+  collected: { ordersRevenueMinor: number; bookingsRevenueMinor: number; totalMinor: number; completedOrders: number; completedBookings: number };
+  inProgress: { orders: number; valueMinor: number };
+  awaitingVerification: { count: number; amountMinor: number };
+};
+
+export const getOwnerOverview = (businessId: string) =>
+  request<OwnerOverview>(`/owner/businesses/${businessId}/overview`, { auth: true });
+
+export const getOwnerAnalytics = (businessId: string, period: OwnerAnalyticsPeriod) =>
+  request<OwnerAnalytics>(`/owner/businesses/${businessId}/analytics?period=${period}`, { auth: true });
+
+export const getOwnerEarnings = (businessId: string) =>
+  request<OwnerEarnings>(`/owner/businesses/${businessId}/earnings`, { auth: true });
