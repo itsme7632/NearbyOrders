@@ -46,6 +46,14 @@
   --star: #d6a04a;
   --disabled: #a39c94;
 
+  /* Warm-gold accent for small rating text (deeper than --star so it
+     reads on light surfaces). --ink-soft / --danger are legacy aliases
+     referenced by the favorites/addresses styles — kept defined here so
+     those components never fall back to unset values. */
+  --gold-strong: #a8761c;
+  --ink-soft: var(--muted);
+  --danger: var(--error);
+
   /* Navigation (light surface, brand-selected) */
   --nav-surface: #ffffff;
   --nav-selected: var(--brand);
@@ -62,21 +70,23 @@
   --navy: var(--ink);
   --light: var(--brand-soft);
 
-  /* Radius scale */
-  --radius-sm: 10px;
-  --radius: 16px;
-  --radius-lg: 20px;
-  --radius-xl: 26px;
+  /* Radius scale (v7: flattened — less "bubble", more editorial) */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius: 14px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
 
-  /* Elevation scale (minimal, warm) */
-  --shadow-sm: 0 1px 2px rgba(28, 25, 23, 0.05);
-  --shadow: 0 1px 3px rgba(28, 25, 23, 0.06), 0 4px 14px rgba(28, 25, 23, 0.05);
-  --shadow-lg: 0 8px 28px rgba(28, 25, 23, 0.1);
+  /* Elevation scale (v7: near-flat content; real depth only for floating
+     chrome like the bottom nav). Warm tint kept for cohesion. */
+  --shadow-sm: 0 1px 2px rgba(28, 25, 23, 0.04);
+  --shadow: 0 1px 2px rgba(28, 25, 23, 0.05);
+  --shadow-lg: 0 10px 30px rgba(28, 25, 23, 0.12);
 
-  /* Type scale */
-  --font-display: 26px;
-  --font-h1: 21px;
-  --font-h2: 17px;
+  /* Type scale (v7: compact, strong hierarchy, no oversized hero) */
+  --font-display: 24px;
+  --font-h1: 20px;
+  --font-h2: 16px;
   --font-h3: 15px;
   --font-body: 14.5px;
   --font-caption: 12.5px;
@@ -3367,3 +3377,118 @@ nav.business-nav-v3 .nav-item.active {
 .info-card p { margin: 0 0 12px; font-size: 13.5px; line-height: 1.55; color: var(--ink); }
 .info-card p:last-child { margin-bottom: 0; }
 .about-tagline { font-weight: 800; color: var(--brand); font-size: 15px; }
+
+/* ==================================================================
+   v7 REFINEMENT — "editorial marketplace"
+   Flatter, tighter, calmer. This layer overrides the SHARED primitives
+   (cards, rows, nav, buttons, chips, section rhythm, states) toward a
+   divider-and-whitespace system instead of boxed, shadowed containers.
+   It is additive: every rule here targets class names the screens
+   already render, so structure and tests are untouched while the whole
+   app shifts coherently to a more deliberate, product-team finish.
+   ================================================================== */
+
+/* ---- Remove decorative noise (radial "glow" circles) ---------------- */
+.me-band::after,
+.profile-hero-v4::after,
+.deals-banner::after { content: none; }
+
+/* ---- Type: compact, confident headings (no space-wasting heroes) ---- */
+.home-hero-title { font-size: clamp(22px, 6vw, 26px); letter-spacing: -0.02em; }
+.home-greeting-title { font-size: clamp(20px, 5.6vw, 24px); }
+.home-hero-title em, .home-greeting-title em { color: var(--brand); }
+.screen > header h1, .owner-head h1 { font-size: var(--font-display); }
+
+/* ---- Section rhythm: consistent editorial labels -------------------- */
+.section-head, .section-head-v3 { margin: 20px 0 10px; }
+.section-head h2, .section-head-v3 h2, .card h2 {
+  font-size: var(--font-h2);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.hub-section-label, .manage-section-label {
+  font-size: 11px;
+  letter-spacing: 0.09em;
+  color: var(--muted);
+}
+
+/* ---- Content cards: hairline + near-flat (not floating boxes) ------- */
+.card,
+.skeleton-card,
+.hub-card,
+.manage-card,
+.activity-card,
+.metric-card-v3,
+.quick-tile,
+.owner-quick-card,
+.biz-identity,
+.order-card-v3,
+.biz-card,
+.pop-card,
+.spotlight-card,
+.mini-card,
+.booking-card,
+.fav-row,
+.addr-card,
+.auth-card,
+.info-card,
+.role-option,
+.search-result-row,
+.contact-card,
+.pay-details {
+  box-shadow: none;
+  border-radius: var(--radius-md);
+}
+
+/* Flat brand surfaces: keep the warm-burgundy heroes but drop the heavy
+   elevation so they read as banners, not floating slabs. */
+.me-band, .plan-card, .grow-card, .deals-banner, .support-strip,
+.profile-hero-v4 { box-shadow: none; border-radius: var(--radius-md); }
+
+/* ---- Buttons: tighter radius, restrained primary elevation ---------- */
+.btn { border-radius: var(--radius-md); }
+.btn-primary { box-shadow: none; }
+.btn-primary:hover { background: var(--brand-strong); }
+.chip { box-shadow: none; }
+.chip-active { box-shadow: none; }
+
+/* ---- Floating bottom nav: the one place real depth is allowed ------- */
+nav.nav-v3, nav.business-nav-v3 {
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(28, 25, 23, 0.14);
+  border: 1px solid var(--border);
+}
+
+/* ---- Empty / loading / error states: calm, unboxed ------------------ */
+.empty-state, .loading {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.empty-v3 {
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+}
+.error-state {
+  background: var(--error-soft);
+  border: 1px solid rgba(194, 53, 36, 0.28);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+/* ---- Search / filter chips: flatten ------------------------------ */
+.search-bar-v3, .home-hero-search { box-shadow: none; border-radius: var(--radius-md); }
+
+/* ---- Skeletons: match the flatter surface -------------------------- */
+.skeleton-card { border: 1px solid var(--border); }
+
+/* ---- Business hero media: tighter radius --------------------------- */
+.detail-hero-media, .detail-hero-media-v3, .biz-hero-media { border-radius: var(--radius-md); }
+.biz-card-imgwrap, .pop-card-media, .mini-card-media, .spotlight-media { background: var(--brand-soft); }
+
+/* ---- Dividers & lists: hairline, calmer --------------------------- */
+.hub-row, .manage-row, .activity-row { min-height: 50px; }
+
+/* ---- Sticky strips: keep subtle, not heavy ------------------------- */
+.tab-strip { border-bottom: 1px solid var(--border); }
