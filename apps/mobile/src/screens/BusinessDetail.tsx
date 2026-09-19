@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getBusiness, listBusinessReviews, type Business, type Product, type PublicReview, type ReviewPage } from '../api.js';
+import { getBusiness, listBusinessReviews, getSession, type Business, type Product, type PublicReview, type ReviewPage } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, ListSkeleton, Loading, Money, OpenBadge, VerifiedBadge } from '../components/ui.js';
 import { StoreIcon } from '../components/icons.js';
@@ -8,6 +8,8 @@ import { addToCart, replaceWith } from '../cart.js';
 import { useCartCount } from '../useCartCount.js';
 import { Stars } from '../components/ReviewForm.js';
 import { directionsUrl, formatDistanceKm, hasCoordinates } from '../location.js';
+import { useSavedBusiness } from './customer-experience.js';
+import { HeartIcon } from '../components/icons.js';
 import { BusinessMapContext } from './BusinessMapContext.js';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
@@ -135,6 +137,7 @@ export function BusinessDetailScreen(props: {
             Order products
           </button>
         ) : null}
+        <SaveHeart businessId={b.id} />
         {b.phone ? (
           <a className="biz-action biz-action-ghost" href={`tel:${b.phone.replace(/[^\d+]/g, '')}`}>
             Call
@@ -357,6 +360,25 @@ function RatingLine(props: { businessId: string; fallbackAverage?: number | null
 }
 
 /** Web Share API with a clipboard fallback; both are real, local actions. */
+/** Phase 17: per-business save (favorite) heart. Hidden signed-out. */
+function SaveHeart(props: { businessId: string }) {
+  const { saved, toggle } = useSavedBusiness(props.businessId);
+  const session = getSession();
+  if (!session) return null;
+  return (
+    <button
+      type="button"
+      className={`biz-action biz-action-ghost save-heart${saved ? ' save-heart-on' : ''}`}
+      aria-pressed={saved === true}
+      aria-label={saved ? 'Remove from saved businesses' : 'Save this business'}
+      onClick={() => void toggle()}
+    >
+      <HeartIcon size={16} filled={saved === true} />
+      {saved ? 'Saved' : 'Save'}
+    </button>
+  );
+}
+
 function ShareButton(props: { name: string }) {
   const [shared, setShared] = useState(false);
   const share = async () => {

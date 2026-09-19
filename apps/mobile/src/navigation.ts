@@ -24,7 +24,11 @@ export type Route =
   | { name: 'owner-screen'; screen: OwnerScreenName; businessId: string }
   | { name: 'create-business' }
   | { name: 'edit-profile' }
-  | { name: 'change-password' };
+  | { name: 'change-password' }
+  | { name: 'saved-businesses' }
+  | { name: 'my-reviews' }
+  | { name: 'addresses' }
+  | { name: 'info'; page: 'help' | 'terms' | 'privacy' | 'about' };
 
 /** Parses `#/business/<idOrSlug>`, `#/book/...`, `#/booking/<id>`, `#/owner`, `#/create-business` style hash routes. */
 export function parseHash(hash: string): Route {
@@ -58,6 +62,13 @@ export function parseHash(hash: string): Route {
   if (clean === 'create-business') return { name: 'create-business' };
   if (clean === 'edit-profile') return { name: 'edit-profile' };
   if (clean === 'change-password') return { name: 'change-password' };
+  if (clean === 'saved-businesses') return { name: 'saved-businesses' };
+  if (clean === 'my-reviews') return { name: 'my-reviews' };
+  if (clean === 'addresses') return { name: 'addresses' };
+  if (clean.startsWith('info/')) {
+    const page = clean.slice('info/'.length);
+    if (page === 'help' || page === 'terms' || page === 'privacy' || page === 'about') return { name: 'info', page };
+  }
   if (clean === 'owner') {
     const params = new URLSearchParams(queryPart ?? '');
     const created = params.get('created');

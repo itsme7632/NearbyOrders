@@ -69,6 +69,8 @@ import {
   LIVE_SUBSCRIPTION_STATUSES,
   evaluateSubscription,
   searchQuerySchema,
+  addressCreateSchema,
+  addressUpdateSchema,
 } from './lib.js';
 import type { AuthUser, NotificationInput } from './lib.js';
 import { dispatchPushNotifications } from './push.js';
@@ -2983,6 +2985,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     totalMinor: o.totalMinor ?? o.subtotalMinor,
     currency: o.currency,
     fulfillmentType: o.fulfillmentType,
+    // DELIVERY snapshot captured at placement (Phase 17); null for pickup
+    // orders or delivery orders placed before addresses existed.
+    deliveryAddressText: o.deliveryAddressText ?? null,
     // Chosen manual digital channel (null = cash on delivery/pickup). The
     // payment STATE lives on OrderPayment rows, never inferred from status.
     paymentMethodId: o.paymentMethodId ?? null,
@@ -3056,6 +3061,29 @@ export async function buildApp(): Promise<FastifyInstance> {
       return r.status(400).send({ error: { code: 'COD_UNAVAILABLE', message: 'Cash on delivery is not available for this business — choose a payment method' } });
     }
     const totalMinor = subtotalMinor + deliveryFeeMinor;
+    // DELIVERY (Phase 17): the client names the customer's own address-book
+    // row; the server reads and snapshots its text. Free-form delivery text
+    // from the client is never trusted, and PICKUP/COLLECTION orders never
+    // carry a delivery address.
+    let deliveryAddressText: string | null = null;
+    if (d.deliveryAddressId !== undefined) {
+      if (d.fulfillmentType !== 'DELIVERY')
+        return r.status(400).send({ error: { code: 'INVALID_ADDRESS', message: 'A delivery address applies only to delivery orders' } });
+      const address = await prisma.customerAddress.findFirst({
+        where: { id: d.deliveryAddressId, customerId: customer.id },
+        select: { addressText: true },
+      });
+      if (!address)
+        return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Delivery address not found' } });
+      deliveryAddressText = address.addressText;
+    } else if (d.fulfillmentType === 'DELIVERY') {
+      // Convenience default: the customer's default address, when they have one.
+      const fallback = await prisma.customerAddress.findFirst({
+        where: { customerId: customer.id, isDefault: true },
+        select: { addressText: true },
+      });
+      deliveryAddressText = fallback?.addressText ?? null;
+    }
     let pushNotice: NotificationInput | null = null;
     const created = await prisma.$transaction(async (tx) => {
       const order = await tx.order.create({
@@ -3068,6 +3096,7 @@ export async function buildApp(): Promise<FastifyInstance> {
           paymentMethodId,
           notes: d.notes,
           fulfillmentType: d.fulfillmentType,
+          deliveryAddressText,
           items: {
             create: d.items.map((i) => {
               const p = products.find((x) => x.id === i.productId)!;
@@ -3417,6 +3446,185 @@ export async function buildApp(): Promise<FastifyInstance> {
       take: 100,
     });
     return { data: rows.map((rv) => ({ ...publicReview(rv), business: rv.business })) };
+  });
+
+  /* ------------------- Favorites (Phase 17) -------------------------- */
+
+  /**
+   * Saved (favorite) businesses. Server-authoritative persistence in
+   * FavoriteBusiness; the (customerId, businessId) pair is unique so saving
+   * twice is idempotent. Only APPROVED, unarchived businesses can be saved —
+   * a customer never keeps a pinned entry pointing at a hidden/pending page.
+   * The saved list reuses the public business DTO (id/name/slug/image/city/
+   * rating/categories) so it can be rendered from the same card component as
+   * discovery results.
+   */
+  const favoriteListSelect = {
+    business: {
+      select: { id: true, name: true, slug: true, imageUrl: true, city: true, address: true, isVerified: true },
+    },
+    createdAt: true,
+  } as const;
+
+  app.get('/api/v1/me/favorites', { preHandler: auth }, async (q) => {
+    const rows = await prisma.favoriteBusiness.findMany({
+      where: { customerId: currentUser(q).id },
+      select: favoriteListSelect,
+      orderBy: [{ createdAt: 'desc' }, { businessId: 'desc' }],
+      take: 200,
+    });
+    const ratings = await Promise.all(rows.map((row) => ratingSummary(row.business.id)));
+    return {
+      data: rows.map((row, i) => ({
+        business: {
+          ...row.business,
+          averageRating: ratings[i].averageRating,
+          reviewCount: ratings[i].reviewCount,
+        },
+        savedAt: row.createdAt,
+      })),
+    };
+  });
+
+  /** Is this business saved by the caller? Powers the profile-heart state. */
+  app.get('/api/v1/me/favorites/:businessId', { preHandler: auth }, async (q) => {
+    const businessId = (q.params as { businessId: string }).businessId;
+    const row = await prisma.favoriteBusiness.findUnique({
+      where: { customerId_businessId: { customerId: currentUser(q).id, businessId } },
+      select: { createdAt: true },
+    });
+    return { data: { saved: row !== null } };
+  });
+
+  app.post('/api/v1/me/favorites/:businessId', { preHandler: auth }, async (q, r) => {
+    const businessId = (q.params as { businessId: string }).businessId;
+    // Approved + visible only; anything else is a 404 the same as discovery.
+    const business = await prisma.business.findFirst({
+      where: { OR: [{ id: businessId }, { slug: businessId }], status: 'APPROVED', archivedAt: null },
+      select: { id: true },
+    });
+    if (!business) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Business not found' } });
+    // Idempotent upsert: double-tap save never errors and never duplicates.
+    await prisma.favoriteBusiness.upsert({
+      where: { customerId_businessId: { customerId: currentUser(q).id, businessId: business.id } },
+      update: {},
+      create: { customerId: currentUser(q).id, businessId: business.id },
+    });
+    return { data: { saved: true } };
+  });
+
+  app.delete('/api/v1/me/favorites/:businessId', { preHandler: auth }, async (q) => {
+    const businessId = (q.params as { businessId: string }).businessId;
+    // Idempotent unsave: deleting a missing save is still a success — the
+    // end state (not saved) is exactly what the caller asked for.
+    await prisma.favoriteBusiness.deleteMany({ where: { customerId: currentUser(q).id, businessId } });
+    return { data: { saved: false } };
+  });
+
+  /* ---------------- Customer addresses (Phase 17) --------------------- */
+
+  /**
+   * The customer's delivery address book. Ownership is the caller's own id
+   * on every query; a foreign or malformed id is simply a 404. Coordinates
+   * are optional and range-validated by the schema; nothing invents them.
+   */
+  const publicAddress = (a: {
+    id: string;
+    label: string;
+    recipientName: string;
+    phone: string | null;
+    addressText: string;
+    latitude: unknown;
+    longitude: unknown;
+    isDefault: boolean;
+    createdAt: Date;
+  }) => ({
+    id: a.id,
+    label: a.label,
+    recipientName: a.recipientName,
+    phone: a.phone,
+    addressText: a.addressText,
+    // Decimals serialize as strings; coordinates are always JSON numbers.
+    latitude: a.latitude === null || a.latitude === undefined ? null : Number(a.latitude),
+    longitude: a.longitude === null || a.longitude === undefined ? null : Number(a.longitude),
+    isDefault: a.isDefault,
+    createdAt: a.createdAt,
+  });
+
+  app.get('/api/v1/me/addresses', { preHandler: auth }, async (q) => {
+    const rows = await prisma.customerAddress.findMany({
+      where: { customerId: currentUser(q).id },
+      orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+      take: 50,
+    });
+    return { data: rows.map(publicAddress) };
+  });
+
+  app.post('/api/v1/me/addresses', { preHandler: auth }, async (q, r) => {
+    const d = addressCreateSchema.parse(q.body);
+    const customerId = currentUser(q).id;
+    const count = await prisma.customerAddress.count({ where: { customerId } });
+    if (count >= 20)
+      return r.status(400).send({ error: { code: 'ADDRESS_LIMIT', message: 'Address book is full (20 addresses maximum)' } });
+    const created = await prisma.$transaction(async (tx) => {
+      // A customer always keeps a default when possible: an explicit
+      // isDefault=true demotes the previous default; a create into a book
+      // with NO default promotes the new row unless the customer explicitly
+      // declined (isDefault === false). Never zero and two defaults.
+      const hasDefault = await tx.customerAddress.findFirst({ where: { customerId, isDefault: true }, select: { id: true } });
+      const makeDefault = d.isDefault === true || (!hasDefault && d.isDefault !== false);
+      if (makeDefault)
+        await tx.customerAddress.updateMany({ where: { customerId, isDefault: true }, data: { isDefault: false } });
+      return tx.customerAddress.create({
+        data: {
+          customerId,
+          label: d.label,
+          recipientName: d.recipientName,
+          phone: d.phone ?? null,
+          addressText: d.addressText,
+          latitude: d.coordinates?.latitude ?? null,
+          longitude: d.coordinates?.longitude ?? null,
+          isDefault: makeDefault,
+        },
+      });
+    });
+    return r.status(201).send({ data: publicAddress(created) });
+  });
+
+  app.patch('/api/v1/me/addresses/:id', { preHandler: auth }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const d = addressUpdateSchema.parse(q.body);
+    const customerId = currentUser(q).id;
+    // Ownership check first: a foreign id is indistinguishable from a missing
+    // one (404), never an update of someone else's row.
+    const existing = await prisma.customerAddress.findFirst({ where: { id, customerId }, select: { id: true } });
+    if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Address not found' } });
+    const updated = await prisma.$transaction(async (tx) => {
+      if (d.isDefault === true)
+        await tx.customerAddress.updateMany({ where: { customerId, isDefault: true }, data: { isDefault: false } });
+      return tx.customerAddress.update({
+        where: { id },
+        data: {
+          ...(d.label !== undefined ? { label: d.label } : {}),
+          ...(d.recipientName !== undefined ? { recipientName: d.recipientName } : {}),
+          ...(d.phone !== undefined ? { phone: d.phone } : {}),
+          ...(d.addressText !== undefined ? { addressText: d.addressText } : {}),
+          ...(d.coordinates !== undefined
+            ? { latitude: d.coordinates?.latitude ?? null, longitude: d.coordinates?.longitude ?? null }
+            : {}),
+          ...(d.isDefault !== undefined ? { isDefault: d.isDefault } : {}),
+        },
+      });
+    });
+    return { data: publicAddress(updated) };
+  });
+
+  app.delete('/api/v1/me/addresses/:id', { preHandler: auth }, async (q) => {
+    const id = (q.params as { id: string }).id;
+    // deleteMany scoped by owner: foreign ids delete nothing and still 404.
+    const deleted = await prisma.customerAddress.deleteMany({ where: { id, customerId: currentUser(q).id } });
+    if (deleted.count === 0) return { data: { deleted: false } };
+    return { data: { deleted: true } };
   });
 
   /* -------------------------- Notifications -------------------------- */

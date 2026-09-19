@@ -155,11 +155,42 @@ export type Order = {
   /** Phase 7C: server-computed; 0 for pickup/collection. */
   deliveryFeeMinor?: number;
   totalMinor?: number;
+  /** Phase 17: DELIVERY snapshot captured at placement; null for pickup. */
+  deliveryAddressText?: string | null;
   notes: string | null;
   business: { id: string; name: string; slug: string; imageUrl?: string | null };
   /** First name / last name only — never email or credentials. */
   customer: { firstName: string | null; lastName: string | null } | null;
   items: OrderItem[];
+};
+
+/** Phase 17: a customer-saved (favorite) business entry. */
+export type FavoriteEntry = {
+  business: {
+    id: string;
+    name: string;
+    slug: string;
+    imageUrl: string | null;
+    city: string;
+    address: string;
+    isVerified: boolean;
+    averageRating: number | null;
+    reviewCount: number;
+  };
+  savedAt: string;
+};
+
+/** Phase 17: a customer delivery address. Coordinates optional, honest. */
+export type CustomerAddress = {
+  id: string;
+  label: string;
+  recipientName: string;
+  phone: string | null;
+  addressText: string;
+  latitude: number | null;
+  longitude: number | null;
+  isDefault: boolean;
+  createdAt: string;
 };
 
 export type BusinessHour = {
@@ -705,7 +736,45 @@ export const createOrder = (input: {
   fulfillmentType?: 'PICKUP' | 'DELIVERY' | 'COLLECTION';
   /** Manual digital channel id; omit for COD / pickup-cash. */
   paymentMethodId?: string;
+  /** Phase 17: DELIVERY address snapshot source — one of the caller's own rows. */
+  deliveryAddressId?: string;
 }) => request<Order>('/orders', { method: 'POST', body: input, auth: true });
+
+/* ---------------------- favorites (Phase 17) ----------------------- */
+
+export const listFavorites = () => request<FavoriteEntry[]>('/me/favorites', { auth: true });
+
+export const getFavoriteState = (businessId: string) =>
+  request<{ saved: boolean }>(`/me/favorites/${businessId}`, { auth: true });
+
+/** Idempotent save. */
+export const saveFavorite = (businessId: string) =>
+  request<{ saved: boolean }>(`/me/favorites/${businessId}`, { method: 'POST', auth: true });
+
+/** Idempotent unsave. */
+export const unsaveFavorite = (businessId: string) =>
+  request<{ saved: boolean }>(`/me/favorites/${businessId}`, { method: 'DELETE', auth: true });
+
+/* ---------------------- addresses (Phase 17) ----------------------- */
+
+export const listAddresses = () => request<CustomerAddress[]>('/me/addresses', { auth: true });
+
+export const createAddress = (input: {
+  label: string;
+  recipientName: string;
+  phone?: string | null;
+  addressText: string;
+  coordinates?: { latitude: number; longitude: number };
+  isDefault?: boolean;
+}) => request<CustomerAddress>('/me/addresses', { method: 'POST', body: input, auth: true });
+
+export const updateAddress = (
+  id: string,
+  input: Partial<{ label: string; recipientName: string; phone: string | null; addressText: string; coordinates: { latitude: number; longitude: number } | null; isDefault: boolean }>,
+) => request<CustomerAddress>(`/me/addresses/${id}`, { method: 'PATCH', body: input, auth: true });
+
+export const deleteAddress = (id: string) =>
+  request<{ deleted: boolean }>(`/me/addresses/${id}`, { method: 'DELETE', auth: true });
 
 /** Orders visible to the current user (customer: own, owner: own businesses). */
 export const listOrders = () => request<Order[]>('/orders', { auth: true });

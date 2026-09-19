@@ -103,6 +103,11 @@ model User {
   orderPayments       OrderPayment[]               @relation("OrderPaymentCustomer")
   verifiedBookingPays BookingPayment[]             @relation("BookingPaymentVerifier")
   verifiedOrderPays   OrderPayment[]               @relation("OrderPaymentVerifier")
+  /// Phase 17: customer-saved (favorite) businesses. Persisted server-side,
+  /// unique per (customer, business) so double-tapping save is idempotent.
+  savedBy             FavoriteBusiness[]
+  /// Phase 17: the customer's address book for DELIVERY orders.
+  addresses           CustomerAddress[]
 
   @@index([role, isSuspended])
 }
@@ -152,6 +157,8 @@ model Business {
   payInMethods    BusinessPaymentMethod[]
   bookingPayments BookingPayment[]
   orderPayments   OrderPayment[]
+  /// Phase 17: customers who saved this business to their favorites.
+  savedBy         FavoriteBusiness[]
 
   // Delivery / cash-on-delivery settings (Phase 7C). The fee belongs to the
   // business — NearbyOrders takes no cut and never holds the money.
@@ -281,6 +288,10 @@ model Order {
   // Set (once) when the order reaches COMPLETED; null otherwise. Owner
   // analytics/earnings derive revenue windows from this instant (Phase 16).
   completedAt     DateTime?
+  // DELIVERY snapshot of the customer's chosen address at placement time
+  // (Phase 17). Stored per-order — later address edits/corrections on the
+  // customer's address book never rewrite history on placed orders.
+  deliveryAddressText String?
   customer        User        @relation(fields: [customerId], references: [id])
   business        Business    @relation(fields: [businessId], references: [id])
   paymentMethod   BusinessPaymentMethod? @relation(fields: [paymentMethodId], references: [id])
@@ -458,6 +469,39 @@ model Review {
   @@index([businessId, createdAt])
   @@index([customerId, createdAt])
   @@index([businessId, isHiddenAt])
+}
+
+/// Phase 17: a customer's saved (favorite) business. Server-authoritative;
+/// the (customerId, businessId) pair is unique, so saving twice is idempotent.
+model FavoriteBusiness {
+  customerId String
+  businessId String
+  createdAt  DateTime @default(now())
+  customer   User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@id([customerId, businessId])
+  @@index([customerId, createdAt])
+}
+
+/// Phase 17: a customer's delivery address. At most one DEFAULT per customer
+/// (partial unique index); coordinates, when present, are range-validated
+/// server-side before ever reaching this table.
+model CustomerAddress {
+  id          String   @id @default(uuid())
+  customerId  String
+  label       String
+  recipientName String
+  phone       String?
+  addressText String
+  latitude    Float?
+  longitude   Float?
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  customer    User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId, isDefault])
 }
 
 /**

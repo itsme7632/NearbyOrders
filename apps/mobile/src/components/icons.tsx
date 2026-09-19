@@ -243,3 +243,17 @@ export function ChevronRightIcon(props: IconProps) {
     </Icon>
   );
 }
+
+export function HeartIcon(props: IconProps & { filled?: boolean }) {
+  // Destructure before spreading so `filled` never reaches the DOM
+  // (React would warn about a non-boolean attribute otherwise).
+  const { filled, ...rest } = props;
+  return (
+    <Icon {...rest}>
+      <path
+        d="M12 20.5S4 15.1 4 9.6C4 6.9 6.1 5 8.5 5c1.5 0 2.8.8 3.5 2 .7-1.2 2-2 3.5-2C17.9 5 20 6.9 20 9.6c0 5.5-8 10.9-8 10.9Z"
+        fill={filled ? 'currentColor' : 'none'}
+      />
+    </Icon>
+  );
+}

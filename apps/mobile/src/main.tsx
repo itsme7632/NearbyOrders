@@ -26,6 +26,15 @@ import { CreateBusinessScreen } from './screens/CreateBusiness.js';
 import { CartScreen } from './screens/Cart.js';
 import { OrdersScreen, OrderDetailScreen } from './screens/Orders.js';
 import { NotificationsScreen } from './screens/Notifications.js';
+import {
+  SavedBusinessesScreen,
+  MyReviewsScreen,
+  AddressesScreen,
+  HelpScreen,
+  TermsScreen,
+  PrivacyScreen,
+  AboutScreen,
+} from './screens/customer-experience.js';
 import { useUnreadNotifications } from './useUnreadNotifications.js';
 import { usePushRegistration } from './usePushRegistration.js';
 
@@ -83,6 +92,10 @@ export function App() {
         push('/');
       }}
       onOpenNotifications={() => push('/notifications')}
+      onOpenSaved={() => push('/saved-businesses')}
+      onOpenMyReviews={() => push('/my-reviews')}
+      onOpenAddresses={() => push('/addresses')}
+      onOpenInfo={(page) => push(`/info/${page}`)}
     />
   );
 
@@ -104,6 +117,10 @@ export function App() {
         push('/');
       }}
       onOpenNotifications={() => push('/notifications')}
+      onOpenSaved={() => push('/saved-businesses')}
+      onOpenMyReviews={() => push('/my-reviews')}
+      onOpenAddresses={() => push('/addresses')}
+      onOpenInfo={(page) => push(`/info/${page}`)}
     />
   );
 
@@ -215,6 +232,15 @@ export function App() {
     content = session ? <EditProfileScreen onBack={back} onSaved={unread.refresh} /> : null;
   } else if (route.name === 'change-password') {
     content = session ? <ChangePasswordScreen onBack={back} /> : null;
+  } else if (route.name === 'saved-businesses') {
+    content = session ? <SavedBusinessesScreen onBack={back} onOpenBusiness={openBusiness} /> : null;
+  } else if (route.name === 'my-reviews') {
+    content = session ? <MyReviewsScreen onBack={back} onOpenBusiness={openBusiness} /> : null;
+  } else if (route.name === 'addresses') {
+    content = session ? <AddressesScreen onBack={back} /> : null;
+  } else if (route.name === 'info') {
+    content =
+      route.page === 'help' ? <HelpScreen onBack={back} /> : route.page === 'terms' ? <TermsScreen onBack={back} /> : route.page === 'privacy' ? <PrivacyScreen onBack={back} /> : <AboutScreen onBack={back} />;
   } else if (route.name === 'book') {
     // Both customers and business owners book through the same flow; the
     // identity is the signed-in person either way. Booking your own business

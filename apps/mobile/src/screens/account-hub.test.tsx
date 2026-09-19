@@ -42,6 +42,10 @@ describe('AccountHub (signed-in Profile tab)', () => {
         onOpenOrders={noop}
         onOpenBookings={noop}
         onOpenNotifications={noop}
+        onOpenSaved={noop}
+        onOpenMyReviews={noop}
+        onOpenAddresses={noop}
+        onOpenInfo={noop}
       />,
     );
     await screen.findByText('Ayesha Khan');
@@ -53,7 +57,7 @@ describe('AccountHub (signed-in Profile tab)', () => {
   });
 
   it('navigates from hub rows to Edit Profile, Change Password, Orders, Bookings and Notifications', async () => {
-    const handlers = { edit: vi.fn(), pw: vi.fn(), orders: vi.fn(), bookings: vi.fn(), notifs: vi.fn() };
+    const handlers = { edit: vi.fn(), pw: vi.fn(), orders: vi.fn(), bookings: vi.fn(), notifs: vi.fn(), saved: vi.fn(), reviews: vi.fn(), addresses: vi.fn(), info: vi.fn() };
     render(
       <ProfileScreen
         onOwnerDashboard={noop}
@@ -62,6 +66,10 @@ describe('AccountHub (signed-in Profile tab)', () => {
         onOpenOrders={handlers.orders}
         onOpenBookings={handlers.bookings}
         onOpenNotifications={handlers.notifs}
+        onOpenSaved={handlers.saved}
+        onOpenMyReviews={handlers.reviews}
+        onOpenAddresses={handlers.addresses}
+        onOpenInfo={handlers.info}
       />,
     );
     await screen.findByText('Ayesha Khan');
@@ -75,10 +83,18 @@ describe('AccountHub (signed-in Profile tab)', () => {
     expect(handlers.bookings).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: /Notifications/i }));
     expect(handlers.notifs).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: /Saved businesses/i }));
+    expect(handlers.saved).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: /My reviews/i }));
+    expect(handlers.reviews).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: /Addresses/i }));
+    expect(handlers.addresses).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: /Help & support/i }));
+    expect(handlers.info).toHaveBeenCalledWith('help');
     expect(api.whoami).toHaveBeenCalled();
   });
 
-  it('marks unimplemented features as Coming soon instead of pretending they work', async () => {
+  it('every account-hub row is a real, clickable destination (Phase 17)', async () => {
     render(
       <ProfileScreen
         onOwnerDashboard={noop}
@@ -87,12 +103,18 @@ describe('AccountHub (signed-in Profile tab)', () => {
         onOpenOrders={noop}
         onOpenBookings={noop}
         onOpenNotifications={noop}
+        onOpenSaved={noop}
+        onOpenMyReviews={noop}
+        onOpenAddresses={noop}
+        onOpenInfo={noop}
       />,
     );
     await screen.findByText('Ayesha Khan');
-    expect(screen.getAllByText('Soon').length).toBeGreaterThanOrEqual(4);
-    const help = screen.getByText('Help & support').closest('button');
-    expect(help).toBeNull(); // static row, not clickable
+    // No "Soon" badges remain: every listed feature actually works.
+    expect(screen.queryByText('Soon')).toBeNull();
+    for (const name of ['Help & support', 'Terms & conditions', 'Privacy policy', 'About NearbyOrders', 'Saved businesses', 'My reviews', 'Addresses']) {
+      expect(screen.getByText(name).closest('button')).not.toBeNull();
+    }
   });
 
   it('shows the business dashboard entry for owners', async () => {
@@ -106,6 +128,10 @@ describe('AccountHub (signed-in Profile tab)', () => {
         onOpenOrders={noop}
         onOpenBookings={noop}
         onOpenNotifications={noop}
+        onOpenSaved={noop}
+        onOpenMyReviews={noop}
+        onOpenAddresses={noop}
+        onOpenInfo={noop}
       />,
     );
     expect(await screen.findByText('Ayesha Khan')).toBeTruthy();

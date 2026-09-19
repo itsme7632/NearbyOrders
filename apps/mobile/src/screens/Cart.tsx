@@ -7,6 +7,7 @@ import {
   ApiError,
   type BusinessPayInMethod,
 } from '../api.js';
+import { listAddresses, getSession, type CustomerAddress } from '../api.js';
 import { Button, EmptyState, ErrorState, Money } from '../components/ui.js';
 import { OrdersIcon, CheckIcon } from '../components/icons.js';
 import { cartSubtotal, clearCart, getCart, lineTotal, onCartChange, removeFromCart, setQuantity, type Cart } from '../cart.js';
@@ -28,6 +29,9 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
   const [methods, setMethods] = useState<BusinessPayInMethod[] | null>(null);
   const [methodsError, setMethodsError] = useState(false);
   const [fulfillment, setFulfillment] = useState<'PICKUP' | 'DELIVERY'>('PICKUP');
+  // Phase 17: the customer's address book drives DELIVERY checkout.
+  const [addresses, setAddresses] = useState<CustomerAddress[] | null>(null);
+  const [addressId, setAddressId] = useState<string | null>(null);
   const [methodId, setMethodId] = useState<string | null>(null);
   const [reference, setReference] = useState('');
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -39,6 +43,24 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
   const sync = () => setCart(getCart());
   onCartChange(sync);
   // Re-subscribe on every render keeps this simple and correct for this scale.
+
+  // Phase 17: load the address book once for the delivery selector.
+  useEffect(() => {
+    let alive = true;
+    if (!getSession()) return;
+    listAddresses()
+      .then((list) => {
+        if (!alive) return;
+        setAddresses(list);
+        setAddressId((list.find((a) => a.isDefault) ?? list[0])?.id ?? null);
+      })
+      .catch(() => {
+        if (alive) setAddresses([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // Load the business's pay-in channels once; failures degrade to cash-only.
   useEffect(() => {
@@ -66,6 +88,7 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
         businessId: cart.businessId,
         items: cart.items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
         fulfillmentType: fulfillment,
+        ...(fulfillment === 'DELIVERY' && addressId ? { deliveryAddressId: addressId } : {}),
         ...(selected ? { paymentMethodId: selected.id } : {}),
       });
       // Manual digital proof follows immediately; the payment stays
@@ -217,6 +240,25 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
             </button>
           ))}
         </div>
+        {fulfillment === 'DELIVERY' && addresses && addresses.length > 0 ? (
+          <div className="pay-methods addr-picker" role="radiogroup" aria-label="Delivery address">
+            {addresses.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                role="radio"
+                aria-checked={addressId === a.id}
+                className={`pay-chip${addressId === a.id ? ' pay-chip-active' : ''}`}
+                onClick={() => setAddressId(a.id)}
+              >
+                {a.label}: {a.addressText.length > 42 ? `${a.addressText.slice(0, 42)}…` : a.addressText}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {fulfillment === 'DELIVERY' && addresses !== null && addresses.length === 0 ? (
+          <p className="addr-hint">No saved addresses yet — add one under Profile → Addresses. The business will confirm delivery details with you.</p>
+        ) : null}
       </section>
 
       {/* Payment method: cash flows need nothing; digital needs proof. */}

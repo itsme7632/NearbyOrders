@@ -48,16 +48,20 @@ describe('unified search (Phase 14)', () => {
   });
 
   it('matches a business by name with transparent relevance', async () => {
-    const { businessId } = await searchFixture({ name: 'Zzyzx Bike Repair Palace' });
-    const exact = await search({ q: 'Zzyzx Bike Repair Palace' });
+    // A run token keeps the fixture names unique against the persistent local
+    // test DB: repeated same-name rows would otherwise crowd this exact name
+    // out of the 20-result page. (CI uses a fresh DB and never sees this.)
+    const token = Date.now();
+    const { businessId } = await searchFixture({ name: `Zzyzx Bike Repair Palace ${token}` });
+    const exact = await search({ q: `Zzyzx Bike Repair Palace ${token}` });
     expect(exact.statusCode).toBe(200);
     const body = JSON.parse(exact.body);
     const first = body.data.results[0];
     expect(first.type).toBe('business');
     expect(first.id).toBe(businessId);
     // exact-name match outranks a substring business hit
-    const substringFixture = await searchFixture({ name: 'Also Contains Zzyzx Bike Repair Palace Inside' });
-    const both = await search({ q: 'Zzyzx Bike Repair Palace' });
+    const substringFixture = await searchFixture({ name: `Also Contains Zzyzx Bike Repair Palace ${token} Inside` });
+    const both = await search({ q: `Zzyzx Bike Repair Palace ${token}` });
     expect(both.statusCode).toBe(200);
     expect(JSON.parse(both.body).data.results[0].id).toBe(businessId);
     expect(JSON.parse(both.body).data.results.map((r: { id: string }) => r.id)).toContain(substringFixture.businessId);

@@ -19,6 +19,7 @@ import {
   ChevronRightIcon,
   EyeIcon,
   EyeOffIcon,
+  HeartIcon,
   HelpIcon,
   InfoIcon,
   KeyIcon,
@@ -359,6 +360,10 @@ function AccountHub(props: {
   onOpenOrders: () => void;
   onOpenBookings: () => void;
   onOpenNotifications: () => void;
+  onOpenSaved: () => void;
+  onOpenMyReviews: () => void;
+  onOpenAddresses: () => void;
+  onOpenInfo: (page: 'help' | 'terms' | 'privacy' | 'about') => void;
 }) {
   const [profile, setProfile] = useState<MyProfile | null>(null);
   useEffect(() => {
@@ -416,18 +421,20 @@ function AccountHub(props: {
       <HubSection label="Activity">
         <HubRow icon={<OrdersIcon size={19} />} title="My orders" onClick={props.onOpenOrders} />
         <HubRow icon={<BookingsHubIcon size={19} />} title="My bookings" onClick={props.onOpenBookings} />
-        <HubRow icon={<span aria-hidden>★</span>} title="My reviews" subtitle="Reviews you've written" disabled />
+        <HubRow icon={<HeartIcon size={19} />} title="Saved businesses" onClick={props.onOpenSaved} />
+        <HubRow icon={<span aria-hidden>★</span>} title="My reviews" subtitle="Reviews you've written" onClick={props.onOpenMyReviews} />
       </HubSection>
 
       <HubSection label="Preferences">
         <HubRow icon={<BellIcon size={19} />} title="Notifications" subtitle="Updates about your bookings and orders" onClick={props.onOpenNotifications} />
+        <HubRow icon={<PinIcon size={19} />} title="Addresses" subtitle="Delivery addresses for orders" onClick={props.onOpenAddresses} />
       </HubSection>
 
       <HubSection label="Support & information">
-        <HubRow icon={<HelpIcon size={19} />} title="Help & support" disabled />
-        <HubRow icon={<InfoIcon size={19} />} title="Terms & conditions" disabled />
-        <HubRow icon={<InfoIcon size={19} />} title="Privacy policy" disabled />
-        <HubRow icon={<InfoIcon size={19} />} title="About NearbyOrders" subtitle="Find nearby. Book or order." disabled />
+        <HubRow icon={<HelpIcon size={19} />} title="Help & support" onClick={() => props.onOpenInfo('help')} />
+        <HubRow icon={<InfoIcon size={19} />} title="Terms & conditions" onClick={() => props.onOpenInfo('terms')} />
+        <HubRow icon={<InfoIcon size={19} />} title="Privacy policy" onClick={() => props.onOpenInfo('privacy')} />
+        <HubRow icon={<InfoIcon size={19} />} title="About NearbyOrders" subtitle="Find nearby. Book or order." onClick={() => props.onOpenInfo('about')} />
       </HubSection>
 
       <div className="card">
@@ -461,6 +468,10 @@ export function ProfileScreen(props: {
   onOpenOrders: () => void;
   onOpenBookings: () => void;
   onOpenNotifications: () => void;
+  onOpenSaved: () => void;
+  onOpenMyReviews: () => void;
+  onOpenAddresses: () => void;
+  onOpenInfo: (page: 'help' | 'terms' | 'privacy' | 'about') => void;
 }) {
   const [session, setSessionState] = useState<Session | null>(getSession());
   useEffect(() => onSessionChange(setSessionState), []);
@@ -485,6 +496,10 @@ export function ProfileScreen(props: {
         onOpenOrders={props.onOpenOrders}
         onOpenBookings={props.onOpenBookings}
         onOpenNotifications={props.onOpenNotifications}
+        onOpenSaved={props.onOpenSaved}
+        onOpenMyReviews={props.onOpenMyReviews}
+        onOpenAddresses={props.onOpenAddresses}
+        onOpenInfo={props.onOpenInfo}
       />
     );
   }

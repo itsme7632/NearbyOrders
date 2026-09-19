@@ -264,6 +264,12 @@ export function OrderDetailScreen(props: { orderId: string; onBack: () => void }
           </div>
         </div>
       </section>
+      {o.fulfillmentType === 'DELIVERY' && o.deliveryAddressText ? (
+        <section className="card" aria-label="Delivery address">
+          <h2>Deliver to</h2>
+          <p className="order-addr">{o.deliveryAddressText}</p>
+        </section>
+      ) : null}
       <p className="hint">
         Purchase-time prices are shown: later menu changes never alter your order.
         {o.fulfillmentType === 'DELIVERY' ? ' Delivered by the business’s own rider.' : ''}

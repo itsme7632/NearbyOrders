@@ -420,6 +420,72 @@ export const orderSchema = z.object({
   // flows omit it; the server validates the method belongs to the business
   // and is active. Never a money value — totals stay server-computed.
   paymentMethodId: z.string().uuid().optional(),
+  // DELIVERY only (Phase 17): the customer's chosen address snapshot. The
+  // server snapshots the address BOOK row the customer owns — the client
+  // sends the address id, never free-form text, so placed orders can never
+  // carry attacker-controlled delivery text. Pickup/collection orders must
+  // not send one.
+  deliveryAddressId: z.string().uuid().optional(),
+});
+
+/* ------------------------------------------------------------------ */
+/* Favorites (Phase 17)                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Saved (favorite) businesses are a pure toggle: no body, no flags. The
+ * business id comes from the URL; ownership of the save is the caller's own
+ * account, enforced server-side.
+ */
+export const favoriteToggleParamsSchema = z.object({ businessId: z.string().uuid() });
+
+/* ------------------------------------------------------------------ */
+/* Customer addresses (Phase 17)                                       */
+/* ------------------------------------------------------------------ */
+
+/** Optional real-Earth coordinates on a customer address, or none at all. */
+export const addressCoordinatesSchema = z
+  .object({
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+  })
+  .optional();
+
+/** Customer address create; `isDefault` promotes within the caller's book. */
+export const addressCreateSchema = z.object({
+  label: z.string().trim().min(1).max(60),
+  recipientName: z.string().trim().min(1).max(120),
+  phone: z
+    .union([
+      z.string().trim().min(7).max(20).regex(/^[+\d][\d\s-]+$/, 'Invalid phone number'),
+      z.literal(''),
+      z.null(),
+    ])
+    .optional()
+    .transform((v) => (v === '' || v === null ? null : v)),
+  addressText: z.string().trim().min(5).max(300),
+  coordinates: addressCoordinatesSchema,
+  // Missing key stays undefined (the server decides the auto-default rule);
+  // only an explicit false means "do not make this the default".
+  isDefault: z.boolean().optional(),
+});
+
+/** Customer address edit — partial; untouched fields stay unchanged. */
+export const addressUpdateSchema = z.object({
+  label: z.string().trim().min(1).max(60).optional(),
+  recipientName: z.string().trim().min(1).max(120).optional(),
+  phone: z
+    .union([
+      z.string().trim().min(7).max(20).regex(/^[+\d][\d\s-]+$/, 'Invalid phone number'),
+      z.literal(''),
+      z.null(),
+    ])
+    .optional()
+    .transform((v) => (v === '' || v === null ? null : v)),
+  addressText: z.string().trim().min(5).max(300).optional(),
+  // Replace coordinates, or null to clear them.
+  coordinates: z.union([addressCoordinatesSchema, z.literal(null)]).optional(),
+  isDefault: z.boolean().optional(),
 });
 
 /* ------------------------------------------------------------------ */
