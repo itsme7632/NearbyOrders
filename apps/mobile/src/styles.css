@@ -3639,3 +3639,218 @@ nav.nav-v3, nav.business-nav-v3 {
 
 /* ---- Sticky strips: keep subtle, not heavy ------------------------- */
 .tab-strip { border-bottom: 1px solid var(--border); }
+
+/* ==================================================================
+   v7.4 — Booking flow, Bookings & Auth
+   Flat editorial sections, hairline dividers, restrained surfaces,
+   compact type, fewer pills and floating cards, clear status.
+   ================================================================== */
+
+/* ---- BookService: identity header + step rail --------------------- */
+.booking-eyebrow {
+  margin: 0 0 3px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brand);
+}
+.booking-title {
+  margin: 0;
+  font-size: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.booking-head-biz {
+  margin: 6px 0 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+.booking-head-verified { color: var(--success); font-weight: 700; font-size: 12.5px; }
+
+.book-steps {
+  list-style: none;
+  padding: 0 0 14px;
+  margin: 12px 0 4px;
+  border-bottom: 1px solid var(--border);
+}
+.book-step { gap: 7px; }
+.book-step-dot { border-width: 1px; background: var(--bg); }
+.book-step-name { font-size: 12px; }
+.book-step-now .book-step-name { color: var(--ink); font-weight: 800; }
+
+/* ---- BookService: flat editorial sections -------------------------- */
+.book-section { padding: 18px 0; border-bottom: 1px solid var(--border); }
+.book-section:last-of-type { border-bottom: 0; }
+.book-section-title {
+  margin: 0 0 12px;
+  font-size: var(--font-h3);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+/* ---- Service selection: flat selectable rows (not boxed cards) ----- */
+.svc-option-list { display: flex; flex-direction: column; gap: 8px; }
+.svc-option {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  transition: border-color 0.06s ease, background 0.06s ease;
+}
+.svc-option:disabled { opacity: 0.55; }
+.svc-option-active { border-color: var(--brand); background: var(--brand-softer); box-shadow: 0 0 0 1px var(--brand); }
+.svc-option-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding-right: 24px; }
+.svc-option-name { font-weight: 800; font-size: 14.5px; color: var(--ink); overflow-wrap: anywhere; }
+.svc-option-desc { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
+.svc-option-side { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.svc-option-price { font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--ink); }
+.svc-option-duration { color: var(--muted); font-size: 12px; font-weight: 600; }
+.svc-option-unavailable { font-size: 11px; font-weight: 800; color: var(--error); }
+.svc-option-check {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.08s ease, transform 0.08s ease;
+}
+.svc-option-active .svc-option-check { opacity: 1; transform: scale(1); }
+
+/* ---- Date strip + slots: restrained, hairline ---------------------- */
+.date-chip { border-width: 1px; border-radius: var(--radius-md); }
+.date-chip-active { border-color: var(--brand); background: var(--brand-softer); box-shadow: 0 0 0 1px var(--brand); }
+.date-chip-active .date-chip-day,
+.date-chip-active .date-chip-month { color: var(--brand); }
+.date-chip-active .date-chip-num { color: var(--brand); }
+
+.slot { border-width: 1px; border-radius: var(--radius-md); color: var(--ink); }
+.slot:hover:not(:disabled) { border-color: var(--brand); color: var(--brand); }
+.slot-taken { color: var(--disabled); }
+
+/* ---- Booking status: restrained badge, not a heavy pill ------------ */
+.booking-status { padding: 2px 9px; font-size: 11px; font-weight: 800; letter-spacing: 0.02em; }
+
+/* ---- Bookings: marketplace-card rows + archive sub-groups ---------- */
+.bk-card { margin-bottom: 10px; }
+.bk-subgroup { margin-top: 2px; }
+.bk-subgroup-title {
+  margin: 12px 0 6px;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+/* ---- Booking detail: flat editorial sections ----------------------- */
+.booking-detail-when { margin-bottom: 0; gap: 14px; }
+.booking-detail-head { align-items: center; flex-wrap: wrap; margin: 4px 0 0; }
+.booking-detail-head h1 { font-size: var(--font-h1); letter-spacing: -0.01em; }
+
+/* ==================================================================
+   Auth (sign in / create account): clean editorial entry — brand
+   lockup, clear welcome, focused form. No hero, no floating card.
+   ================================================================== */
+.auth-screen {
+  display: block;
+  min-height: 0;
+  max-width: 400px;
+  margin: 0 auto;
+  width: 100%;
+  padding-top: 10px;
+}
+
+/* Brand lockup: compact mark + wordmark, left-aligned, editorial. */
+.auth-brand {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  margin: 0 0 22px;
+}
+.auth-brand-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--brand);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none;
+  margin: 0;
+  flex: 0 0 auto;
+}
+.auth-brand-lockup { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.auth-brand-name { font-size: 19px; font-weight: 800; letter-spacing: -0.01em; color: var(--ink); }
+.auth-brand-name b { color: var(--brand); font-weight: 800; }
+.auth-brand-tag { font-size: 12.5px; color: var(--muted); }
+
+/* Welcome: a confident headline + one supporting line. */
+.auth-intro { margin: 0 0 20px; }
+.auth-intro h1 {
+  margin: 0 0 6px;
+  font-size: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.auth-lede { margin: 0; font-size: 14px; line-height: 1.5; color: var(--muted); }
+
+/* Form: flat column — fields separated by space, not boxes. */
+.auth-form { display: flex; flex-direction: column; }
+.auth-form .field { margin-top: 14px; }
+.auth-form .field:first-of-type { margin-top: 0; }
+.auth-form .btn-full { margin-top: 18px; }
+
+/* Role picker: restrained segmented control (not big cards). */
+.role-picker-field { border: 0; padding: 0; margin: 16px 0 0; min-width: 0; }
+.role-picker-field legend { padding: 0; }
+.role-picker {
+  display: flex;
+  gap: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 3px;
+}
+.role-seg {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 10px;
+  border-radius: 9px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--muted);
+  transition: background 0.06s ease, color 0.06s ease;
+}
+.role-seg-active { background: var(--card); color: var(--ink); box-shadow: var(--shadow-sm); }
+
+/* Legal / recovery rows sit calmly under the form. */
+.agree-row { margin-top: 14px; }
+.auth-switch { margin: 20px 0 0; }

@@ -28,25 +28,35 @@ const DATE_WINDOW_DAYS = 14;
 /** Bookable = active service with a duration (the backend refuses others). */
 const isBookable = (s: Service): boolean => s.isActive && s.durationMinutes !== null && s.durationMinutes > 0;
 
+/**
+ * Flat, selectable service row (editorial list, not a boxed card). The whole
+ * row is the button; price and duration read as a right-aligned meta column,
+ * and the chosen state is a hairline ring rather than a filled tile.
+ */
 function ServiceOption(props: { service: Service; selected: boolean; onSelect: () => void }) {
   const s = props.service;
   const bookable = isBookable(s);
   return (
     <button
       type="button"
-      className={`service-option${props.selected ? ' service-option-active' : ''}`}
+      className={`svc-option${props.selected ? ' svc-option-active' : ''}${bookable ? '' : ' svc-option-off'}`}
       onClick={props.onSelect}
       disabled={!bookable}
       aria-pressed={props.selected}
     >
-      <span className="service-option-main">
-        <span className="service-option-name">{s.name}</span>
-        {s.description ? <span className="service-option-desc">{s.description}</span> : null}
+      <span className="svc-option-main">
+        <span className="svc-option-name">{s.name}</span>
+        {s.description ? <span className="svc-option-desc">{s.description}</span> : null}
       </span>
-      <span className="service-option-side">
-        <Money minor={s.priceMinor} currency={s.currency} />
-        <span className="service-option-duration">{s.durationMinutes ? `${s.durationMinutes} min` : 'No duration'}</span>
-        {!bookable ? <span className="service-option-off">Unavailable</span> : null}
+      <span className="svc-option-side">
+        <span className="svc-option-price">
+          <Money minor={s.priceMinor} currency={s.currency} />
+        </span>
+        <span className="svc-option-duration">{s.durationMinutes ? `${s.durationMinutes} min` : 'No duration'}</span>
+        {!bookable ? <span className="svc-option-unavailable">Unavailable</span> : null}
+      </span>
+      <span className="svc-option-check" aria-hidden>
+        <CheckIcon size={13} />
       </span>
     </button>
   );
@@ -165,34 +175,58 @@ export function BookServiceScreen(props: {
         ‹ {step === 'summary' ? 'Back to times' : 'Back'}
       </button>
 
+      {/* Business identity: the name is the hero; trust + locality are the
+          supporting meta line, matching the v7 detail-screen hierarchy. */}
       <header className="booking-head">
-        <h1>{step === 'summary' ? 'Confirm your booking' : 'Book a service'}</h1>
+        <p className="booking-eyebrow">{step === 'summary' ? 'Review & confirm' : 'Book a service'}</p>
+        <h1 className="booking-title">
+          {step === 'summary' ? 'Confirm your booking' : b.name}
+        </h1>
         <p className="booking-head-biz">
-          {b.name}
-          {place ? <span className="booking-head-place"> · {place}</span> : null}
+          {step === 'summary' ? (
+            <>
+              {b.name}
+              {place ? <span className="booking-head-place"> · {place}</span> : null}
+            </>
+          ) : (
+            <>
+              {b.isVerified ? (
+                <span className="booking-head-verified" title="Verified by NearbyOrders">
+                  ✓ Verified
+                </span>
+              ) : null}
+              {b.isOpenNow !== undefined ? (
+                <span className={`biz-open${b.isOpenNow ? '' : ' biz-open-closed'}`}>{b.isOpenNow ? 'Open now' : 'Closed'}</span>
+              ) : null}
+              {place ? <span className="booking-head-place">{place}</span> : null}
+            </>
+          )}
         </p>
       </header>
+
+      {/* Step indicator: quiet numbered rail, current step emphasized. */}
       {step !== 'success' ? (
-        <div className="book-steps" aria-label={`Step ${stepIndex + 1} of ${stepNames.length}`} role="list">
+        <ol className="book-steps" aria-label={`Step ${stepIndex + 1} of ${stepNames.length}`}>
           {stepNames.map((name, i) => (
-            <span
+            <li
               key={name}
-              role="listitem"
               className={`book-step${i === stepIndex ? ' book-step-now' : ''}${i < stepIndex ? ' book-step-done' : ''}`}
             >
-              <span className="book-step-dot" aria-hidden>{i < stepIndex ? '✓' : i + 1}</span>
+              <span className="book-step-dot" aria-hidden>
+                {i < stepIndex ? '✓' : i + 1}
+              </span>
               <span className="book-step-name">{name}</span>
-              <span className="book-step-bar" aria-hidden />
-            </span>
+              {i < stepNames.length - 1 ? <span className="book-step-bar" aria-hidden /> : null}
+            </li>
           ))}
-        </div>
+        </ol>
       ) : null}
 
       {/* Step 1 — service selection */}
       {step === 'service' ? (
-        <section className="card" aria-label="Choose a service">
-          <h2>Which service?</h2>
-          <div className="service-options">
+        <section className="book-section" aria-label="Choose a service">
+          <h2 className="book-section-title">Which service?</h2>
+          <div className="svc-option-list">
             {(business.data?.services ?? []).map((s) => (
               <ServiceOption
                 key={s.id}
@@ -213,8 +247,8 @@ export function BookServiceScreen(props: {
       {/* Step 2 — date + slots (backend is authoritative) */}
       {step === 'time' && service ? (
         <>
-          <section className="card" aria-label="Choose a date">
-            <h2>Pick a date</h2>
+          <section className="book-section" aria-label="Choose a date">
+            <h2 className="book-section-title">Pick a date</h2>
             <div className="date-strip" role="listbox" aria-label="Available dates">
               {dates.map((d) => {
                 const label = compactDateLabel(d);
@@ -240,8 +274,8 @@ export function BookServiceScreen(props: {
             </div>
           </section>
 
-          <section className="card" aria-label="Available times">
-            <h2>Available times</h2>
+          <section className="book-section" aria-label="Available times">
+            <h2 className="book-section-title">Available times</h2>
             <p className="booking-slot-meta">
               {service.name} · {service.durationMinutes} min
             </p>
@@ -299,7 +333,8 @@ export function BookServiceScreen(props: {
 
       {/* Step 3 — summary */}
       {step === 'summary' && service && slot && b ? (
-        <section className="card booking-summary" aria-label="Booking summary">
+        <section className="book-section booking-summary" aria-label="Booking summary">
+          <h2 className="book-section-title">Review your booking</h2>
           <dl className="summary-list">
             <div>
               <dt>Business</dt>
@@ -366,7 +401,7 @@ export function BookServiceScreen(props: {
 
       {/* Step 4 — success */}
       {step === 'success' && created ? (
-        <section className="card booking-success" aria-label="Booking confirmation">
+        <section className="book-section booking-success" aria-label="Booking confirmation">
           <span className="success-mark" aria-hidden>
             <CheckIcon size={30} />
           </span>

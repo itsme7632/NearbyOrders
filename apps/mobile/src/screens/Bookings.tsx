@@ -16,7 +16,7 @@ import {
 } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, ListSkeleton, Loading, Money } from '../components/ui.js';
-import { AlertIcon, BookingsIcon, CheckIcon } from '../components/icons.js';
+import { AlertIcon, BookingsIcon } from '../components/icons.js';
 import { daysBetween, formatSlotTime, longDateLabel, todayPkt } from '../time.js';
 import { ReviewForm } from '../components/ReviewForm.js';
 
@@ -28,14 +28,16 @@ const STATUS_LABEL: Record<BookingStatus, string> = {
   COMPLETED: 'Completed',
 };
 
+/** Restrained status treatment: compact label, colored by meaning, never a heavy pill. */
 export function BookingStatusBadge(props: { status: BookingStatus }) {
   return <span className={`booking-status booking-status-${props.status.toLowerCase()}`}>{STATUS_LABEL[props.status]}</span>;
 }
 
 /**
- * Booking list row with a real date block: day-of-month + month stay visually
- * anchored left so scanning "when is my next booking" is instant. Status sits
- * as a compact badge on the identity line, not as a full-width card.
+ * Booking row in the v7 marketplace-card language (shared with Orders):
+ * calendar block on the left so "when is my next booking" scans instantly,
+ * service as the primary line, business + time as the supporting meta, and
+ * price + restrained status on the right. Hairline card, near-flat.
  */
 function BookingCard(props: { booking: Booking; onOpen: () => void }) {
   const b = props.booking;
@@ -43,54 +45,61 @@ function BookingCard(props: { booking: Booking; onOpen: () => void }) {
   const dayNum = d.getDate();
   const month = d.toLocaleDateString('en-PK', { month: 'short' });
   return (
-    <button type="button" className="bk-row" onClick={props.onOpen}>
-      <span className="bk-date" aria-hidden>
-        <span className="bk-date-num">{dayNum}</span>
-        <span className="bk-date-month">{month}</span>
-      </span>
-      <span className="bk-main">
-        <span className="bk-service">{b.serviceName ?? 'Booking'}</span>
-        <span className="bk-biz">
-          <BookingThumb name={b.businessName} imageUrl={b.businessImageUrl} /> {b.businessName}
+    <button type="button" className="order-card-v3 bk-card" onClick={props.onOpen}>
+      <span className="oc-top">
+        <span className="bk-date" aria-hidden>
+          <span className="bk-date-num">{dayNum}</span>
+          <span className="bk-date-month">{month}</span>
         </span>
-        <span className="bk-when">{formatSlotTime(b.startTime)}{b.endTime ? ` – ${formatSlotTime(b.endTime)}` : ''}</span>
-      </span>
-      <span className="bk-side">
-        {b.priceMinor !== null ? <span className="bk-price"><Money minor={b.priceMinor} currency={b.currency} /></span> : null}
-        <BookingStatusBadge status={b.status} />
+        <span className="oc-main">
+          <span className="oc-name">{b.serviceName ?? 'Booking'}</span>
+          <span className="oc-sub">{b.businessName}</span>
+          <span className="oc-sub bk-when">
+            {formatSlotTime(b.startTime)}
+            {b.endTime ? ` – ${formatSlotTime(b.endTime)}` : ''}
+          </span>
+        </span>
+        <span className="oc-side">
+          {b.priceMinor !== null ? (
+            <span className="oc-amount">
+              <Money minor={b.priceMinor} currency={b.currency} />
+            </span>
+          ) : null}
+          <BookingStatusBadge status={b.status} />
+        </span>
       </span>
     </button>
   );
 }
 
-/** Booking-card thumbnail: business image when present, monogram otherwise. */
-function BookingThumb(props: { name: string; imageUrl?: string | null }) {
-  if (props.imageUrl) {
-    return <img className="oc-thumb" src={props.imageUrl} alt="" loading="lazy" />;
-  }
-  return (
-    <span className="oc-thumb" aria-hidden>
-      {props.name[0]?.toUpperCase() ?? '?'}
-    </span>
-  );
-}
-
-/** Signed-in customer view of all their bookings, grouped upcoming/past. */
+/**
+ * Signed-in customer view of all their bookings. Upcoming (the active,
+ * actionable set) sits first; Past reads as an archive grouped into
+ * Completed and Cancelled & declined, mirroring the redesigned Orders screen.
+ */
 export function BookingsScreen(props: { onOpenBooking: (id: string) => void; onExplore: () => void }) {
   const bookings = useAsyncData<Booking[]>(() => listMyBookings(), []);
   const today = todayPkt();
 
   const groups = useMemo(() => {
     const all = bookings.data ?? [];
-    // Upcoming = today or later, not cancelled/rejected/completed. Everything
-    // else (past dates or terminal statuses) is history.
+    // Upcoming = today or later and not yet resolved. Everything else (past
+    // dates or terminal statuses) is history.
     const upcoming = all
       .filter((b) => b.status !== 'CANCELLED' && b.status !== 'REJECTED' && b.status !== 'COMPLETED' && daysBetween(today, b.bookingDate) >= 0)
       .sort((a, b) => (a.bookingDate + a.startTime).localeCompare(b.bookingDate + b.startTime));
     const past = all
       .filter((b) => !upcoming.includes(b))
       .sort((a, b) => (b.bookingDate + b.startTime).localeCompare(a.bookingDate + a.startTime));
-    return { upcoming, past };
+    // The archive is a hierarchy, not one undifferentiated list: resolved
+    // past bookings split into Completed and Cancelled & declined; anything
+    // still open but past-dated sits under Earlier.
+    const pastGroups = [
+      { key: 'earlier', title: 'Earlier', items: past.filter((b) => b.status === 'PENDING' || b.status === 'CONFIRMED') },
+      { key: 'completed', title: 'Completed', items: past.filter((b) => b.status === 'COMPLETED') },
+      { key: 'cancelled', title: 'Cancelled & declined', items: past.filter((b) => b.status === 'CANCELLED' || b.status === 'REJECTED') },
+    ].filter((g) => g.items.length > 0);
+    return { upcoming, past, pastGroups };
   }, [bookings.data, today]);
 
   if (bookings.loading) return <ListSkeleton count={4} />;
@@ -120,35 +129,47 @@ export function BookingsScreen(props: { onOpenBooking: (id: string) => void; onE
       </header>
 
       {groups.upcoming.length ? (
-        <section aria-label="Upcoming bookings">
-          <div className="section-head">
+        <section aria-label="Upcoming bookings" className="order-group">
+          <div className="section-head section-head-sm">
             <h2>Upcoming</h2>
+            <span className="biz-distance">
+              {groups.upcoming.length} {groups.upcoming.length === 1 ? 'booking' : 'bookings'}
+            </span>
           </div>
-          <div className="booking-list">
+          <ul className="order-list">
             {groups.upcoming.map((b) => (
-              <BookingCard key={b.id} booking={b} onOpen={() => props.onOpenBooking(b.id)} />
+              <li key={b.id}>
+                <BookingCard booking={b} onOpen={() => props.onOpenBooking(b.id)} />
+              </li>
             ))}
-          </div>
+          </ul>
         </section>
       ) : null}
 
       {groups.past.length ? (
-        <section aria-label="Past bookings">
-          <div className="section-head">
+        <section aria-label="Past bookings" className="order-group">
+          <div className="section-head section-head-sm">
             <h2>Past</h2>
           </div>
-          <div className="booking-list">
-            {groups.past.map((b) => (
-              <BookingCard key={b.id} booking={b} onOpen={() => props.onOpenBooking(b.id)} />
-            ))}
-          </div>
+          {groups.pastGroups.map((g) => (
+            <div key={g.key} className="bk-subgroup">
+              {groups.pastGroups.length > 1 ? <h3 className="bk-subgroup-title">{g.title}</h3> : null}
+              <ul className="order-list">
+                {g.items.map((b) => (
+                  <li key={b.id}>
+                    <BookingCard booking={b} onOpen={() => props.onOpenBooking(b.id)} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </section>
       ) : null}
     </div>
   );
 }
 
-/** Single booking detail with cancellation (API/transition permitting). */
+/** Single booking detail: flat editorial sections (status hero, when, details). */
 export function BookingDetailScreen(props: { bookingId: string; onBack: () => void }) {
   const booking = useAsyncData<Booking>(() => getBooking(props.bookingId), [props.bookingId]);
   const [busy, setBusy] = useState(false);
@@ -187,30 +208,33 @@ export function BookingDetailScreen(props: { bookingId: string; onBack: () => vo
     );
 
   const canCancel = data.status === 'PENDING' || data.status === 'CONFIRMED';
+  const whenDate = new Date(`${data.bookingDate}T00:00:00`);
 
   return (
-    <div className="screen">
+    <div className="screen booking-detail">
       <button className="back-link" onClick={props.onBack}>
         ‹ Back
       </button>
 
-      <div className="card booking-detail">
-        <div className="booking-detail-when" aria-hidden>
-          <span className="bk-date">
-            <span className="bk-date-num">{new Date(`${data.bookingDate}T00:00:00`).getDate()}</span>
-            <span className="bk-date-month">{new Date(`${data.bookingDate}T00:00:00`).toLocaleDateString('en-PK', { month: 'short' })}</span>
-          </span>
-          <span className="booking-detail-when-main">
-            <span className="booking-detail-when-time">{longDateLabel(data.bookingDate)}</span>
-            <span className="booking-detail-when-day">{data.serviceName ?? 'Booking'}</span>
-          </span>
-        </div>
-        <div className="booking-detail-head">
-          <h1>{data.businessName}</h1>
-          <BookingStatusBadge status={data.status} />
-        </div>
-        {data.serviceName ? <p className="booking-detail-service">{data.serviceName}</p> : null}
+      {/* When: calendar block anchors the date, the long date + service read beside it. */}
+      <section className="detail-section booking-detail-when" aria-label="Date and time">
+        <span className="bk-date" aria-hidden>
+          <span className="bk-date-num">{whenDate.getDate()}</span>
+          <span className="bk-date-month">{whenDate.toLocaleDateString('en-PK', { month: 'short' })}</span>
+        </span>
+        <span className="booking-detail-when-main">
+          <span className="booking-detail-when-time">{longDateLabel(data.bookingDate)}</span>
+          <span className="booking-detail-when-day">{data.serviceName ?? 'Booking'}</span>
+        </span>
+      </section>
 
+      {/* Identity + status: the business first, the state as a restrained badge. */}
+      <header className="booking-detail-head">
+        <h1>{data.businessName}</h1>
+        <BookingStatusBadge status={data.status} />
+      </header>
+
+      <section className="detail-section" aria-label="Booking details">
         <dl className="summary-list">
           <div>
             <dt>Business</dt>
@@ -248,47 +272,47 @@ export function BookingDetailScreen(props: { bookingId: string; onBack: () => vo
             </div>
           ) : null}
         </dl>
+      </section>
 
-        {data.status === 'PENDING' ? (
-          <p className="booking-status-note">Waiting for the business to confirm.</p>
-        ) : null}
+      {data.status === 'PENDING' ? (
+        <p className="booking-status-note">Waiting for the business to confirm.</p>
+      ) : null}
 
-        {/* Phase 7C — advance payment for this booking. */}
-        <BookingPaymentSection booking={data} />
+      {/* Phase 7C — advance payment for this booking. */}
+      <BookingPaymentSection booking={data} />
 
-        {error ? (
-          <div className="auth-error" role="alert">
-            <AlertIcon size={18} />
-            <span>{error}</span>
-          </div>
-        ) : null}
+      {error ? (
+        <div className="auth-error" role="alert">
+          <AlertIcon size={18} />
+          <span>{error}</span>
+        </div>
+      ) : null}
 
-        {data.status === 'CANCELLED' ? (
-          <p className="booking-cancelled-note" role="status">
-            <AlertIcon size={16} /> This booking was cancelled.
-          </p>
-        ) : canCancel ? (
-          confirming ? (
-            <div className="confirm-cancel">
-              <p>Cancel this booking? This cannot be undone.</p>
-              <div className="btn-row">
-                <Button variant="danger" sm onClick={() => void doCancel()} disabled={busy}>
-                  {busy ? 'Cancelling…' : 'Yes, cancel it'}
-                </Button>
-                <Button variant="ghost" sm onClick={() => setConfirming(false)} disabled={busy}>
-                  Keep booking
-                </Button>
-              </div>
+      {data.status === 'CANCELLED' ? (
+        <p className="booking-cancelled-note" role="status">
+          <AlertIcon size={16} /> This booking was cancelled.
+        </p>
+      ) : canCancel ? (
+        confirming ? (
+          <div className="confirm-cancel">
+            <p>Cancel this booking? This cannot be undone.</p>
+            <div className="btn-row">
+              <Button variant="danger" sm onClick={() => void doCancel()} disabled={busy}>
+                {busy ? 'Cancelling…' : 'Yes, cancel it'}
+              </Button>
+              <Button variant="ghost" sm onClick={() => setConfirming(false)} disabled={busy}>
+                Keep booking
+              </Button>
             </div>
-          ) : (
-            <Button full variant="danger" onClick={() => setConfirming(true)}>
-              Cancel booking
-            </Button>
-          )
-        ) : null}
+          </div>
+        ) : (
+          <Button full variant="danger" onClick={() => setConfirming(true)}>
+            Cancel booking
+          </Button>
+        )
+      ) : null}
 
-        {data.status === 'COMPLETED' ? <BookingReviewPanel booking={data} /> : null}
-      </div>
+      {data.status === 'COMPLETED' ? <BookingReviewPanel booking={data} /> : null}
     </div>
   );
 }

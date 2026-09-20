@@ -29,7 +29,6 @@ import {
   PinIcon,
   StoreIcon,
   UserIcon,
-  UserPlusIcon,
 } from '../components/icons.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -550,24 +549,31 @@ export function ProfileScreen(props: {
   };
 
   return (
-    <div className="screen auth-screen auth-screen-v4">
-      <header className="auth-brand auth-brand-v4">
+    <div className="screen auth-screen">
+      {/* Brand lockup: compact mark + wordmark, matching the in-app header. */}
+      <header className="auth-brand">
         <span className="auth-brand-mark" aria-hidden>
-          <PinIcon size={26} />
+          <PinIcon size={19} />
         </span>
-        <span className="auth-brand-name">
-          Nearby<b>Orders</b>
+        <span className="auth-brand-lockup">
+          <span className="auth-brand-name">
+            Nearby<b>Orders</b>
+          </span>
+          <span className="auth-brand-tag">Find nearby. Book or order.</span>
         </span>
-        <span className="auth-brand-tag">Find nearby. Book or order.</span>
       </header>
 
-      <section className="auth-card" aria-label={registering ? 'Create account' : 'Sign in'}>
-        <h1>{registering ? 'Create your account' : 'Welcome back'}</h1>
-        <p className="auth-lede">
-          {registering ? 'Join as a customer or list your business.' : 'Sign in to book services and order from local businesses.'}
-        </p>
+      <div className="auth-panel">
+        <div className="auth-intro">
+          <h1>{registering ? 'Create your account' : 'Welcome back'}</h1>
+          <p className="auth-lede">
+            {registering
+              ? 'Join as a customer or list your business. It takes less than a minute.'
+              : 'Sign in to book services and order from local businesses.'}
+          </p>
+        </div>
 
-        <form
+        <form className="auth-form"
           onSubmit={(e) => {
             e.preventDefault();
             void submit();
@@ -626,33 +632,19 @@ export function ProfileScreen(props: {
                     type="button"
                     role="radio"
                     aria-checked={role === 'CUSTOMER'}
-                    className={`role-option${role === 'CUSTOMER' ? ' role-option-active' : ''}`}
+                    className={`role-seg${role === 'CUSTOMER' ? ' role-seg-active' : ''}`}
                     onClick={() => setRole('CUSTOMER')}
                   >
-                    {role === 'CUSTOMER' ? (
-                      <span className="role-check" aria-hidden>
-                        <CheckIcon size={12} />
-                      </span>
-                    ) : null}
-                    <UserPlusIcon size={22} />
-                    <span className="role-option-name">Customer</span>
-                    <span className="role-option-desc">Find &amp; book nearby businesses</span>
+                    Customer
                   </button>
                   <button
                     type="button"
                     role="radio"
                     aria-checked={role === 'BUSINESS_OWNER'}
-                    className={`role-option${role === 'BUSINESS_OWNER' ? ' role-option-active' : ''}`}
+                    className={`role-seg${role === 'BUSINESS_OWNER' ? ' role-seg-active' : ''}`}
                     onClick={() => setRole('BUSINESS_OWNER')}
                   >
-                    {role === 'BUSINESS_OWNER' ? (
-                      <span className="role-check" aria-hidden>
-                        <CheckIcon size={12} />
-                      </span>
-                    ) : null}
-                    <StoreIcon size={22} />
-                    <span className="role-option-name">Business owner</span>
-                    <span className="role-option-desc">List &amp; manage your business</span>
+                    Business owner
                   </button>
                 </div>
                 <p className="hint">{roleCopy(role)}</p>
@@ -695,7 +687,7 @@ export function ProfileScreen(props: {
             {registering ? 'Sign in' : 'Create an account'}
           </button>
         </p>
-      </section>
+      </div>
     </div>
   );
 }
