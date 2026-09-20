@@ -11,6 +11,40 @@ export type OwnerScreenName = (typeof ownerScreens)[number];
 /** Customer-mode bottom navigation. */
 export const navigationTabs: Tab[] = ['Home', 'Explore', 'Orders', 'Bookings', 'Profile'];
 
+/* ------------- Warm Proximity navigation architecture (Phase 1) ------
+   Conceptual customer navigation for the Warm Proximity model:
+   Home · Explore · Activity · Saved · Account
+
+   Phase 1 establishes the mapping architecture ONLY. Concrete tabs,
+   routes and deep links are UNCHANGED: the Orders/Bookings tabs stay
+   rendered, and /saved-businesses, /order/:id, /booking/:id keep working.
+   Later phases flip the visible tab set against this mapping without
+   touching route parsing or notification/push targets. */
+
+/** Conceptual Warm Proximity customer tabs (the future visible tab set). */
+export const customerConceptTabs = ['Home', 'Explore', 'Activity', 'Saved', 'Account'] as const;
+export type CustomerConceptTab = (typeof customerConceptTabs)[number];
+
+/** Tabs that the future Activity destination composes client-side. */
+export const activityTabs = ['Orders', 'Bookings'] as const satisfies readonly Tab[];
+
+/**
+ * Maps each conceptual tab to its Phase-1 concrete destination.
+ * Tab values render in the bottom nav; string values are hash routes.
+ */
+export const conceptTabTarget: Record<CustomerConceptTab, Tab | string> = {
+  Home: 'Home',
+  Explore: 'Explore',
+  Activity: 'Orders',
+  Saved: '/saved-businesses',
+  Account: 'Profile',
+};
+
+/** True for tabs that will live under the future Activity destination. */
+export function isActivityTab(tab: Tab): boolean {
+  return (activityTabs as readonly string[]).includes(tab);
+}
+
 export type Route =
   | { name: 'tabs' }
   | { name: 'business'; idOrSlug: string }

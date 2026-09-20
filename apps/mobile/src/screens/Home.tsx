@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { getSession, listBusinesses, listCategories, whoami, type Business, type Category, type MyProfile } from '../api.js';
 import { useAsyncData } from '../hooks.js';
-import { BusinessRow, ErrorState, RatingChip, SectionHeader } from '../components/ui.js';
+import { BusinessRow, EmptyState, ErrorState, RatingChip, SectionHeader } from '../components/ui.js';
 import { BookingsIcon, ExploreIcon, HomeIcon, OrdersIcon, PinIcon, ProfileIcon, StoreIcon } from '../components/icons.js';
-import { EmptyStateV3 } from '../components/EmptyStateV3.js';
 
 /** Primary categories shown on Home; the rest live in Explore behind "See all". */
 const HOME_CATEGORY_LIMIT = 8;
@@ -188,7 +187,7 @@ export function HomeScreen(props: {
       ) : !popular.length ? (
         <section aria-label="Businesses" className="rail-section">
           <SectionHeader title="Popular near you" />
-          <EmptyStateV3
+          <EmptyState
             icon={<StoreIcon size={28} />}
             title="No businesses yet"
             body="Approved nearby businesses will appear here as they join NearbyOrders."

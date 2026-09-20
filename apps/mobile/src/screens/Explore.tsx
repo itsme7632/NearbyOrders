@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { listBusinesses, listCategories, listNearbyBusinesses, type Business, type Category } from '../api.js';
 import { useAsyncData } from '../hooks.js';
-import { BusinessRow, ErrorState, SectionHeader } from '../components/ui.js';
+import { BusinessRow, EmptyState, ErrorState, SectionHeader } from '../components/ui.js';
+import { SegmentedControl } from '../components/primitives.js';
 import { ExploreIcon, PinIcon } from '../components/icons.js';
-import { EmptyStateV3 } from '../components/EmptyStateV3.js';
 import { requestCustomerLocation, locationOutcomeHint, type LocationOutcome } from '../location.js';
 import { DEFAULT_RADIUS_KM, RADIUS_OPTIONS_KM } from '@nearbyorders/shared';
 import { useMapProvider } from '../maps/useMapProvider.js';
@@ -130,26 +130,15 @@ export function ExploreScreen(props: {
             </button>
           )}
           {mapUsable ? (
-            <div className="view-switch" role="tablist" aria-label="Result view">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={view === 'list'}
-                className={`chip${view === 'list' ? ' chip-active' : ''}`}
-                onClick={() => setView('list')}
-              >
-                List
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={view === 'map'}
-                className={`chip${view === 'map' ? ' chip-active' : ''}`}
-                onClick={() => setView('map')}
-              >
-                Map
-              </button>
-            </div>
+            <SegmentedControl
+              label="Result view"
+              value={view}
+              onChange={setView}
+              options={[
+                { value: 'list', label: 'List' },
+                { value: 'map', label: 'Map' },
+              ]}
+            />
           ) : null}
         </div>
       </div>
@@ -273,7 +262,7 @@ export function ExploreScreen(props: {
           ) : businesses.error ? (
             <ErrorState message={businesses.error} onRetry={businesses.reload} />
           ) : !results.length ? (
-            <EmptyStateV3
+            <EmptyState
               icon={<ExploreIcon size={28} />}
               title={mode === 'nearby' ? 'Nothing nearby yet' : 'Nothing found'}
               body={

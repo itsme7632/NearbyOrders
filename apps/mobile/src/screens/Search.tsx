@@ -10,8 +10,7 @@ import {
   type SearchTypeFilter,
 } from '../api.js';
 import { useAsyncData } from '../hooks.js';
-import { Button, ErrorState, Money, OpenBadge, RatingChip, VerifiedBadge } from '../components/ui.js';
-import { EmptyStateV3 } from '../components/EmptyStateV3.js';
+import { Button, EmptyState, ErrorState, Money, OpenBadge, RatingChip, VerifiedBadge } from '../components/ui.js';
 import { ExploreIcon, PinIcon, StoreIcon } from '../components/icons.js';
 import { formatDistanceKm, locationOutcomeHint, requestCustomerLocation, type LocationOutcome } from '../location.js';
 
@@ -272,7 +271,7 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
         <ErrorState message={page.error} onRetry={page.reload} />
       ) : results.length === 0 ? (
         searched || hasFilters ? (
-          <EmptyStateV3
+          <EmptyState
             icon={<ExploreIcon size={28} />}
             title="Nothing matched"
             body={
@@ -282,7 +281,7 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
             }
           />
         ) : (
-          <EmptyStateV3
+          <EmptyState
             icon={<ExploreIcon size={28} />}
             title="Search NearbyOrders"
             body="Find businesses by what they do, bookable services, or orderable products — all in one search."

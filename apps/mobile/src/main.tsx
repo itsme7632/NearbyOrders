@@ -7,6 +7,7 @@ import { useRoute } from './hooks.js';
 import { applyDefaultModeForSession, initModeSessionSync, setAppMode, useAppMode } from './mode.js';
 import { BellIcon, BookingsIcon, ExploreIcon, HomeIcon, OrdersIcon, PinIcon, ProfileIcon, StoreIcon } from './components/icons.js';
 import { EmptyState, Loading } from './components/ui.js';
+import { ToastProvider } from './components/primitives.js';
 import { HomeScreen } from './screens/Home.js';
 import { ExploreScreen } from './screens/Explore.js';
 import { SearchScreen } from './screens/Search.js';
@@ -400,6 +401,7 @@ export function App() {
   if (authFlow && content === null) content = session ? profileHubScreen : profileAuthScreen;
 
   return (
+    <ToastProvider>
     <main className={authFlow ? 'auth-mode' : undefined}>
       {!authFlow ? (
         <header className="app-header">
@@ -487,6 +489,7 @@ export function App() {
         )
       ) : null}
     </main>
+    </ToastProvider>
   );
 }
 

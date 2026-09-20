@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { businessTabs, navigationTabs, ownerScreens, parseHash } from './navigation.js';
+import { businessTabs, navigationTabs, ownerScreens, parseHash, customerConceptTabs, conceptTabTarget, isActivityTab } from './navigation.js';
 
 describe('customer navigation', () => {
   it('exposes the required V1 destinations in order', () => {
@@ -79,5 +79,30 @@ describe('dedicated owner management screens', () => {
   it('requires the exact dedicated route format (never a payments hub)', () => {
     expect(parseHash('#/owner/biz-1/payments')).toEqual({ name: 'owner-screen', screen: 'payments', businessId: 'biz-1' });
     expect(parseHash('#/owner/payments-hub')).toEqual({ name: 'tabs' });
+  });
+});
+
+describe('Warm Proximity navigation architecture (Phase 1)', () => {
+  it('maps every conceptual tab to a concrete Phase-1 destination', () => {
+    expect(customerConceptTabs).toEqual(['Home', 'Explore', 'Activity', 'Saved', 'Account']);
+    expect(conceptTabTarget).toEqual({
+      Home: 'Home',
+      Explore: 'Explore',
+      Activity: 'Orders',
+      Saved: '/saved-businesses',
+      Account: 'Profile',
+    });
+  });
+
+  it('keeps the concrete tab set and deep links unchanged', () => {
+    // Activity is a future composition; Orders/Bookings tabs still render.
+    expect(navigationTabs).toEqual(['Home', 'Explore', 'Orders', 'Bookings', 'Profile']);
+    expect(isActivityTab('Orders')).toBe(true);
+    expect(isActivityTab('Bookings')).toBe(true);
+    expect(isActivityTab('Home')).toBe(false);
+    // Saved stays a working hash route even before it becomes a tab.
+    expect(parseHash('#/saved-businesses')).toEqual({ name: 'saved-businesses' });
+    expect(parseHash('#/order/ord-1')).toEqual({ name: 'order', orderId: 'ord-1' });
+    expect(parseHash('#/booking/bkg-1')).toEqual({ name: 'booking', bookingId: 'bkg-1' });
   });
 });

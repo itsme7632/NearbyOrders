@@ -99,9 +99,11 @@ export function Field(props: { label: string; children: ReactNode; hint?: string
 }
 
 export function EmptyState(props: { icon: ReactNode; title: string; body: string; action?: ReactNode }) {
+  // Canonical empty state (Phase 1: EmptyStateV3 merged in): illustration
+  // circle, tight title/body, optional action. One visual language everywhere.
   return (
     <div className="empty-state">
-      <div className="empty-icon" aria-hidden>
+      <div className="empty-state-icon" aria-hidden>
         {props.icon}
       </div>
       <h3>{props.title}</h3>

@@ -119,7 +119,7 @@ const enterNearbyMap = async () => {
   render(<ExploreScreen onOpenBusiness={() => {}} />);
   fireEvent.click(await screen.findByRole('button', { name: /near you/i }));
   await screen.findByText('Nearby Bistro');
-  fireEvent.click(screen.getByRole('tab', { name: 'Map' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Map' }));
   await screen.findByTestId('map-canvas');
 };
 
@@ -130,7 +130,7 @@ describe('Explore map view (Phase 12)', () => {
     const last = markerCalls.at(-1)!;
     expect(last.markers.map((m) => m.id)).toEqual(['biz-2']); // biz-3 has no coordinates
     // Back to list: business cards visible again.
-    fireEvent.click(screen.getByRole('tab', { name: 'List' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'List' }));
     await waitFor(() => expect(screen.getByText('Nearby Bistro')).toBeInTheDocument());
   });
 
@@ -145,7 +145,7 @@ describe('Explore map view (Phase 12)', () => {
     render(<ExploreScreen onOpenBusiness={onOpen} />);
     fireEvent.click(await screen.findByRole('button', { name: /near you/i }));
     await screen.findByText('Nearby Bistro');
-    fireEvent.click(screen.getByRole('tab', { name: 'Map' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Map' }));
     await screen.findByTestId('map-canvas');
 
     const provider = (globalThis as { __testProvider?: MapProvider }).__testProvider!;
@@ -193,14 +193,14 @@ describe('Explore map view (Phase 12)', () => {
   it('map is only offered in nearby mode with a location', async () => {
     render(<ExploreScreen onOpenBusiness={() => {}} />);
     await screen.findByText('Gulberg Grill');
-    expect(screen.queryByRole('tab', { name: 'Map' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'Map' })).toBeNull();
   });
 
   it('empty map results show an honest empty state', async () => {
     vi.mocked(api.listNearbyBusinesses).mockResolvedValue([]);
     render(<ExploreScreen onOpenBusiness={() => {}} />);
     fireEvent.click(await screen.findByRole('button', { name: /near you/i }));
-    fireEvent.click(await screen.findByRole('tab', { name: 'Map' }));
+    fireEvent.click(await screen.findByRole('radio', { name: 'Map' }));
     await screen.findByText(/no businesses with map locations in this area yet/i);
   });
 });
