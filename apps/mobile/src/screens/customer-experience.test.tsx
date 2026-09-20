@@ -3,6 +3,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import * as api from '../api.js';
 import type { CustomerAddress, FavoriteEntry, MyReview } from '../api.js';
+import { ToastProvider } from '../components/primitives.js';
 import {
   SavedBusinessesScreen,
   MyReviewsScreen,
@@ -48,32 +49,65 @@ const favEntry = (id: string, name: string): FavoriteEntry => ({
 });
 
 describe('SavedBusinessesScreen', () => {
+  // Phase 2F: unsave feedback comes from useToast, which needs the provider.
+  const renderSaved = () =>
+    render(
+      <ToastProvider>
+        <SavedBusinessesScreen onBack={() => {}} onOpenBusiness={() => {}} />
+      </ToastProvider>,
+    );
+
   it('shows an honest empty state when nothing is saved', async () => {
     vi.mocked(api.listFavorites).mockResolvedValue([]);
-    render(<SavedBusinessesScreen onBack={() => {}} onOpenBusiness={() => {}} />);
+    renderSaved();
     expect(await screen.findByText('Nothing saved yet')).toBeTruthy();
     expect(api.listFavorites).toHaveBeenCalledTimes(1);
   });
 
-  it('lists saved businesses with rating and opens them; heart removes with reload', async () => {
+  it('lists saved businesses with the shared BusinessRow treatment and opens them', async () => {
+    vi.mocked(api.listFavorites).mockResolvedValue([favEntry('b1', 'Butt Spices'), favEntry('b2', 'Glow Salon')]);
+    const open = vi.fn();
+    render(
+      <ToastProvider>
+        <SavedBusinessesScreen onBack={() => {}} onOpenBusiness={open} />
+      </ToastProvider>,
+    );
+
+    expect(await screen.findByText('Butt Spices')).toBeTruthy();
+    expect(screen.getByText('Glow Salon')).toBeTruthy();
+    // BusinessRow shows the shared rating chip (star glyph + average).
+    expect(screen.getAllByLabelText('Rated 4.5 out of 5')).toHaveLength(2);
+
+    fireEvent.click(screen.getByText('Butt Spices').closest('button')!);
+    expect(open).toHaveBeenCalledWith('b1');
+  });
+
+  it('unsaves with a success toast and removes the row', async () => {
     vi.mocked(api.listFavorites)
       .mockResolvedValueOnce([favEntry('b1', 'Butt Spices'), favEntry('b2', 'Glow Salon')])
       .mockResolvedValueOnce([favEntry('b2', 'Glow Salon')]);
     vi.mocked(api.unsaveFavorite).mockResolvedValue({ saved: false });
-    const open = vi.fn();
-    render(<SavedBusinessesScreen onBack={() => {}} onOpenBusiness={open} />);
+    renderSaved();
 
     expect(await screen.findByText('Butt Spices')).toBeTruthy();
-    expect(screen.getByText('Glow Salon')).toBeTruthy();
-    expect(screen.getAllByText(/★ 4.5/).length).toBeGreaterThanOrEqual(2);
-
-    fireEvent.click(screen.getByText('Butt Spices').closest('button')!);
-    expect(open).toHaveBeenCalledWith('b1');
-
     fireEvent.click(screen.getByRole('button', { name: /Remove Butt Spices from saved/i }));
     await waitFor(() => expect(api.unsaveFavorite).toHaveBeenCalledWith('b1'));
+    expect(await screen.findByText('Removed from Saved')).toBeTruthy();
     await waitFor(() => expect(screen.queryByText('Butt Spices')).toBeNull());
     expect(screen.getByText('Glow Salon')).toBeTruthy();
+  });
+
+  it('keeps the row and shows an error toast when unsave fails', async () => {
+    vi.mocked(api.listFavorites).mockResolvedValue([favEntry('b1', 'Butt Spices')]);
+    vi.mocked(api.unsaveFavorite).mockRejectedValue(new Error('network down'));
+    renderSaved();
+
+    expect(await screen.findByText('Butt Spices')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Remove Butt Spices from saved/i }));
+    await waitFor(() => expect(api.unsaveFavorite).toHaveBeenCalledWith('b1'));
+    expect(await screen.findByText('Could not remove from Saved. Please try again.')).toBeTruthy();
+    // The row stays so the user can retry.
+    expect(screen.getByText('Butt Spices')).toBeTruthy();
   });
 });
 

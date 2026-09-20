@@ -3,7 +3,7 @@ import { getBusiness, listBusinessReviews, getSession, type Business, type Produ
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, ListSkeleton, Loading, Money, OpenBadge, VerifiedBadge } from '../components/ui.js';
 import { StoreIcon } from '../components/icons.js';
-import { formatSlotTime } from '../time.js';
+import { dayOfWeek, formatSlotTime, todayPkt } from '../time.js';
 import { addToCart, replaceWith } from '../cart.js';
 import { useCartCount } from '../useCartCount.js';
 import { Stars } from '../components/ReviewForm.js';
@@ -11,10 +11,16 @@ import { directionsUrl, formatDistanceKm, hasCoordinates } from '../location.js'
 import { useSavedBusiness } from './customer-experience.js';
 import { HeartIcon } from '../components/icons.js';
 import { BusinessMapContext } from './BusinessMapContext.js';
+import './BusinessDetail.css';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
 type DetailTab = 'overview' | 'services' | 'products' | 'reviews' | 'photos';
+
+/** The contextual primary CTA pinned above the bottom nav. */
+type DetailCta =
+  | { state: 'action'; label: string; onClick: () => void }
+  | { state: 'disabled'; label: string; hint: string };
 
 export function BusinessDetailScreen(props: {
   idOrSlug: string;
@@ -58,7 +64,9 @@ export function BusinessDetailScreen(props: {
 
   const b = business.data;
   const place = [b.locality, b.city].filter(Boolean).join(', ');
-  const bookable = b.services?.some((s) => s.isActive && s.durationMinutes);
+  const bookableServices = (b.services ?? []).filter((s) => s.isActive && s.durationMinutes);
+  const bookable = bookableServices.length > 0;
+  const orderable = (b.products?.length ?? 0) > 0;
   // Phase 11: distance comes only from the server when the customer searched
   // nearby; coordinates exist only when the owner configured a real location.
   const distanceLabel =
@@ -74,6 +82,28 @@ export function BusinessDetailScreen(props: {
     : [];
   const closingNote = closings.length ? `Closes ${formatSlotTime(closings[closings.length - 1].closesAt ?? '')}` : undefined;
 
+  // Contextual primary CTA: the right action for the business type/state, and
+  // never an invalid one (no Book without bookable services, no Order without
+  // an orderable catalog, no fake delivery action). The bar is pinned above
+  // the bottom nav via CSS; the content padding keeps it from covering text.
+  let cta: DetailCta;
+  if (props.onBook && bookable) {
+    cta = { state: 'action', label: 'Book a service', onClick: () => props.onBook?.() };
+  } else if (props.canOrder && orderable) {
+    cta = { state: 'action', label: 'Order products', onClick: () => setTab('products') };
+  } else if (b.isOpenNow === false) {
+    cta = { state: 'disabled', label: 'Closed', hint: 'This business is currently closed.' };
+  } else {
+    cta = {
+      state: 'disabled',
+      label: 'Unavailable',
+      hint:
+        orderable && !props.canOrder
+          ? 'Sign in as a customer to order.'
+          : 'This business has no bookable services or products right now.',
+    };
+  }
+
   const tabs: { key: DetailTab; label: string; show: boolean }[] = [
     { key: 'overview', label: 'Overview', show: true },
     { key: 'services', label: 'Services', show: Boolean(b.services?.length) },
@@ -85,7 +115,7 @@ export function BusinessDetailScreen(props: {
   const activeTab = visibleTabs.some((t) => t.key === tab) ? tab : 'overview';
 
   return (
-    <div className="screen">
+    <div className="screen biz-detail">
       {/* Full-bleed hero: media behind, gradient scrim, identity overlaid —
           then the floating action bar. Back control floats on the media. */}
       <div className="biz-hero-full">
@@ -111,7 +141,6 @@ export function BusinessDetailScreen(props: {
           </div>
           <h1 className="biz-hero-name">{b.name}</h1>
           <div className="biz-hero-meta">
-            <RatingLine businessId={b.id} fallbackAverage={b.averageRating} fallbackCount={b.reviewCount} />
             <span className="biz-hero-meta-item">
               {b.categories.map((c) => c.name).join(' • ') || 'Local business'}
             </span>
@@ -120,22 +149,9 @@ export function BusinessDetailScreen(props: {
         </header>
       </div>
 
-      {/* Primary actions: Book / Order lead, utility actions follow. */}
+      {/* Utility actions under the hero; the primary CTA lives in the sticky
+          bar pinned above the bottom nav. */}
       <div className="biz-action-bar">
-        {props.onBook && bookable ? (
-          <button type="button" className="biz-action biz-action-primary" onClick={() => props.onBook?.()}>
-            Book a service
-          </button>
-        ) : null}
-        {props.canOrder && b.products?.length ? (
-          <button
-            type="button"
-            className={`biz-action${props.onBook && bookable ? '' : ' biz-action-primary'}`}
-            onClick={() => setTab('products')}
-          >
-            Order products
-          </button>
-        ) : null}
         <SaveHeart businessId={b.id} />
         {b.phone ? (
           <a className="biz-action biz-action-ghost" href={`tel:${b.phone.replace(/[^\d+]/g, '')}`}>
@@ -173,39 +189,7 @@ export function BusinessDetailScreen(props: {
               <p className="detail-section-text">{b.description}</p>
             </section>
           ) : null}
-          {infoAddress || b.phone || b.email ? (
-            <section className="detail-section" aria-label="Business information">
-              <h2 className="detail-section-title">Information</h2>
-              <dl className="info-rows">
-                {infoAddress ? (
-                  <div className="info-row">
-                    <dt>Address</dt>
-                    <dd>{infoAddress}</dd>
-                  </div>
-                ) : null}
-                {b.phone ? (
-                  <div className="info-row">
-                    <dt>Phone</dt>
-                    <dd>
-                      <a className="info-row-link" href={`tel:${b.phone.replace(/[^\d+]/g, '')}`}>
-                        {b.phone}
-                      </a>
-                    </dd>
-                  </div>
-                ) : null}
-                {b.email ? (
-                  <div className="info-row">
-                    <dt>Email</dt>
-                    <dd>
-                      <a className="info-row-link" href={`mailto:${b.email}`}>
-                        {b.email}
-                      </a>
-                    </dd>
-                  </div>
-                ) : null}
-              </dl>
-            </section>
-          ) : null}
+          <TrustGlance business={b} bookableServicesCount={bookableServices.length} infoAddress={infoAddress} />
           {b.hours?.length ? (
             <section className="detail-section" aria-label="Opening hours">
               <h2 className="detail-section-title">Opening hours</h2>
@@ -238,13 +222,6 @@ export function BusinessDetailScreen(props: {
             </section>
           ) : null}
           {hasCoordinates(b) ? <BusinessMapContext business={b} placeLabel={place} /> : null}
-          {props.onBook && bookable ? (
-            <div className="detail-cta">
-              <Button full onClick={() => props.onBook?.()}>
-                Book this service
-              </Button>
-            </div>
-          ) : null}
         </>
       ) : null}
 
@@ -365,22 +342,139 @@ export function BusinessDetailScreen(props: {
           </div>
         </section>
       ) : null}
+
+      {/* Contextual primary action, pinned above the floating bottom nav and
+          safe-area aware. Real <button>; disabled states are explicit. */}
+      <div className="bd-sticky-bar" role="region" aria-label="Primary action">
+        <button
+          type="button"
+          className="bd-sticky-cta"
+          onClick={cta.state === 'action' ? cta.onClick : undefined}
+          disabled={cta.state === 'disabled'}
+          aria-disabled={cta.state === 'disabled'}
+        >
+          {cta.label}
+        </button>
+        {cta.state === 'disabled' ? <p className="bd-sticky-hint">{cta.hint}</p> : null}
+      </div>
     </div>
   );
 }
 
-/** Rating line for the hero; renders only when real data exists. */
-function RatingLine(props: { businessId: string; fallbackAverage?: number | null; fallbackCount?: number | null }) {
+/**
+ * "At a glance" trust block on the Overview tab: rating + review count,
+ * open/closed state from the real hours payload, booking/ordering capability,
+ * then the key contact rows — one fact per row, nothing the hero already
+ * shows. Delivery is deliberately absent: the public business payload carries
+ * no delivery flag, and inventing one would be fake data.
+ */
+function TrustGlance(props: { business: Business; bookableServicesCount: number; infoAddress: string | null }) {
+  const b = props.business;
+  const todayRow = b.hours?.find((h) => h.dayOfWeek === dayOfWeek(todayPkt()));
+  const todayHours =
+    todayRow && !todayRow.isClosed && todayRow.opensAt && todayRow.closesAt
+      ? `${formatSlotTime(todayRow.opensAt)} – ${formatSlotTime(todayRow.closesAt)}`
+      : null;
+
+  let status: { text: string; open: boolean; sub?: string } | null = null;
+  if (b.isOpenNow === true) {
+    status = { text: 'Open now', open: true, sub: todayHours ? `${todayHours} today` : undefined };
+  } else if (b.isOpenNow === false) {
+    status = {
+      text: 'Closed',
+      open: false,
+      sub: todayRow?.isClosed ? 'Closed today' : todayHours ? `Today ${todayHours}` : undefined,
+    };
+  } else if (todayRow?.isClosed) {
+    status = { text: 'Closed', open: false, sub: 'Closed today' };
+  } else if (todayHours) {
+    status = { text: todayHours, open: false, sub: 'Today' };
+  }
+
+  return (
+    <section className="detail-section" aria-label="At a glance">
+      <h2 className="detail-section-title">At a glance</h2>
+      <dl className="bd-glance">
+        <RatingFact businessId={b.id} fallbackAverage={b.averageRating} fallbackCount={b.reviewCount} />
+        {status ? (
+          <div>
+            <dt>Status</dt>
+            <dd>
+              <span className={status.open ? 'bd-status-open' : 'bd-status-closed'}>{status.text}</span>
+              {status.sub ? <span className="bd-glance-sub">{status.sub}</span> : null}
+            </dd>
+          </div>
+        ) : null}
+        {props.bookableServicesCount > 0 ? (
+          <div>
+            <dt>Booking</dt>
+            <dd>
+              Online booking
+              <span className="bd-glance-sub">
+                {props.bookableServicesCount} {props.bookableServicesCount === 1 ? 'service' : 'services'}
+              </span>
+            </dd>
+          </div>
+        ) : null}
+        {b.products?.length ? (
+          <div>
+            <dt>Ordering</dt>
+            <dd>
+              Products available
+              <span className="bd-glance-sub">
+                {b.products.length} {b.products.length === 1 ? 'item' : 'items'}
+              </span>
+            </dd>
+          </div>
+        ) : null}
+        {props.infoAddress ? (
+          <div>
+            <dt>Address</dt>
+            <dd>{props.infoAddress}</dd>
+          </div>
+        ) : null}
+        {b.phone ? (
+          <div>
+            <dt>Phone</dt>
+            <dd>
+              <a className="info-row-link" href={`tel:${b.phone.replace(/[^\d+]/g, '')}`}>
+                {b.phone}
+              </a>
+            </dd>
+          </div>
+        ) : null}
+        {b.email ? (
+          <div>
+            <dt>Email</dt>
+            <dd>
+              <a className="info-row-link" href={`mailto:${b.email}`}>
+                {b.email}
+              </a>
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+    </section>
+  );
+}
+
+/** Rating fact for the trust block; renders only when real rating data exists. */
+function RatingFact(props: { businessId: string; fallbackAverage?: number | null; fallbackCount?: number | null }) {
   const page = useAsyncData<ReviewPage>(() => listBusinessReviews(props.businessId), [props.businessId]);
   const avg = page.data?.averageRating ?? props.fallbackAverage ?? null;
   const count = page.data?.reviewCount ?? props.fallbackCount ?? 0;
   if (avg === null) return null;
   return (
-    <span className="detail-meta-line">
-      <span aria-hidden>⭐</span>
-      <strong>{avg.toFixed(1)}</strong>
-      {count > 0 ? <span>({count} {count === 1 ? 'review' : 'reviews'})</span> : null}
-    </span>
+    <div>
+      <dt>Rating</dt>
+      <dd>
+        <Stars value={avg} />
+        <span>
+          {avg.toFixed(1)}
+          {count > 0 ? ` · ${count} ${count === 1 ? 'review' : 'reviews'}` : ''}
+        </span>
+      </dd>
+    </div>
   );
 }
 

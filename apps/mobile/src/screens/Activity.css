@@ -1,0 +1,111 @@
+/* Activity screen (Warm Proximity Phase 2) — editorial rows over the shared
+   order/booking data. Uses the semantic tokens + typographic roles from
+   styles.css; nothing here duplicates global styles. */
+
+.act-filter {
+  margin: 2px 0 4px;
+}
+
+.act-section {
+  margin-top: 22px;
+}
+
+.act-section-title {
+  margin: 0 0 10px;
+}
+
+.act-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.act-list-recent {
+  gap: 6px;
+}
+
+/* Rows are full-width buttons: reset the UA button look, keep them cards. */
+.act-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.act-row:active {
+  transform: scale(0.995);
+}
+
+.act-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Business identity in the editorial serif (Phase 1 typographic role). */
+.act-name {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.act-sub {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.act-status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+}
+
+.act-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.act-chev {
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* Recent rows: quieter, flatter, compact. */
+.act-row-compact {
+  padding: 10px 14px;
+  background: transparent;
+  border-color: var(--border);
+}
+
+.act-recent-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -131,33 +131,35 @@ describe('switching between modes', () => {
 });
 
 describe('data scoping across modes', () => {
-  it('customer Orders lists personal orders; business listing stays scoped server-side', async () => {
+  it('customer Activity lists personal orders and bookings; business listing stays scoped server-side', async () => {
     vi.spyOn(api, 'getSession').mockReturnValue(ownerSession);
     vi.spyOn(api, 'getMyBusinesses').mockResolvedValue([ownedBusiness]);
     const listOrders = vi.spyOn(api, 'listMyOrders').mockResolvedValue([]);
+    const listBookings = vi.spyOn(api, 'listMyBookings').mockResolvedValue([]);
     const listBusinessOrders = vi.spyOn(api, 'listBusinessOrders').mockResolvedValue([]);
 
     render(<App />);
     await screen.findByText('Business Overview', undefined, { timeout: 3000 });
 
-    // Owner deliberately switches to Customer mode, then opens their orders.
+    // Owner deliberately switches to Customer mode, then opens their activity.
     fireEvent.click(screen.getByRole('button', { name: 'Profile' }));
     await screen.findByText('Switch to Customer mode');
     fireEvent.click(screen.getByText('Switch to Customer mode'));
     await screen.findByRole('button', { name: 'Explore' }, { timeout: 3000 });
 
-    // Customer Orders tab reads the PERSONAL listing (empty here, so the
+    // Customer Activity tab reads the PERSONAL listings (empty here, so the
     // customer-mode empty state renders, never the business wording).
-    fireEvent.click(screen.getByRole('button', { name: 'Orders' }));
-    await screen.findByText('No orders yet', undefined, { timeout: 3000 });
+    fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
+    await screen.findByText('Nothing here yet', undefined, { timeout: 3000 });
     await waitFor(() => expect(listOrders).toHaveBeenCalled());
+    await waitFor(() => expect(listBookings).toHaveBeenCalled());
 
     // The business-mode Orders screen itself never opens in customer mode:
     // after switching, the business listing is not consulted again.
     const callsAfterSwitch = listBusinessOrders.mock.calls.length;
     fireEvent.click(screen.getByRole('button', { name: 'Home' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Orders' }));
-    await screen.findByText('No orders yet', undefined, { timeout: 3000 });
+    fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
+    await screen.findByText('Nothing here yet', undefined, { timeout: 3000 });
     expect(listBusinessOrders.mock.calls.length).toBe(callsAfterSwitch);
   });
 

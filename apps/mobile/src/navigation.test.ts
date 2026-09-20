@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { businessTabs, navigationTabs, ownerScreens, parseHash, customerConceptTabs, conceptTabTarget, isActivityTab } from './navigation.js';
+import { businessTabs, navigationTabs, ownerScreens, parseHash, customerConceptTabs, conceptTabTarget, isActivityTab, resolveTab } from './navigation.js';
 
 describe('customer navigation', () => {
-  it('exposes the required V1 destinations in order', () => {
-    expect(navigationTabs).toEqual(['Home', 'Explore', 'Orders', 'Bookings', 'Profile']);
+  it('exposes the Warm Proximity tab set in order', () => {
+    expect(navigationTabs).toEqual(['Home', 'Explore', 'Activity', 'Saved', 'Account']);
   });
 });
 
@@ -82,25 +82,37 @@ describe('dedicated owner management screens', () => {
   });
 });
 
-describe('Warm Proximity navigation architecture (Phase 1)', () => {
-  it('maps every conceptual tab to a concrete Phase-1 destination', () => {
+describe('Warm Proximity navigation architecture (Phase 2)', () => {
+  it('maps every conceptual tab to its concrete destination', () => {
     expect(customerConceptTabs).toEqual(['Home', 'Explore', 'Activity', 'Saved', 'Account']);
     expect(conceptTabTarget).toEqual({
       Home: 'Home',
       Explore: 'Explore',
-      Activity: 'Orders',
-      Saved: '/saved-businesses',
-      Account: 'Profile',
+      Activity: 'Activity',
+      Saved: 'Saved',
+      Account: 'Account',
     });
   });
 
-  it('keeps the concrete tab set and deep links unchanged', () => {
-    // Activity is a future composition; Orders/Bookings tabs still render.
-    expect(navigationTabs).toEqual(['Home', 'Explore', 'Orders', 'Bookings', 'Profile']);
+  it('resolves legacy tab values to the Warm Proximity set', () => {
+    expect(resolveTab('Orders')).toBe('Activity');
+    expect(resolveTab('Bookings')).toBe('Activity');
+    expect(resolveTab('Profile')).toBe('Account');
+    expect(resolveTab('Home')).toBe('Home');
+    expect(resolveTab('Explore')).toBe('Explore');
+    expect(resolveTab('Activity')).toBe('Activity');
+    expect(resolveTab('Saved')).toBe('Saved');
+    expect(resolveTab('Account')).toBe('Account');
+  });
+
+  it('keeps legacy tabs renderable only via the Activity composition', () => {
+    // The Orders/Bookings tabs no longer render in the bottom nav; their
+    // grouping predicates still feed the Activity destination.
+    expect(navigationTabs).toEqual(['Home', 'Explore', 'Activity', 'Saved', 'Account']);
     expect(isActivityTab('Orders')).toBe(true);
     expect(isActivityTab('Bookings')).toBe(true);
     expect(isActivityTab('Home')).toBe(false);
-    // Saved stays a working hash route even before it becomes a tab.
+    // Saved is now a tab and still a working hash route; deep links unchanged.
     expect(parseHash('#/saved-businesses')).toEqual({ name: 'saved-businesses' });
     expect(parseHash('#/order/ord-1')).toEqual({ name: 'order', orderId: 'ord-1' });
     expect(parseHash('#/booking/bkg-1')).toEqual({ name: 'booking', bookingId: 'bkg-1' });

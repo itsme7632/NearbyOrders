@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
-import { businessTabs, navigationTabs, type BusinessTab, type Tab } from './navigation.js';
+import { businessTabs, navigationTabs, resolveTab, type BusinessTab, type Tab } from './navigation.js';
 import { getSession, onSessionChange, type Session } from './api.js';
 import { useRoute } from './hooks.js';
 import { applyDefaultModeForSession, initModeSessionSync, setAppMode, useAppMode } from './mode.js';
-import { BellIcon, BookingsIcon, ExploreIcon, HomeIcon, OrdersIcon, PinIcon, ProfileIcon, StoreIcon } from './components/icons.js';
+import { BellIcon, ExploreIcon, HeartIcon, HomeIcon, ActivityIcon, OrdersIcon, BookingsIcon, PinIcon, ProfileIcon, StoreIcon } from './components/icons.js';
 import { EmptyState, Loading } from './components/ui.js';
 import { ToastProvider } from './components/primitives.js';
 import { HomeScreen } from './screens/Home.js';
@@ -13,7 +13,7 @@ import { ExploreScreen } from './screens/Explore.js';
 import { SearchScreen } from './screens/Search.js';
 import { BusinessDetailScreen } from './screens/BusinessDetail.js';
 import { BookServiceScreen } from './screens/BookService.js';
-import { BookingsScreen, BookingDetailScreen } from './screens/Bookings.js';
+import { BookingDetailScreen } from './screens/Bookings.js';
 import { ProfileScreen, EditProfileScreen, ChangePasswordScreen } from './screens/Profile.js';
 import { OwnerDashboardScreen } from './screens/OwnerDashboard.js';
 import { OwnerScreen } from './screens/OwnerScreen.js';
@@ -25,7 +25,9 @@ import { OwnerEarnings } from './screens/OwnerEarnings.js';
 import { OwnerBusinessProfile } from './screens/OwnerBusinessProfile.js';
 import { CreateBusinessScreen } from './screens/CreateBusiness.js';
 import { CartScreen } from './screens/Cart.js';
-import { OrdersScreen, OrderDetailScreen } from './screens/Orders.js';
+import { OrderDetailScreen } from './screens/Orders.js';
+import { ActivityScreen } from './screens/Activity.js';
+import { CartPill } from './components/CartPill.js';
 import { NotificationsScreen } from './screens/Notifications.js';
 import {
   SavedBusinessesScreen,
@@ -85,11 +87,11 @@ export function App() {
       onEditProfile={() => push('/edit-profile')}
       onChangePassword={() => push('/change-password')}
       onOpenOrders={() => {
-        setTab('Orders');
+        setTab(resolveTab('Orders'));
         push('/');
       }}
       onOpenBookings={() => {
-        setTab('Bookings');
+        setTab(resolveTab('Bookings'));
         push('/');
       }}
       onOpenNotifications={() => push('/notifications')}
@@ -110,11 +112,11 @@ export function App() {
       onEditProfile={() => push('/edit-profile')}
       onChangePassword={() => push('/change-password')}
       onOpenOrders={() => {
-        setTab('Orders');
+        setTab(resolveTab('Orders'));
         push('/');
       }}
       onOpenBookings={() => {
-        setTab('Bookings');
+        setTab(resolveTab('Bookings'));
         push('/');
       }}
       onOpenNotifications={() => push('/notifications')}
@@ -132,10 +134,10 @@ export function App() {
   /** Deep link for a notification: entity detail, or a safe fallback when the target no longer exists. */
   const openNotification = (n: { entityType: 'Booking' | 'Order' | string; entityId: string }) => {
     if (n.entityType === 'Booking') {
-      setTab('Bookings');
+      setTab(resolveTab('Bookings'));
       push(`/booking/${n.entityId}`);
     } else if (n.entityType === 'Order') {
-      setTab('Orders');
+      setTab(resolveTab('Orders'));
       push(`/order/${n.entityId}`);
     } else if (n.entityType === 'Review') {
       setAppMode('BUSINESS');
@@ -151,10 +153,10 @@ export function App() {
       // Only known-safe route shapes from the server's own deepLinkFor();
       // anything else falls back to the notifications list.
       if (link.startsWith('/booking/')) {
-        setTab('Bookings');
+        setTab(resolveTab('Bookings'));
         push(link);
       } else if (link.startsWith('/order/')) {
-        setTab('Orders');
+        setTab(resolveTab('Orders'));
         push(link);
       } else if (link.startsWith('/business/')) {
         setAppMode('BUSINESS');
@@ -214,7 +216,7 @@ export function App() {
           push('/');
         }}
         onPlaced={() => {
-          setTab('Orders');
+          setTab(resolveTab('Orders'));
           push('/');
         }}
       />
@@ -252,7 +254,7 @@ export function App() {
         preselectedServiceId={route.serviceId}
         onBack={back}
         onDone={() => {
-          setTab('Bookings');
+          setTab(resolveTab('Bookings'));
           push('/');
         }}
       />
@@ -355,35 +357,28 @@ export function App() {
         onOpenSearch={(q) => push(`/search?q=${encodeURIComponent(q)}`)}
       />
     );
-  } else if (tab === 'Orders') {
-    // Customer mode only: the person's own placed orders, whatever their role.
-    content = session ? (
-      <OrdersScreen
+  } else if (tab === 'Activity') {
+    // Customer mode: composes the person's orders and bookings in one timeline.
+    content = (
+      <ActivityScreen
         onOpenOrder={(id) => push(`/order/${id}`)}
+        onOpenBooking={(id) => push(`/booking/${id}`)}
         onBrowse={() => {
           setTab('Explore');
           push('/');
         }}
       />
-    ) : (
+    );
+  } else if (tab === 'Saved') {
+    content = session ? <SavedBusinessesScreen onBack={back} onOpenBusiness={openBusiness} /> : (
       <div className="screen">
         <EmptyState
-          icon={<OrdersIcon size={30} />}
-          title="Your orders"
-          body="Sign in to place orders and track them here."
+          icon={<HeartIcon size={30} />}
+          title="Your saved places"
+          body="Sign in to save businesses and find them here."
         />
       </div>
     );
-  } else if (tab === 'Bookings') {
-    content = session ? (
-      <BookingsScreen
-        onOpenBooking={(id) => push(`/booking/${id}`)}
-        onExplore={() => {
-          setTab('Explore');
-          push('/');
-        }}
-      />
-    ) : null;
   } else {
     content = session ? profileHubScreen : profileAuthScreen;
   }
@@ -394,7 +389,7 @@ export function App() {
   // route/tab stays active, so after sign-in they land where they intended.
   const authFlow =
     !session &&
-    ((route.name === 'tabs' && (tab === 'Profile' || tab === 'Bookings')) ||
+    ((route.name === 'tabs' && tab === 'Account') ||
       route.name === 'book' ||
       route.name === 'booking' ||
       route.name === 'notifications');
@@ -441,6 +436,7 @@ export function App() {
         </header>
       ) : null}
       {content}
+      {!authFlow && !businessMode && route.name === 'tabs' ? <CartPill onViewCart={() => push('/cart')} /> : null}
       {!authFlow ? (
         businessMode ? (
           <nav aria-label="Business" className="business-nav business-nav-v3">
@@ -469,7 +465,7 @@ export function App() {
             {navigationTabs.map((t) => {
               const active = t === tab && route.name === 'tabs';
               const IconCmp =
-                t === 'Home' ? HomeIcon : t === 'Explore' ? ExploreIcon : t === 'Orders' ? OrdersIcon : t === 'Bookings' ? BookingsIcon : ProfileIcon;
+                t === 'Home' ? HomeIcon : t === 'Explore' ? ExploreIcon : t === 'Activity' ? ActivityIcon : t === 'Saved' ? HeartIcon : ProfileIcon;
               return (
                 <button
                   key={t}

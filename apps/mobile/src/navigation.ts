@@ -1,4 +1,6 @@
-export type Tab = 'Home' | 'Explore' | 'Orders' | 'Bookings' | 'Profile';
+/** Customer tab values. 'Orders' | 'Bookings' | 'Profile' are legacy values —
+ * still accepted by resolveTab(), but no longer rendered in the bottom nav. */
+export type Tab = 'Home' | 'Explore' | 'Activity' | 'Saved' | 'Account' | 'Orders' | 'Bookings' | 'Profile';
 
 /** Tab set for Business mode: its own navigation, never the customer one. */
 export const businessTabs = ['Overview', 'Orders', 'Bookings', 'Earnings', 'Profile'] as const;
@@ -8,18 +10,41 @@ export type BusinessTab = (typeof businessTabs)[number];
 export const ownerScreens = ['profile', 'hours', 'delivery', 'services', 'products', 'bookings', 'orders', 'payments', 'payment-methods', 'advances', 'reviews', 'subscription', 'settings', 'location'] as const;
 export type OwnerScreenName = (typeof ownerScreens)[number];
 
-/** Customer-mode bottom navigation. */
-export const navigationTabs: Tab[] = ['Home', 'Explore', 'Orders', 'Bookings', 'Profile'];
+/** Customer-mode bottom navigation. Warm Proximity concept tabs:
+ * Home · Explore · Activity · Saved · Account. */
+export const navigationTabs: Tab[] = ['Home', 'Explore', 'Activity', 'Saved', 'Account'];
+
+/* ------------- Warm Proximity navigation architecture (Phase 2) ------
+   The concrete tab set now IS the concept set. Legacy tab values
+   ('Orders', 'Bookings', 'Profile') are still accepted everywhere a Tab
+   is read — use resolveTab() at boundaries — but never render. */
+
+/**
+ * Normalizes a Tab to the Warm Proximity set: legacy values map to their
+ * new home, everything else is identity. Apply at tab-state boundaries
+ * (init, setTab wrappers, persisted values) so call sites can keep passing
+ * legacy names during the transition.
+ */
+export function resolveTab(tab: Tab): Tab {
+  switch (tab) {
+    case 'Orders':
+    case 'Bookings':
+      return 'Activity';
+    case 'Profile':
+      return 'Account';
+    default:
+      return tab;
+  }
+}
 
 /* ------------- Warm Proximity navigation architecture (Phase 1) ------
    Conceptual customer navigation for the Warm Proximity model:
    Home · Explore · Activity · Saved · Account
 
-   Phase 1 establishes the mapping architecture ONLY. Concrete tabs,
-   routes and deep links are UNCHANGED: the Orders/Bookings tabs stay
-   rendered, and /saved-businesses, /order/:id, /booking/:id keep working.
-   Later phases flip the visible tab set against this mapping without
-   touching route parsing or notification/push targets. */
+   Phase 1 established the mapping architecture; Phase 2 flipped the
+   visible tab set against it (navigationTabs above, resolveTab for legacy
+   values). Route parsing and notification/push targets are untouched:
+   /saved-businesses, /order/:id, /booking/:id keep working. */
 
 /** Conceptual Warm Proximity customer tabs (the future visible tab set). */
 export const customerConceptTabs = ['Home', 'Explore', 'Activity', 'Saved', 'Account'] as const;
@@ -29,15 +54,15 @@ export type CustomerConceptTab = (typeof customerConceptTabs)[number];
 export const activityTabs = ['Orders', 'Bookings'] as const satisfies readonly Tab[];
 
 /**
- * Maps each conceptual tab to its Phase-1 concrete destination.
- * Tab values render in the bottom nav; string values are hash routes.
+ * Maps each conceptual tab to its concrete destination.
+ * Phase 2: the mapping is now real — every concept tab renders directly.
  */
-export const conceptTabTarget: Record<CustomerConceptTab, Tab | string> = {
+export const conceptTabTarget: Record<CustomerConceptTab, Tab> = {
   Home: 'Home',
   Explore: 'Explore',
-  Activity: 'Orders',
-  Saved: '/saved-businesses',
-  Account: 'Profile',
+  Activity: 'Activity',
+  Saved: 'Saved',
+  Account: 'Account',
 };
 
 /** True for tabs that will live under the future Activity destination. */

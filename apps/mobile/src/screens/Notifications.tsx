@@ -13,6 +13,44 @@ type NotifIcon = 'booking' | 'order' | 'generic';
 
 const iconFor = (type: string): NotifIcon => (type.startsWith('BOOKING') ? 'booking' : type.startsWith('ORDER') ? 'order' : 'generic');
 
+const kindLabelFor = (type: string): string =>
+  type.startsWith('BOOKING') ? 'Booking' : type.startsWith('ORDER') ? 'Order' : 'Update';
+
+/* ------------------------------------------------------------------ */
+/* Grouping                                                            */
+/* ------------------------------------------------------------------ */
+
+/** One date bucket in the restructured notification list. */
+export type NotificationGroup = {
+  key: 'today' | 'earlier';
+  /** Heading shown above the bucket ("Today" / "Earlier"). */
+  title: string;
+  items: Notification[];
+};
+
+const sameLocalDay = (a: Date, b: Date): boolean =>
+  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+/**
+ * Pure helper: buckets notifications by local calendar day relative to `now`.
+ * "Today" holds items created on the same local day as `now`; everything
+ * else (including unparseable dates) goes to "Earlier". Order within a bucket
+ * is preserved. Buckets with no items are omitted.
+ */
+export function groupNotifications(notifications: Notification[], now: Date = new Date()): NotificationGroup[] {
+  const today: Notification[] = [];
+  const earlier: Notification[] = [];
+  for (const n of notifications) {
+    const created = new Date(n.createdAt);
+    if (!Number.isNaN(created.getTime()) && sameLocalDay(created, now)) today.push(n);
+    else earlier.push(n);
+  }
+  const groups: NotificationGroup[] = [];
+  if (today.length) groups.push({ key: 'today', title: 'Today', items: today });
+  if (earlier.length) groups.push({ key: 'earlier', title: 'Earlier', items: earlier });
+  return groups;
+}
+
 const relativeWhen = (iso: string): string => {
   const diffMs = Date.now() - Date.parse(iso);
   const minutes = Math.floor(diffMs / 60_000);
@@ -42,6 +80,9 @@ export function NotificationsScreen(props: {
   const items = state?.items ?? page.data?.items ?? [];
   const cursor = state?.cursor ?? page.data?.nextCursor ?? null;
   const unread = items.filter((n) => !n.isRead);
+  // Cheap O(n) bucketing; intentionally not memoized — this component has
+  // early returns above, and a hook here would violate hook ordering.
+  const groups = groupNotifications(items);
 
   const apply = (next: Notification[]) => {
     setState({ items: next, cursor });
@@ -110,36 +151,54 @@ export function NotificationsScreen(props: {
           body="Updates about your bookings and orders will appear here."
         />
       ) : (
-        <ul className="notif-list">
-          {items.map((n) => {
-            const icon = iconFor(n.type);
-            const IconCmp = icon === 'booking' ? BookingsIcon : icon === 'order' ? OrdersIcon : AlertIcon;
-            return (
-              <li key={n.id}>
-                <button
-                  type="button"
-                  className={`notif-item${n.isRead ? '' : ' notif-unread'}`}
-                  onClick={() => {
-                    void markRead(n);
-                    props.onOpenNotification(n);
-                  }}
-                >
-                  <span className="notif-icon" aria-hidden>
-                    <IconCmp size={20} />
-                  </span>
-                  <span className="notif-body">
-                    <span className="notif-top">
-                      <span className="notif-title">{n.title}</span>
-                      {!n.isRead ? <span className="notif-dot" aria-label="Unread" /> : null}
-                    </span>
-                    <span className="notif-message">{n.message}</span>
-                    <span className="notif-time">{relativeWhen(n.createdAt)}</span>
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        groups.map((g) => {
+          const groupUnread = g.items.filter((n) => !n.isRead).length;
+          return (
+            <section key={g.key} aria-label={g.title}>
+              <h2
+                className="type-section"
+                style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '18px 0 8px' }}
+              >
+                {g.title}
+                {groupUnread > 0 ? <span className="type-meta">{groupUnread} new</span> : null}
+              </h2>
+              <ul className="notif-list">
+                {g.items.map((n) => {
+                  const icon = iconFor(n.type);
+                  const IconCmp = icon === 'booking' ? BookingsIcon : icon === 'order' ? OrdersIcon : AlertIcon;
+                  return (
+                    <li key={n.id}>
+                      <button
+                        type="button"
+                        className={`notif-item${n.isRead ? '' : ' notif-unread'}`}
+                        onClick={() => {
+                          void markRead(n);
+                          props.onOpenNotification(n);
+                        }}
+                      >
+                        <span className="notif-icon" aria-hidden>
+                          <IconCmp size={20} />
+                        </span>
+                        <span className="notif-body">
+                          <span className="notif-top">
+                            <span className="notif-title">{n.title}</span>
+                            {!n.isRead ? <span className="notif-dot" aria-label="Unread" /> : null}
+                          </span>
+                          <span className="notif-message">{n.message}</span>
+                          <span className="notif-time">
+                            <span className="type-label">{kindLabelFor(n.type)}</span>
+                            {' · '}
+                            <span className="type-meta">{relativeWhen(n.createdAt)}</span>
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          );
+        })
       )}
       {cursor ? (
         <Button full variant="ghost" onClick={() => void loadMore()}>

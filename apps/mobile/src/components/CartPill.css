@@ -1,0 +1,65 @@
+/* ---- Floating cart summary pill (Phase 2E) ----
+   Fixed above the bottom nav, safe-area aware; the component returns null
+   when the cart is empty so the rule never renders empty. Stays below the
+   toast region (z-index 80) so transient feedback always stays readable. */
+.cart-pill {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  z-index: 70;
+  max-width: min(430px, calc(100vw - 32px));
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  box-shadow: 0 10px 26px rgba(28, 25, 23, 0.28);
+  font: inherit;
+  cursor: pointer;
+}
+.cart-pill:active { transform: translateX(-50%) scale(0.98); }
+.cart-pill-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.16);
+}
+.cart-pill-text {
+  min-width: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.cart-pill-count {
+  font-size: 13.5px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cart-pill-sep { opacity: 0.6; }
+.cart-pill-subtotal {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cart-pill-action {
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--brand);
+}

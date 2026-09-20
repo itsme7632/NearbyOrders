@@ -8,13 +8,15 @@ import {
   updateAddress,
   deleteAddress,
   listMyReviews,
+  type Business,
   type FavoriteEntry,
   type CustomerAddress,
   type MyReview,
 } from '../api.js';
 import { useAsyncData } from '../hooks.js';
-import { Button, EmptyState, ErrorState, ListSkeleton } from '../components/ui.js';
+import { BusinessRow, Button, EmptyState, ErrorState, ListSkeleton } from '../components/ui.js';
 import { HeartIcon } from '../components/icons.js';
+import { useToast } from '../components/primitives.js';
 
 /* ------------------------------------------------------------------ */
 /* Shared screen scaffolding                                           */
@@ -37,7 +39,24 @@ function ScreenHead(props: { title: string; sub?: string; children?: React.React
 /* ------------------------------------------------------------------ */
 
 export function SavedBusinessesScreen(props: { onBack: () => void; onOpenBusiness: (id: string) => void }) {
+  const toast = useToast();
   const saved = useAsyncData(() => listFavorites(), []);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
+  const remove = async (businessId: string) => {
+    if (removingId) return;
+    setRemovingId(businessId);
+    try {
+      await unsaveFavorite(businessId);
+      toast.success('Removed from Saved');
+      saved.reload();
+    } catch {
+      // The row stays in place; the user can retry the tap.
+      toast.error('Could not remove from Saved. Please try again.');
+    } finally {
+      setRemovingId(null);
+    }
+  };
 
   if (saved.loading) return <ListSkeleton count={4} />;
   if (saved.error) return <ErrorState message={saved.error} onRetry={saved.reload} />;
@@ -51,10 +70,12 @@ export function SavedBusinessesScreen(props: { onBack: () => void; onOpenBusines
           icon={<HeartIcon size={30} />}
           title="Nothing saved yet"
           body="Tap the heart on any business to keep it here for quick access."
+          action={
+            <Button variant="ghost" onClick={props.onBack}>
+              Explore businesses
+            </Button>
+          }
         />
-        <Button full variant="ghost" onClick={props.onBack}>
-          Explore businesses
-        </Button>
       </div>
     );
   }
@@ -64,48 +85,66 @@ export function SavedBusinessesScreen(props: { onBack: () => void; onOpenBusines
       <ScreenHead title="Saved businesses" sub={`${entries.length} saved`} />
       <ul className="fav-list">
         {entries.map(({ business }) => (
-          <li key={business.id}>
-            <button type="button" className="fav-row" onClick={() => props.onOpenBusiness(business.id)}>
-              {business.imageUrl ? (
-                <img className="fav-thumb" src={business.imageUrl} alt="" loading="lazy" />
-              ) : (
-                <span className="fav-thumb fav-thumb-empty" aria-hidden>
-                  <HeartIcon size={18} />
-                </span>
-              )}
-              <span className="fav-row-text">
-                <span className="fav-row-name">{business.name}</span>
-                <span className="fav-row-meta">
-                  {business.isVerified ? <span className="fav-verified">✓</span> : null}
-                  {business.city}
-                  {business.averageRating !== null ? ` · ★ ${business.averageRating.toFixed(1)} (${business.reviewCount})` : ''}
-                </span>
-              </span>
-              <span
-                role="button"
-                tabIndex={0}
-                aria-label={`Remove ${business.name} from saved`}
-                className="fav-heart"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void unsaveFavorite(business.id).then(() => saved.reload()).catch(() => undefined);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    void unsaveFavorite(business.id).then(() => saved.reload()).catch(() => undefined);
-                  }
-                }}
-              >
-                <HeartIcon size={19} filled />
-              </span>
+          // Same BusinessRow treatment as Explore/Search; the unsave heart
+          // overlays the row's trailing edge as a separate action.
+          <li key={business.id} style={{ position: 'relative' }}>
+            <BusinessRow business={favoriteToBusiness(business)} onOpen={() => props.onOpenBusiness(business.id)} />
+            <button
+              type="button"
+              className="fav-heart"
+              aria-label={`Remove ${business.name} from saved`}
+              title="Remove from Saved"
+              disabled={removingId === business.id}
+              onClick={() => void remove(business.id)}
+              style={{
+                position: 'absolute',
+                right: 2,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                background: 'var(--card)',
+                border: '1px solid var(--border)',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: removingId === business.id ? 0.5 : 1,
+              }}
+            >
+              <HeartIcon size={18} filled />
             </button>
           </li>
         ))}
       </ul>
     </div>
   );
+}
+
+/**
+ * The favorites API returns a display subset of the business; adapt it to the
+ * full Business shape BusinessRow expects (absent fields stay null/empty —
+ * never invented).
+ */
+function favoriteToBusiness(f: FavoriteEntry['business']): Business {
+  return {
+    id: f.id,
+    name: f.name,
+    slug: f.slug,
+    description: null,
+    imageUrl: f.imageUrl,
+    isVerified: f.isVerified,
+    address: f.address,
+    city: f.city,
+    locality: null,
+    latitude: null,
+    longitude: null,
+    phone: null,
+    email: null,
+    currency: 'PKR',
+    categories: [],
+    averageRating: f.averageRating,
+    reviewCount: f.reviewCount,
+  };
 }
 
 /* ------------------------------------------------------------------ */

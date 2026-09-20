@@ -20,6 +20,8 @@ import {
   longDateLabel,
   todayPkt,
 } from '../time.js';
+import { groupSlotsByDaypart } from './bookingSlots.js';
+import './BookService.css';
 
 type Step = 'service' | 'time' | 'summary' | 'success';
 
@@ -175,33 +177,45 @@ export function BookServiceScreen(props: {
         ‹ {step === 'summary' ? 'Back to times' : 'Back'}
       </button>
 
-      {/* Business identity: the name is the hero; trust + locality are the
-          supporting meta line, matching the v7 detail-screen hierarchy. */}
+      {/* Editorial identity header: on the service step the business is the
+          hero; once a service is chosen the service takes the headline (name,
+          price, duration — all from the API) with the business as the
+          supporting line. */}
       <header className="booking-head">
-        <p className="booking-eyebrow">{step === 'summary' ? 'Review & confirm' : 'Book a service'}</p>
-        <h1 className="booking-title">
-          {step === 'summary' ? 'Confirm your booking' : b.name}
-        </h1>
-        <p className="booking-head-biz">
-          {step === 'summary' ? (
-            <>
-              {b.name}
-              {place ? <span className="booking-head-place"> · {place}</span> : null}
-            </>
-          ) : (
-            <>
-              {b.isVerified ? (
-                <span className="booking-head-verified" title="Verified by NearbyOrders">
-                  ✓ Verified
-                </span>
-              ) : null}
-              {b.isOpenNow !== undefined ? (
-                <span className={`biz-open${b.isOpenNow ? '' : ' biz-open-closed'}`}>{b.isOpenNow ? 'Open now' : 'Closed'}</span>
-              ) : null}
-              {place ? <span className="booking-head-place">{place}</span> : null}
-            </>
-          )}
+        <p className="booking-eyebrow">
+          {step === 'service' ? 'Book a service' : step === 'time' ? 'Choose a time' : 'Review & confirm'}
         </p>
+        {step === 'time' && service ? (
+          <div className="book-service-identity">
+            <h1 className="book-service-name">{service.name}</h1>
+            <p className="book-service-meta">
+              <span>{b.name}</span>
+              <Money minor={service.priceMinor} currency={service.currency} />
+              {service.durationMinutes ? <span>{service.durationMinutes} min</span> : null}
+            </p>
+          </div>
+        ) : (
+          <>
+            <h1 className="booking-title">{step === 'summary' ? 'Confirm your booking' : b.name}</h1>
+            <p className="booking-head-biz">
+              {step === 'summary' ? (
+                <>{place ? <span className="booking-head-place">{place}</span> : null}</>
+              ) : (
+                <>
+                  {b.isVerified ? (
+                    <span className="booking-head-verified" title="Verified by NearbyOrders">
+                      ✓ Verified
+                    </span>
+                  ) : null}
+                  {b.isOpenNow !== undefined ? (
+                    <span className={`biz-open${b.isOpenNow ? '' : ' biz-open-closed'}`}>{b.isOpenNow ? 'Open now' : 'Closed'}</span>
+                  ) : null}
+                  {place ? <span className="booking-head-place">{place}</span> : null}
+                </>
+              )}
+            </p>
+          </>
+        )}
       </header>
 
       {/* Step indicator: quiet numbered rail, current step emphasized. */}
@@ -244,7 +258,8 @@ export function BookServiceScreen(props: {
         </section>
       ) : null}
 
-      {/* Step 2 — date + slots (backend is authoritative) */}
+      {/* Step 2 — date + slots grouped by daypart (backend stays authoritative:
+          only the presentation of its slots is grouped). */}
       {step === 'time' && service ? (
         <>
           <section className="book-section" aria-label="Choose a date">
@@ -276,9 +291,6 @@ export function BookServiceScreen(props: {
 
           <section className="book-section" aria-label="Available times">
             <h2 className="book-section-title">Available times</h2>
-            <p className="booking-slot-meta">
-              {service.name} · {service.durationMinutes} min
-            </p>
             {availability.loading ? (
               <Loading label="Checking availability…" />
             ) : availability.error ? (
@@ -305,17 +317,24 @@ export function BookServiceScreen(props: {
                     />
                   );
                 return (
-                  <div className="slot-grid">
-                    {availability.data.slots.map((s) => (
-                      <button
-                        key={s.start}
-                        type="button"
-                        className={`slot${s.available ? '' : ' slot-taken'}`}
-                        disabled={!s.available}
-                        onClick={() => chooseSlot({ start: s.start, end: s.end })}
-                      >
-                        {formatSlotTime(s.start)}
-                      </button>
+                  <div className="slot-groups">
+                    {groupSlotsByDaypart(availability.data.slots).map((group) => (
+                      <section key={group.daypart} className="slot-group" aria-label={`${group.daypart} slots`}>
+                        <h3 className="slot-group-title">{group.daypart}</h3>
+                        <div className="slot-grid">
+                          {group.slots.map((s) => (
+                            <button
+                              key={s.start}
+                              type="button"
+                              className={`slot${s.available ? '' : ' slot-taken'}`}
+                              disabled={!s.available}
+                              onClick={() => chooseSlot({ start: s.start, end: s.end })}
+                            >
+                              {formatSlotTime(s.start)}
+                            </button>
+                          ))}
+                        </div>
+                      </section>
                     ))}
                   </div>
                 );
@@ -331,46 +350,45 @@ export function BookServiceScreen(props: {
         </>
       ) : null}
 
-      {/* Step 3 — summary */}
+      {/* Step 3 — booking ticket: identity stub, perforation, line items,
+          total. endAt comes from the slot the server returned. */}
       {step === 'summary' && service && slot && b ? (
-        <section className="book-section booking-summary" aria-label="Booking summary">
+        <section className="book-section" aria-label="Booking summary">
           <h2 className="book-section-title">Review your booking</h2>
-          <dl className="summary-list">
-            <div>
-              <dt>Business</dt>
-              <dd>{b.name}</dd>
+          <div className="ticket" role="group" aria-label="Booking ticket">
+            <div className="ticket-stub">
+              <p className="ticket-biz">{b.name}</p>
+              <p className="ticket-service">{service.name}</p>
             </div>
-            <div>
-              <dt>Service</dt>
-              <dd>{service.name}</dd>
-            </div>
-            <div>
-              <dt>Date</dt>
-              <dd>{longDateLabel(date)}</dd>
-            </div>
-            <div>
-              <dt>Time</dt>
-              <dd>
-                {formatSlotTime(slot.start)} – {formatSlotTime(slot.end)}
-              </dd>
-            </div>
-            <div>
-              <dt>Duration</dt>
-              <dd>{service.durationMinutes} minutes</dd>
-            </div>
-            <div>
-              <dt>Price</dt>
-              <dd>
-                <Money minor={service.priceMinor} currency={service.currency} />
-              </dd>
-            </div>
-            {place ? (
+            <div className="ticket-perforation" aria-hidden />
+            <dl className="ticket-rows">
               <div>
-                <dt>Location</dt>
-                <dd>{place}</dd>
+                <dt>Date</dt>
+                <dd>{longDateLabel(date)}</dd>
               </div>
-            ) : null}
-          </dl>
+              <div>
+                <dt>Time</dt>
+                <dd>
+                  {formatSlotTime(slot.start)} – {formatSlotTime(slot.end)}
+                </dd>
+              </div>
+              <div>
+                <dt>Duration</dt>
+                <dd>{service.durationMinutes} minutes</dd>
+              </div>
+              {place ? (
+                <div>
+                  <dt>Location</dt>
+                  <dd>{place}</dd>
+                </div>
+              ) : null}
+            </dl>
+            <div className="ticket-perforation" aria-hidden />
+            <div className="ticket-total">
+              <span>Total</span>
+              <Money minor={service.priceMinor} currency={service.currency} />
+            </div>
+          </div>
 
           <label className="field">
             <span className="label">Note for the business (optional)</span>
@@ -390,12 +408,14 @@ export function BookServiceScreen(props: {
             </div>
           ) : null}
 
-          <Button full disabled={submitting} onClick={() => void confirm()}>
-            {submitting ? 'Confirming…' : 'Confirm booking'}
-          </Button>
-          <Button full variant="ghost" onClick={backToSlots} disabled={submitting}>
-            Change date or time
-          </Button>
+          <div className="booking-ticket-actions">
+            <Button full disabled={submitting} onClick={() => void confirm()}>
+              {submitting ? 'Confirming…' : 'Confirm booking'}
+            </Button>
+            <Button full variant="ghost" onClick={backToSlots} disabled={submitting}>
+              Change date or time
+            </Button>
+          </div>
         </section>
       ) : null}
 

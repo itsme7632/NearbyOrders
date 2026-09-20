@@ -186,6 +186,17 @@ export function ImageIcon(props: IconProps) {
   );
 }
 
+/* ---- Warm Proximity tab icons (Phase 2) ---- */
+
+/** Activity (pulse line): the Warm Proximity Activity tab glyph. */
+export function ActivityIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M3 12h4l2.5-6.5 4 13 2.5-6.5H21" />
+    </Icon>
+  );
+}
+
 /* --------- account-hub row icons (Profile settings hub) --------- */
 
 export function UserIcon(props: IconProps) {

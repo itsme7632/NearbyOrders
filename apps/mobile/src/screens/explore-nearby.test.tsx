@@ -13,6 +13,7 @@ vi.mock('../api.js', async (importOriginal) => ({
   listNearbyBusinesses: vi.fn(),
   listBusinesses: vi.fn(),
   listCategories: vi.fn(),
+  searchMarketplace: vi.fn(),
 }));
 
 vi.mock('../location.js', async (importOriginal) => ({
@@ -51,6 +52,9 @@ beforeEach(() => {
   ]);
   vi.mocked(api.listBusinesses).mockResolvedValue([base()]);
   vi.mocked(api.listNearbyBusinesses).mockResolvedValue([base({ name: 'Nearby Bistro', id: 'biz-2' })]);
+  // ExploreScreen only calls /search when advanced filters are active; the
+  // default keeps the suite hermetic if that ever changes.
+  vi.mocked(api.searchMarketplace).mockResolvedValue({ results: [], nextCursor: null, total: 0, sort: 'relevance' });
   vi.mocked(requestCustomerLocation).mockResolvedValue(granted);
 });
 

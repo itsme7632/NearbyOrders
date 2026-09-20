@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
-import { NotificationsScreen } from './Notifications.js';
+import { NotificationsScreen, groupNotifications } from './Notifications.js';
 import * as api from '../api.js';
 import { getSession, onSessionChange, type Notification, type Session } from '../api.js';
 import { useUnreadNotifications } from '../useUnreadNotifications.js';
@@ -36,6 +36,39 @@ function HookProbe() {
   );
 }
 
+describe('groupNotifications (pure helper)', () => {
+  const now = new Date(2026, 8, 21, 12, 0, 0); // local noon, Sep 21 2026
+  const g = (id: string, createdAt: string): Notification => notif({ id, createdAt });
+
+  it('buckets same-local-day items into Today and the rest into Earlier', () => {
+    const items = [
+      g('a', new Date(2026, 8, 21, 9, 30).toISOString()),
+      g('b', new Date(2026, 8, 20, 23, 59).toISOString()),
+      g('c', new Date(2026, 8, 21, 0, 1).toISOString()),
+    ];
+    const groups = groupNotifications(items, now);
+    expect(groups.map((x) => x.key)).toEqual(['today', 'earlier']);
+    expect(groups[0].title).toBe('Today');
+    expect(groups[0].items.map((n) => n.id)).toEqual(['a', 'c']);
+    expect(groups[1].title).toBe('Earlier');
+    expect(groups[1].items.map((n) => n.id)).toEqual(['b']);
+  });
+
+  it('omits empty buckets and preserves order within a bucket', () => {
+    const items = [g('x', new Date(2026, 8, 19, 8, 0).toISOString()), g('y', new Date(2026, 8, 18, 8, 0).toISOString())];
+    const groups = groupNotifications(items, now);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].key).toBe('earlier');
+    expect(groups[0].items.map((n) => n.id)).toEqual(['x', 'y']);
+    expect(groupNotifications([], now)).toEqual([]);
+  });
+
+  it('treats unparseable dates as Earlier without throwing', () => {
+    const groups = groupNotifications([g('z', 'not-a-date')], now);
+    expect(groups.map((x) => x.key)).toEqual(['earlier']);
+  });
+});
+
 describe('NotificationsScreen', () => {
   it('renders unread and read notifications with relative timestamps', async () => {
     vi.spyOn(api, 'listNotifications').mockResolvedValue(
@@ -51,6 +84,21 @@ describe('NotificationsScreen', () => {
     // n-1 and n-3 share the default fixture title.
     expect(screen.getAllByText('Order accepted')).toHaveLength(2);
     expect(screen.getByText('Mark all read')).toBeTruthy();
+  });
+
+  it('groups notifications under Today and Earlier headings with a kind label', async () => {
+    vi.spyOn(api, 'listNotifications').mockResolvedValue(
+      page([
+        notif({ id: 'n-1', createdAt: new Date().toISOString() }),
+        notif({ id: 'n-2', type: 'BOOKING_ACCEPTED', title: 'Booking confirmed', createdAt: new Date(Date.now() - 3 * 86400_000).toISOString() }),
+      ]),
+    );
+    render(<NotificationsScreen onOpenNotification={() => {}} />);
+
+    expect(await screen.findByRole('heading', { name: /Today/ })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /Earlier/ })).toBeTruthy();
+    expect(screen.getByText('Order')).toBeTruthy();
+    expect(screen.getByText('Booking')).toBeTruthy();
   });
 
   it('shows the empty state', async () => {

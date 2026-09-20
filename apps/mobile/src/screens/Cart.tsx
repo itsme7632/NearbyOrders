@@ -23,7 +23,13 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
   const [cart, setCart] = useState<Cart | null>(getCart());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [placed, setPlaced] = useState<{ id: string; businessName: string; totalMinor: number } | null>(null);
+  const [placed, setPlaced] = useState<{
+    id: string;
+    businessName: string;
+    subtotalMinor: number;
+    deliveryFeeMinor?: number;
+    totalMinor: number;
+  } | null>(null);
 
   // Phase 7C checkout state.
   const [methods, setMethods] = useState<BusinessPayInMethod[] | null>(null);
@@ -106,6 +112,9 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
       setPlaced({
         id: order.id,
         businessName: order.business.name,
+        subtotalMinor: order.subtotalMinor,
+        // Server-authoritative fee, when the order carried one (delivery).
+        ...(order.deliveryFeeMinor !== undefined ? { deliveryFeeMinor: order.deliveryFeeMinor } : {}),
         totalMinor: order.totalMinor ?? order.subtotalMinor,
       });
     } catch (e) {
@@ -138,6 +147,31 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
           }
           action={<Button onClick={() => props.onPlaced(placed.id)}>View my orders</Button>}
         />
+        {/* Server-authoritative price breakdown for the placed order. */}
+        {placed.deliveryFeeMinor !== undefined ? (
+          <section className="checkout-step" aria-label="Order total">
+            <div className="cart-summary">
+              <div className="cart-line">
+                <span className="type-meta">Item subtotal</span>
+                <span className="type-price">
+                  <Money minor={placed.subtotalMinor} currency="PKR" />
+                </span>
+              </div>
+              <div className="cart-line">
+                <span className="type-meta">Delivery fee</span>
+                <span className="type-price">
+                  <Money minor={placed.deliveryFeeMinor} currency="PKR" />
+                </span>
+              </div>
+              <div className="cart-line cart-total">
+                <span className="type-section">Total</span>
+                <span className="type-price">
+                  <Money minor={placed.totalMinor} currency="PKR" />
+                </span>
+              </div>
+            </div>
+          </section>
+        ) : null}
       </div>
     );
   }
@@ -217,14 +251,29 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
             </li>
           ))}
         </ul>
-        <div className="cart-summary">
+        <div className="cart-summary" aria-label="Price summary">
           <div className="cart-line">
-            <span>Subtotal</span>
-            <Money minor={cartSubtotal(cart)} currency="PKR" />
+            <span className="type-meta">Item subtotal</span>
+            <span className="type-price">
+              <Money minor={cartSubtotal(cart)} currency="PKR" />
+            </span>
           </div>
+          {/* Pre-order, the customer API has no server fee numbers (delivery
+              settings are owner-authenticated). When delivery is chosen the
+              fee is set by the business — shown as a line, never invented. */}
+          {fulfillment === 'DELIVERY' ? (
+            <div className="cart-line">
+              <span className="type-meta">Delivery fee</span>
+              <span className="type-meta">Set by the business</span>
+            </div>
+          ) : null}
           <div className="cart-line cart-total">
-            <span>{fulfillment === 'DELIVERY' ? 'Total (delivery fee added by the business)' : 'Total'}</span>
-            <Money minor={cartSubtotal(cart)} currency="PKR" />
+            <span className="type-section">
+              {fulfillment === 'DELIVERY' ? 'Total · delivery fee added by the business' : 'Total'}
+            </span>
+            <span className="type-price">
+              <Money minor={cartSubtotal(cart)} currency="PKR" />
+            </span>
           </div>
         </div>
       </section>
@@ -365,7 +414,7 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
           price is unmissable at the moment of decision. */}
       <div className="checkout-footer">
         <div className="checkout-footer-total">
-          <span className="checkout-footer-label">
+          <span className="checkout-footer-label type-label">
             {fulfillment === 'DELIVERY' ? 'Total · delivery fee confirmed by the business' : 'Total'}
           </span>
           <strong className="checkout-footer-value">

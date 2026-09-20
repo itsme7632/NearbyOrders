@@ -1,0 +1,81 @@
+/* ---- BusinessDetail (Phase 2C): trust/info restructure + sticky CTA ----
+   Co-located with BusinessDetail.tsx. Tokens come from styles.css; all class
+   names are new and unique to this screen. */
+
+/* The sticky action bar sits above the floating bottom nav — keep the last
+   of the scrollable content clear of it. */
+.biz-detail { padding-bottom: calc(170px + env(safe-area-inset-bottom)); }
+
+/* "At a glance" trust block: rating, open/closed state from the real hours
+   payload, booking/ordering capability, then the key contact rows. One fact
+   per row; nothing repeats what the hero already shows. */
+.bd-glance { margin: 0; }
+.bd-glance > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px dashed var(--border);
+}
+.bd-glance > div:last-child { border-bottom: 0; }
+.bd-glance dt { font-size: 13px; font-weight: 600; color: var(--text-muted); flex: 0 0 auto; }
+.bd-glance dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  text-align: right;
+  overflow-wrap: anywhere;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.bd-glance .stars { font-size: 13px; }
+.bd-status-open { color: var(--success); }
+.bd-status-closed { color: var(--error); }
+.bd-glance-sub { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+
+/* Contextual primary action pinned above the floating bottom nav. Real
+   <button>, safe-area aware, never covers the scroll content. */
+.bd-sticky-bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(78px + env(safe-area-inset-bottom));
+  width: min(460px, calc(100% - 24px));
+  z-index: 40;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-2) var(--space-3);
+}
+.bd-sticky-cta {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  border-radius: var(--radius-md);
+  background: var(--brand);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  box-shadow: 0 2px 8px rgba(92, 19, 16, 0.22);
+}
+.bd-sticky-cta:active { background: var(--brand-pressed); }
+.bd-sticky-cta:disabled {
+  background: var(--bg);
+  color: var(--disabled);
+  box-shadow: none;
+  border: 1px solid var(--border);
+}
+.bd-sticky-hint {
+  margin: var(--space-1) 0 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-muted);
+  text-align: center;
+}

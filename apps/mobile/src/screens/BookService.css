@@ -1,0 +1,120 @@
+/* ---- BookService (Phase 2D): editorial booking flow additions ----
+   Co-located with BookService.tsx. Tokens come from styles.css; all class
+   names are unique to this flow. Server behavior is untouched — this is
+   presentation only. */
+
+/* Service identity header shown on the time step: the service is the hero,
+   the business + price + duration read as the supporting meta line. */
+.book-service-identity { margin-bottom: var(--space-2); }
+.book-service-name {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--text);
+  margin: 0;
+  overflow-wrap: break-word;
+}
+.book-service-meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  font-size: 13.5px;
+  color: var(--text-muted);
+}
+.book-service-meta .money { font-weight: 800; color: var(--text); }
+
+/* Daypart slot groups: quiet editorial subheads over the existing slot
+   grid, keeping every server-returned slot visible and in order. */
+.slot-groups { display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-2); }
+.slot-group-title {
+  margin: 0 0 var(--space-2);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Ticket-style booking summary: a transaction stub — business identity on
+   top, perforation, line items, and a total row at the bottom. */
+.ticket {
+  margin-top: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.ticket-stub { padding: var(--space-4) var(--space-4) var(--space-3); }
+.ticket-biz {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  overflow-wrap: break-word;
+}
+.ticket-service {
+  margin: var(--space-1) 0 0;
+  font-size: 13.5px;
+  color: var(--text-muted);
+  overflow-wrap: break-word;
+}
+.ticket-perforation {
+  position: relative;
+  height: 1px;
+  border-top: 2px dashed var(--border-strong);
+  margin: 0 var(--space-2);
+}
+.ticket-perforation::before,
+.ticket-perforation::after {
+  content: '';
+  position: absolute;
+  top: -9px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.ticket-perforation::before { left: -18px; }
+.ticket-perforation::after { right: -18px; }
+.ticket-rows { margin: 0; padding: var(--space-1) var(--space-4); }
+.ticket-rows > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px dashed var(--border);
+}
+.ticket-rows > div:last-child { border-bottom: 0; }
+.ticket-rows dt { font-size: 13px; font-weight: 600; color: var(--text-muted); }
+.ticket-rows dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.ticket-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  background: var(--brand-softer);
+}
+.ticket-total > span { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+.ticket-total .money { font-size: 18px; font-weight: 800; color: var(--brand-strong); }
+
+.booking-ticket-actions { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-4); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ticket { box-shadow: none; }
+}

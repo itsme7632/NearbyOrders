@@ -1,8 +1,16 @@
 import { useState } from 'react';
-import { listBusinesses, listCategories, listNearbyBusinesses, type Business, type Category } from '../api.js';
+import { listBusinesses, listCategories, listNearbyBusinesses, searchMarketplace, type Business, type Category } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { BusinessRow, EmptyState, ErrorState, SectionHeader } from '../components/ui.js';
 import { SegmentedControl } from '../components/primitives.js';
+import {
+  ExploreFilterBar,
+  applyNearbyFilters,
+  businessSearchResultToBusiness,
+  countActiveFilters,
+  DEFAULT_EXPLORE_FILTERS,
+  type ExploreFilters,
+} from '../components/ExploreFilters.js';
 import { ExploreIcon, PinIcon } from '../components/icons.js';
 import { requestCustomerLocation, locationOutcomeHint, type LocationOutcome } from '../location.js';
 import { DEFAULT_RADIUS_KM, RADIUS_OPTIONS_KM } from '@nearbyorders/shared';
@@ -37,20 +45,47 @@ export function ExploreScreen(props: {
   const [locNote, setLocNote] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
   const [selectedMarker, setSelectedMarker] = useState<string | null>(null);
+  const [filters, setFilters] = useState<ExploreFilters>(DEFAULT_EXPLORE_FILTERS);
   const { handle: mapHandle } = useMapProvider();
 
   const categories = useAsyncData<Category[]>(() => listCategories(), []);
+  // The /search endpoint identifies categories by ID (uuid), while the
+  // category band works in slugs — resolve once the list has loaded.
+  const categoryId = selectedCategory ? categories.data?.find((c) => c.slug === selectedCategory)?.id : undefined;
+  const advancedFiltersActive = countActiveFilters(filters) > 0;
+
   const businesses = useAsyncData<Business[]>(
-    () =>
-      // Nearby mode uses the dedicated endpoint (server-side distance + radius);
-      // the default list keeps its existing search/filter behavior untouched.
-      mode === 'nearby' && coords
-        ? listNearbyBusinesses({ lat: coords.lat, lng: coords.lng, radiusKm, limit: 50 })
-        : listBusinesses({
-            q: query || undefined,
-            category: selectedCategory,
-          }),
-    [query, selectedCategory, mode, coords, radiusKm],
+    async () => {
+      // Nearby mode: the dedicated endpoint stays authoritative — the map
+      // needs real coordinates, which /search does not return. The extra
+      // filters narrow/reorder its server result set via server-computed
+      // fields (see applyNearbyFilters); nothing is invented.
+      if (mode === 'nearby' && coords) {
+        const rows = await listNearbyBusinesses({ lat: coords.lat, lng: coords.lng, radiusKm, limit: 50 });
+        return applyNearbyFilters(rows, filters);
+      }
+      // Filtered discovery goes through the unified /search endpoint — the
+      // only discovery API whose contract supports openNow/minRating/sort
+      // (apps/api/src/lib.ts:176). Unfiltered browsing keeps the existing
+      // list endpoint and its behavior untouched.
+      if (advancedFiltersActive) {
+        const page = await searchMarketplace({
+          q: query || undefined,
+          categoryId,
+          type: 'business',
+          limit: 50,
+          ...(filters.openNow ? { openNow: true } : {}),
+          ...(filters.minRating !== null ? { minRating: filters.minRating } : {}),
+          ...(filters.sort !== 'relevance' ? { sort: filters.sort } : {}),
+        });
+        return page.results.filter((r) => r.type === 'business').map(businessSearchResultToBusiness);
+      }
+      return listBusinesses({
+        q: query || undefined,
+        category: selectedCategory,
+      });
+    },
+    [query, selectedCategory, categoryId, mode, coords, radiusKm, filters],
   );
 
   const enableNearby = () => {
@@ -87,7 +122,7 @@ export function ExploreScreen(props: {
   };
 
   const results = businesses.data ?? [];
-  const activeFilters = [selectedCategory ? 1 : 0, query ? 1 : 0].reduce((a, b) => a + b, 0);
+  const activeFilters = (selectedCategory ? 1 : 0) + (query ? 1 : 0) + countActiveFilters(filters);
   const mapUsable = mode === 'nearby' && coords !== null;
 
   return (
@@ -158,6 +193,11 @@ export function ExploreScreen(props: {
         </div>
       </section>
 
+      {/* Filter bar: quick toggles + full filter sheet (Phase 2B). */}
+      <section aria-label="Discovery filters" style={{ marginTop: 2 }}>
+        <ExploreFilterBar filters={filters} onChange={setFilters} canSortByDistance={coords !== null} />
+      </section>
+
       {/* Radius: only meaningful in nearby mode; drives the server query. */}
       {mode === 'nearby' ? (
         <section aria-label="Search radius" style={{ marginTop: 8 }}>
@@ -210,7 +250,8 @@ export function ExploreScreen(props: {
                 title="Near you"
                 action={
                   <span className="biz-distance">
-                    {results.length} {results.length === 1 ? 'business' : 'businesses'} · within {radiusKm} km · closest first
+                    {results.length} {results.length === 1 ? 'business' : 'businesses'} · within {radiusKm} km ·{' '}
+                    {filters.sort === 'rating' ? 'top rated first' : 'closest first'}
                   </span>
                 }
               />
@@ -237,12 +278,24 @@ export function ExploreScreen(props: {
       {!(mapUsable && view === 'map') ? (
         <>
           <SectionHeader
-            title={mode === 'nearby' ? 'Near you' : selectedCategory ? (categories.data?.find((c) => c.slug === selectedCategory)?.name ?? 'Results') : query ? 'Search results' : 'All businesses'}
+            title={
+              mode === 'nearby'
+                ? 'Near you'
+                : selectedCategory
+                  ? (categories.data?.find((c) => c.slug === selectedCategory)?.name ?? 'Results')
+                  : query
+                    ? 'Search results'
+                    : advancedFiltersActive
+                      ? 'Filtered businesses'
+                      : 'All businesses'
+            }
             action={
               businesses.loading ? null : (
                 <span className="biz-distance">
                   {results.length} {results.length === 1 ? 'business' : 'businesses'}
-                  {mode === 'nearby' ? ` · closest first · within ${radiusKm} km` : ''}
+                  {mode === 'nearby'
+                    ? ` · ${filters.sort === 'rating' ? 'top rated first' : 'closest first'} · within ${radiusKm} km`
+                    : ''}
                 </span>
               )
             }
@@ -269,7 +322,7 @@ export function ExploreScreen(props: {
                 mode === 'nearby'
                   ? `No businesses within ${radiusKm} km of you have set a map location yet. Try All businesses instead.`
                   : activeFilters > 0
-                    ? 'Try a different search term or category filter.'
+                    ? 'Try a different search term or category, or widen your filters.'
                     : 'No businesses match yet. Check back soon.'
               }
             />

@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 import { BusinessDetailScreen } from './BusinessDetail.js';
 import { BusinessMapContext } from './BusinessMapContext.js';
 import * as api from '../api.js';
-import type { Business } from '../api.js';
+import type { Business, BusinessHour, Service, Product } from '../api.js';
 
 afterEach(cleanup);
 
@@ -116,8 +116,7 @@ describe('BusinessDetail location display (Phase 11)', () => {
   });
 });
 
-describe('customer map context uses the exact saved coordinates (Phase 12.1)', () => {
-  // Regression guard: the marker must be created from the authoritative
+describe('customer map context uses the exact saved coordinates (Phase 12.1)', () => {  // Regression guard: the marker must be created from the authoritative
   // backend coordinates, never a rounded or substituted value.
   const SAVED = { latitude: 31.520412, longitude: 74.358723 };
 
@@ -133,5 +132,167 @@ describe('customer map context uses the exact saved coordinates (Phase 12.1)', (
     // The display-only marker must never be draggable on the customer side.
     expect(setDraggableMarker).toHaveBeenCalledWith(null);
     expect(screen.getByText(/12 Food Street/)).toBeTruthy();
+  });
+});
+
+/* ------------------ Phase 2C: trust area + sticky CTA matrix ------------------ */
+/* The api mocks from the earlier blocks stay in force (getBusiness /
+   listBusinessReviews are mocked at module level above). */
+
+const svc = (patch: Partial<Service> = {}): Service => ({
+  id: 'svc-1',
+  name: 'Signature Cut',
+  description: null,
+  priceMinor: 150000,
+  currency: 'PKR',
+  durationMinutes: 45,
+  isActive: true,
+  ...patch,
+});
+
+const product = (patch: Partial<Product> = {}): Product => ({
+  id: 'p1',
+  name: 'Chicken Biryani',
+  description: null,
+  priceMinor: 45000,
+  currency: 'PKR',
+  imageUrl: null,
+  isActive: true,
+  ...patch,
+});
+
+const allDayHours = (): BusinessHour[] =>
+  [0, 1, 2, 3, 4, 5, 6].map((dayOfWeek) => ({
+    id: `h-${dayOfWeek}`,
+    dayOfWeek,
+    isClosed: false,
+    opensAt: '09:00',
+    closesAt: '17:00',
+  }));
+
+describe('BusinessDetail sticky CTA matrix (Phase 2C)', () => {
+  it('offers Book when the business has bookable services', async () => {
+    vi.mocked(api.getBusiness).mockResolvedValue(business({ services: [svc()], isOpenNow: true }));
+    const onBook = vi.fn();
+    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} onBook={onBook} />);
+    const cta = await screen.findByRole('button', { name: 'Book a service' });
+    expect(cta).toBeEnabled();
+    fireEvent.click(cta);
+    expect(onBook).toHaveBeenCalledWith();
+  });
+
+  it('offers Order when orderable and signed in, and opens the Products tab', async () => {
+    vi.mocked(api.getBusiness).mockResolvedValue(business({ products: [product()], isOpenNow: true }));
+    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} canOrder onOpenCart={() => {}} />);
+    const cta = await screen.findByRole('button', { name: 'Order products' });
+    expect(cta).toBeEnabled();
+    fireEvent.click(cta);
+    // The CTA navigates within the tab system rather than inventing an action.
+    await screen.findByText('Chicken Biryani');
+  });
+
+  it('prefers Book over Order when both are available', async () => {
+    vi.mocked(api.getBusiness).mockResolvedValue(
+      business({ services: [svc()], products: [product()], isOpenNow: true }),
+    );
+    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} onBook={() => {}} canOrder onOpenCart={() => {}} />);
+    await screen.findByRole('button', { name: 'Book a service' });
+    expect(screen.queryByRole('button', { name: 'Order products' })).toBeNull();
+  });
+
+  it('never shows a Book button when no bookable services exist', async () => {
+    vi.mocked(api.getBusiness).mockResolvedValue(
+      business({ services: [svc({ isActive: false, durationMinutes: null })] }),
+    );
+    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} onBook={() => {}} />);
+    await screen.findByText('Gulberg Grill');
+    expect(screen.queryByRole('button', { name: 'Book a service' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Unavailable' })).toBeDisabled();
+  });
+
+  it('never shows Order when products are missing or ordering is off', async () => {
+    vi.mocked(api.getBusiness).mockResolvedValue(business({ products: [product()] }));
+    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} canOrder={false} />);
+    await screen.findByText('Gulberg Grill');
+    expect(screen.queryByRole('button', { name: 'Order products' })).toBeNull();
+    const cta = screen.getByRole('button', { name: 'Unavailable' });
+    expect(cta).toBeDisabled();
+    expect(cta).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByText(/Sign in as a customer to order/)).toBeTruthy();
+  });
+
+  it('shows a disabled Closed CTA when the business is closed and nothing is actionable', async () => {
+    vi.mocked(api.getBusiness).mockResolvedValue(business({ isOpenNow: false }));
+    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} />);
+    await screen.findByText('Gulberg Grill');
+    const cta = screen.getByRole('button', { name: 'Closed' });
+    expect(cta).toBeDisabled();
+    expect(screen.getByText('This business is currently closed.')).toBeTruthy();
+  });
+
+  it('keeps the sticky Book CTA usable even when the business is closed right now', async () => {
+    // Future bookings are still valid; closed-now must not kill the action.
+    vi.mocked(api.getBusiness).mockResolvedValue(business({ services: [svc()], isOpenNow: false }));
+    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} onBook={() => {}} />);
+    expect(await screen.findByRole('button', { name: 'Book a service' })).toBeEnabled();
+  });
+});
+
+describe('BusinessDetail trust area (Phase 2C)', () => {
+  it('shows rating + review count from the real review data', async () => {
+    vi.mocked(api.getBusiness).mockResolvedValue(business({ averageRating: 4.5, reviewCount: 12 }));
+    vi.mocked(api.listBusinessReviews).mockResolvedValue({
+      items: [],
+      nextCursor: null,
+      averageRating: 4.5,
+      reviewCount: 12,
+    });
+    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} />);
+    await screen.findByText('Gulberg Grill');
+    const glance = screen.getByRole('region', { name: 'At a glance' });
+    expect(within(glance).getByText(/4\.5/)).toBeTruthy();
+    expect(within(glance).getByText(/12 reviews/)).toBeTruthy();
+  });
+
+  it('shows open state with today’s hours from the real hours payload', async () => {
+    vi.mocked(api.getBusiness).mockResolvedValue(business({ isOpenNow: true, hours: allDayHours() }));
+    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} />);
+    await screen.findByText('Gulberg Grill');
+    const glance = screen.getByRole('region', { name: 'At a glance' });
+    // The hero badge also says "Open now"; scope to the trust block.
+    expect(within(glance).getByText('Open now')).toBeTruthy();
+    // Today's row comes from the server payload, never invented.
+    expect(within(glance).getByText('9:00 AM – 5:00 PM today')).toBeTruthy();
+  });
+
+  it('shows booking capability only when bookable services exist', async () => {
+    vi.mocked(api.getBusiness).mockResolvedValue(
+      business({ services: [svc(), svc({ id: 'svc-2', name: 'Shave', durationMinutes: 20 })] }),
+    );
+    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} onBook={() => {}} />);
+    await screen.findByText('Gulberg Grill');
+    expect(screen.getByText('Online booking')).toBeTruthy();
+    expect(screen.getByText('2 services')).toBeTruthy();
+  });
+
+  it('hides the booking row when nothing is bookable', async () => {
+    vi.mocked(api.getBusiness).mockResolvedValue(
+      business({ services: [svc({ isActive: false, durationMinutes: null })] }),
+    );
+    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} onBook={() => {}} />);
+    await screen.findByText('Gulberg Grill');
+    expect(screen.queryByText('Online booking')).toBeNull();
+  });
+
+  it('renders key contact rows without duplicating the map-card address', async () => {
+    vi.mocked(api.getBusiness).mockResolvedValue(
+      business({ phone: '0300 1234567', email: 'hi@gulberg.test' }),
+    );
+    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} />);
+    await screen.findByText('Gulberg Grill');
+    expect(screen.getByText('0300 1234567')).toBeTruthy();
+    expect(screen.getByText('hi@gulberg.test')).toBeTruthy();
+    // No coordinates → the text address appears once in the trust block.
+    expect(screen.getAllByText('12 Food Street')).toHaveLength(1);
   });
 });
