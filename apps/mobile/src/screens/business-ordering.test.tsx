@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { ToastProvider } from '../components/primitives.js';
 import { BusinessDetailScreen } from './BusinessDetail.js';
 import * as api from '../api.js';
 import type { Business } from '../api.js';
@@ -39,7 +40,7 @@ const withProducts = (b: Business): Business => ({
 });
 
 const renderDetail = async (props: Partial<Parameters<typeof BusinessDetailScreen>[0]> = {}) => {
-  render(
+  render(<ToastProvider>
     <BusinessDetailScreen
       idOrSlug="biz-1"
       onBack={() => {}}
@@ -47,7 +48,7 @@ const renderDetail = async (props: Partial<Parameters<typeof BusinessDetailScree
       onOpenCart={() => {}}
       {...props}
     />,
-  );
+  </ToastProvider>);
   // The tabbed Business Profile keeps catalog data behind its Products tab.
   fireEvent.click(await screen.findByRole('tab', { name: 'Products' }));
 };

@@ -60,20 +60,20 @@ describe('default mode after login (ownership-aware)', () => {
     vi.spyOn(api, 'getMyBusinesses').mockResolvedValue([]);
     render(<App />);
 
-    // Business Overview never appears; the customer experience does.
+    // Owner "Today" never appears; the customer experience does.
     await screen.findByText('Find the best', undefined, { timeout: 3000 });
-    expect(screen.queryByText('Business Overview')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Today' })).toBeNull();
     expect(document.querySelector('nav[aria-label="Primary"]')).not.toBeNull();
     expect(document.querySelector('nav[aria-label="Business"]')).toBeNull();
     expect(getAppMode()).toBe('CUSTOMER');
   });
 
-  it('a business owner opens DIRECTLY in Business Overview (no customer flash)', async () => {
+  it('a business owner opens DIRECTLY in Owner Today (no customer flash)', async () => {
     vi.spyOn(api, 'getSession').mockReturnValue(ownerSession);
     vi.spyOn(api, 'getMyBusinesses').mockResolvedValue([ownedBusiness]);
     render(<App />);
 
-    await screen.findByText('Business Overview', undefined, { timeout: 3000 });
+    await screen.findByRole('heading', { name: 'Today' }, { timeout: 3000 });
     // Business chrome replaces customer chrome entirely.
     expect(document.querySelector('nav[aria-label="Business"]')).not.toBeNull();
     expect(document.querySelector('nav[aria-label="Primary"]')).toBeNull();
@@ -90,7 +90,7 @@ describe('default mode after login (ownership-aware)', () => {
     render(<App />);
 
     await screen.findByText('Find the best', undefined, { timeout: 3000 });
-    expect(screen.queryByText('Business Overview')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Today' })).toBeNull();
     expect(getAppMode()).toBe('CUSTOMER');
   });
 
@@ -109,7 +109,7 @@ describe('switching between modes', () => {
     vi.spyOn(api, 'getSession').mockReturnValue(ownerSession);
     vi.spyOn(api, 'getMyBusinesses').mockResolvedValue([ownedBusiness]);
     render(<App />);
-    await screen.findByText('Business Overview', undefined, { timeout: 3000 });
+    await screen.findByRole('heading', { name: 'Today' }, { timeout: 3000 });
 
     // Profile tab (Business mode) → switch to Customer.
     fireEvent.click(screen.getByRole('button', { name: 'Profile' }));
@@ -121,10 +121,10 @@ describe('switching between modes', () => {
     expect(document.querySelector('nav[aria-label="Business"]')).toBeNull();
     expect(document.querySelector('nav[aria-label="Primary"]')).not.toBeNull();
 
-    // ... and back: the header entry returns to the Business Overview.
+    // ... and back: the header entry returns to Owner Today.
     fireEvent.click(screen.getByRole('button', { name: 'My business' }));
     await waitFor(() => expect(getAppMode()).toBe('BUSINESS'));
-    await screen.findByText('Business Overview', undefined, { timeout: 3000 });
+    await screen.findByRole('heading', { name: 'Today' }, { timeout: 3000 });
     expect(document.querySelector('nav[aria-label="Business"]')).not.toBeNull();
     expect(document.querySelector('nav[aria-label="Primary"]')).toBeNull();
   });
@@ -139,7 +139,7 @@ describe('data scoping across modes', () => {
     const listBusinessOrders = vi.spyOn(api, 'listBusinessOrders').mockResolvedValue([]);
 
     render(<App />);
-    await screen.findByText('Business Overview', undefined, { timeout: 3000 });
+    await screen.findByRole('heading', { name: 'Today' }, { timeout: 3000 });
 
     // Owner deliberately switches to Customer mode, then opens their activity.
     fireEvent.click(screen.getByRole('button', { name: 'Profile' }));
@@ -170,7 +170,7 @@ describe('data scoping across modes', () => {
     const listBusinessOrders = vi.spyOn(api, 'listBusinessOrders').mockResolvedValue([]);
 
     render(<App />);
-    await screen.findByText('Business Overview', undefined, { timeout: 3000 });
+    await screen.findByRole('heading', { name: 'Today' }, { timeout: 3000 });
 
     // The Overview's quick-action tile (class-named target); the bottom nav
     // button with the same label is matched separately below.
@@ -191,7 +191,7 @@ describe('mode persistence across reloads', () => {
 
     // First login: owner defaults to Business.
     render(<App />);
-    await screen.findByText('Business Overview', undefined, { timeout: 3000 });
+    await screen.findByRole('heading', { name: 'Today' }, { timeout: 3000 });
     expect(window.localStorage.getItem('nearbyorders.mode')).toBe('BUSINESS');
     // Owner deliberately switches to Customer for this session...
     fireEvent.click(screen.getByRole('button', { name: 'Profile' }));
@@ -203,7 +203,7 @@ describe('mode persistence across reloads', () => {
     // ...and a reload (session restoration) re-applies the ownership default:
     // owners always come back to their business dashboard.
     render(<App />);
-    await screen.findByText('Business Overview', undefined, { timeout: 3000 });
+    await screen.findByRole('heading', { name: 'Today' }, { timeout: 3000 });
     expect(getAppMode()).toBe('BUSINESS');
   });
 });

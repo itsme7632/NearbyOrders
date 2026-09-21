@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { getBusiness, listBusinessReviews, getSession, type Business, type Product, type PublicReview, type ReviewPage } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, ListSkeleton, Loading, Money, OpenBadge, VerifiedBadge } from '../components/ui.js';
+import { useToast } from '../components/primitives.js';
 import { StoreIcon } from '../components/icons.js';
 import { dayOfWeek, formatSlotTime, todayPkt } from '../time.js';
 import { addToCart, replaceWith } from '../cart.js';
@@ -364,9 +365,9 @@ export function BusinessDetailScreen(props: {
 /**
  * "At a glance" trust block on the Overview tab: rating + review count,
  * open/closed state from the real hours payload, booking/ordering capability,
- * then the key contact rows — one fact per row, nothing the hero already
- * shows. Delivery is deliberately absent: the public business payload carries
- * no delivery flag, and inventing one would be fake data.
+ * delivery capability from the server's authoritative delivery fields
+ * (Phase 3H), then the key contact rows — one fact per row, nothing the hero
+ * already shows.
  */
 function TrustGlance(props: { business: Business; bookableServicesCount: number; infoAddress: string | null }) {
   const b = props.business;
@@ -427,6 +428,28 @@ function TrustGlance(props: { business: Business; bookableServicesCount: number;
             </dd>
           </div>
         ) : null}
+        {/* Phase 3H: authoritative delivery capability from the server — the
+            row renders only when the detail payload carries these fields. */}
+        {typeof b.deliveryEnabled === 'boolean' ? (
+          <div>
+            <dt>Delivery</dt>
+            <dd>
+              {b.deliveryEnabled ? 'Delivery available' : 'Pickup only'}
+              {b.deliveryEnabled ? (
+                <span className="bd-glance-sub">
+                  {b.deliveryFeeMinor ? (
+                    <>
+                      <Money minor={b.deliveryFeeMinor} currency={b.currency} /> fee
+                    </>
+                  ) : (
+                    'Free delivery'
+                  )}
+                  {b.codEnabled ? ' · Cash on delivery' : null}
+                </span>
+              ) : null}
+            </dd>
+          </div>
+        ) : null}
         {props.infoAddress ? (
           <div>
             <dt>Address</dt>
@@ -482,6 +505,7 @@ function RatingFact(props: { businessId: string; fallbackAverage?: number | null
 /** Phase 17: per-business save (favorite) heart. Hidden signed-out. */
 function SaveHeart(props: { businessId: string }) {
   const { saved, toggle } = useSavedBusiness(props.businessId);
+  const toast = useToast();
   const session = getSession();
   if (!session) return null;
   return (
@@ -490,7 +514,11 @@ function SaveHeart(props: { businessId: string }) {
       className={`biz-action biz-action-ghost save-heart${saved ? ' save-heart-on' : ''}`}
       aria-pressed={saved === true}
       aria-label={saved ? 'Remove from saved businesses' : 'Save this business'}
-      onClick={() => void toggle()}
+      onClick={() =>
+        void toggle().then((r) => {
+          if (r === 'error') toast.notify('error', 'Could not update your saved list. Please try again.');
+        })
+      }
     >
       <HeartIcon size={16} filled={saved === true} />
       {saved ? 'Saved' : 'Save'}

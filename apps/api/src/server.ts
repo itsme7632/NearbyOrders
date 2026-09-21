@@ -739,6 +739,12 @@ export async function buildApp(): Promise<FastifyInstance> {
         currency: b.currency,
         isOpenNow: isOpenNow(b.hours),
         hours: b.hours,
+        // Phase 3H: authoritative delivery capability, rendered verbatim by
+        // the customer app. The fee is only meaningful when delivery is
+        // enabled — null otherwise, never invented.
+        deliveryEnabled: b.deliveryEnabled,
+        codEnabled: b.codEnabled,
+        deliveryFeeMinor: b.deliveryEnabled ? b.deliveryFeeMinor : null,
         categories: b.categories.map((bc) => bc.category),
         services: b.services,
         products: b.products,

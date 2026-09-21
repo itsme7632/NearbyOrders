@@ -129,4 +129,65 @@ describe('business overview (Phase 16)', () => {
     // Completed revenue row = orders + bookings revenue from the server.
     await waitFor(() => expect(screen.getAllByText(/1,500/).length).toBeGreaterThanOrEqual(1));
   });
+
+  it('Today view leads with needs-attention and each item opens its queue', async () => {
+    vi.mocked(api.getMyBusinesses).mockResolvedValue([biz()]);
+    vi.mocked(api.getOwnerOverview).mockResolvedValue(overview());
+
+    const onOpen = vi.fn();
+    const { OwnerBusinessHome } = await import('./OwnerBusinessHome.js');
+    render(<OwnerBusinessHome onOpen={onOpen} onOpenOrder={() => {}} onOpenBooking={() => {}} />);
+
+    // Wait for the server overview before asserting on the queue.
+    await screen.findByText("Today's orders");
+    expect(screen.getByRole('heading', { name: 'Today' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Needs attention' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /1 order waiting for your accept or reject/i }));
+    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/orders');
+    fireEvent.click(screen.getByRole('button', { name: /1 booking waiting for your confirm or decline/i }));
+    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/bookings');
+    fireEvent.click(screen.getByRole('button', { name: /2 payment proofs awaiting verification/i }));
+    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/payments');
+  });
+
+  it('shows a calm all-caught-up state when nothing needs attention', async () => {
+    vi.mocked(api.getMyBusinesses).mockResolvedValue([biz()]);
+    vi.mocked(api.getOwnerOverview).mockResolvedValue(
+      overview({ needsAttention: { pendingOrders: 0, pendingBookings: 0, pendingPayments: 0 } }),
+    );
+
+    const { OwnerBusinessHome } = await import('./OwnerBusinessHome.js');
+    render(<OwnerBusinessHome onOpen={() => {}} onOpenOrder={() => {}} onOpenBooking={() => {}} />);
+
+    expect(await screen.findByText(/all caught up/i)).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Needs attention' })).toBeTruthy();
+  });
+
+  it('renders the newest orders as an actionable queue opening order detail', async () => {
+    const order = {
+      id: 'ord-1',
+      status: 'PENDING',
+      subtotalMinor: 120000,
+      totalMinor: 125000,
+      currency: 'PKR',
+      fulfillmentType: 'DELIVERY',
+      createdAt: new Date().toISOString(),
+      notes: null,
+      business: { id: 'biz-1', name: 'Butt Spices', slug: 'butt-spices' },
+      customer: { firstName: 'Ayesha', lastName: 'Khan' },
+      items: [],
+    };
+    vi.mocked(api.getMyBusinesses).mockResolvedValue([biz()]);
+    vi.mocked(api.getOwnerOverview).mockResolvedValue(overview({ recentOrders: [order] as never }));
+
+    const onOpenOrder = vi.fn();
+    const { OwnerBusinessHome } = await import('./OwnerBusinessHome.js');
+    render(<OwnerBusinessHome onOpen={() => {}} onOpenOrder={onOpenOrder} onOpenBooking={() => {}} />);
+
+    const row = await screen.findByRole('button', { name: /order · pending/i });
+    expect(row).toHaveTextContent('Ayesha Khan');
+    fireEvent.click(row);
+    expect(onOpenOrder).toHaveBeenCalledWith('ord-1');
+  });
 });

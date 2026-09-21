@@ -168,4 +168,52 @@ describe('SearchScreen (Phase 14 unified search)', () => {
     await screen.findByText('Pizza');
     expect(api.searchMarketplace).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: '1' }));
   });
+
+  it('groups mixed results under Businesses, Services, and Products headings', async () => {
+    vi.mocked(api.searchMarketplace).mockResolvedValue(page([prodResult, bizResult, svcResult], { total: 3 }));
+    render(<SearchScreen initialQuery="grill" onBack={() => {}} onOpenBusiness={() => {}} />);
+    await screen.findByText('Gulberg Grill');
+    expect(screen.getByRole('heading', { name: /businesses/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /services/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /products/i })).toBeInTheDocument();
+    // The server order inside each group is preserved.
+    const businesses = screen.getByRole('list', { name: /businesses results/i });
+    expect(businesses).toHaveTextContent('Gulberg Grill');
+  });
+
+  it('clear button resets the input and the committed query', async () => {
+    render(<SearchScreen initialQuery="grill" onBack={() => {}} onOpenBusiness={() => {}} />);
+    await screen.findByText('Gulberg Grill');
+    fireEvent.click(screen.getByRole('button', { name: /clear search/i }));
+    await waitFor(() => expect(api.searchMarketplace).toHaveBeenLastCalledWith(expect.objectContaining({ q: undefined })));
+    expect(screen.getByLabelText(/search businesses, services, and products/i)).toHaveValue('');
+  });
+
+  it('recent searches appear before searching and clear on demand', async () => {
+    window.localStorage.setItem('nearbyorders.recentSearches', JSON.stringify(['pizza', 'bike repair']));
+    try {
+      render(<SearchScreen onBack={() => {}} onOpenBusiness={() => {}} />);
+      await screen.findByText('Recent');
+      expect(screen.getByRole('button', { name: 'pizza' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /^clear$/i }));
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'pizza' })).not.toBeInTheDocument());
+      expect(window.localStorage.getItem('nearbyorders.recentSearches')).toBe('[]');
+    } finally {
+      window.localStorage.removeItem('nearbyorders.recentSearches');
+    }
+  });
+
+  it('tapping a recent search re-runs it', async () => {
+    window.localStorage.setItem('nearbyorders.recentSearches', JSON.stringify(['pizza']));
+    try {
+      render(<SearchScreen onBack={() => {}} onOpenBusiness={() => {}} />);
+      await screen.findByText('Recent');
+      fireEvent.click(screen.getByRole('button', { name: 'pizza' }));
+      await waitFor(() =>
+        expect(api.searchMarketplace).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'pizza' })),
+      );
+    } finally {
+      window.localStorage.removeItem('nearbyorders.recentSearches');
+    }
+  });
 });

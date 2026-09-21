@@ -67,6 +67,8 @@ export function NotificationsScreen(props: {
   onOpenNotification: (n: Notification) => void;
   /** Refreshes the nav badge after read-state changes. */
   onReadStateChange?: () => void;
+  /** Opens the push-notification preferences screen. */
+  onOpenPreferences?: () => void;
 }) {
   const [state, setState] = useState<{ items: Notification[]; cursor: string | null } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -131,11 +133,18 @@ export function NotificationsScreen(props: {
     <div className="screen">
       <header className="owner-head">
         <h1>Notifications</h1>
-        {unread.length > 0 ? (
-          <button type="button" className="header-link" onClick={() => void markAll()} disabled={markingAll}>
-            {markingAll ? 'Marking…' : 'Mark all read'}
-          </button>
-        ) : null}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          {props.onOpenPreferences ? (
+            <button type="button" className="header-link" onClick={props.onOpenPreferences}>
+              Settings
+            </button>
+          ) : null}
+          {unread.length > 0 ? (
+            <button type="button" className="header-link" onClick={() => void markAll()} disabled={markingAll}>
+              {markingAll ? 'Marking…' : 'Mark all read'}
+            </button>
+          ) : null}
+        </div>
       </header>
 
       {actionError ? (

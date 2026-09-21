@@ -29,6 +29,7 @@ import { OrderDetailScreen } from './screens/Orders.js';
 import { ActivityScreen } from './screens/Activity.js';
 import { CartPill } from './components/CartPill.js';
 import { NotificationsScreen } from './screens/Notifications.js';
+import { NotificationPreferencesScreen } from './screens/NotificationPreferences.js';
 import {
   SavedBusinessesScreen,
   MyReviewsScreen,
@@ -229,8 +230,14 @@ export function App() {
     content = <SearchScreen initialQuery={route.initialQuery} onBack={back} onOpenBusiness={openBusiness} />;
   } else if (route.name === 'notifications') {
     content = session ? (
-      <NotificationsScreen onOpenNotification={openNotification} onReadStateChange={unread.refresh} />
+      <NotificationsScreen
+        onOpenNotification={openNotification}
+        onReadStateChange={unread.refresh}
+        onOpenPreferences={() => push('/notification-preferences')}
+      />
     ) : null;
+  } else if (route.name === 'notification-preferences') {
+    content = session ? <NotificationPreferencesScreen onBack={back} /> : null;
   } else if (route.name === 'edit-profile') {
     content = session ? <EditProfileScreen onBack={back} onSaved={unread.refresh} /> : null;
   } else if (route.name === 'change-password') {
@@ -398,6 +405,13 @@ export function App() {
   return (
     <ToastProvider>
     <main className={authFlow ? 'auth-mode' : undefined}>
+      {/* Phase 3I: keyboard / screen-reader users can jump past the header. */}
+      {/* Skip link: jumps keyboard users past the header/nav to the main
+          content. tabIndex={-1} lets the target receive programmatic focus so
+          screen readers announce it reliably after activation. */}
+      <a href="#app-content" className="skip-link">
+        Skip to content
+      </a>
       {!authFlow ? (
         <header className="app-header">
           <button className="logo" onClick={() => { setTab('Home'); setBusinessTab('Overview'); push('/'); }} aria-label="NearbyOrders home">
@@ -435,7 +449,14 @@ export function App() {
           ) : null}
         </header>
       ) : null}
-      {content}
+      <div id="app-content" tabIndex={-1}>{content}</div>
+      {/* Phase 3J floating-action hierarchy (mutually exclusive by route):
+          - Tab routes: CartPill only (hidden when the cart is empty).
+          - Business route: BusinessDetail's own sticky CTA bar only.
+          They can never overlap: CartPill mounts only for route.name ===
+          'tabs', while Business Detail renders under route.name ===
+          'business'. Both sit above the bottom nav via safe-area-aware
+          bottom offsets. */}
       {!authFlow && !businessMode && route.name === 'tabs' ? <CartPill onViewCart={() => push('/cart')} /> : null}
       {!authFlow ? (
         businessMode ? (

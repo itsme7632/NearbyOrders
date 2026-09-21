@@ -1,10 +1,20 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import type { ComponentProps } from 'react';
 import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 import { BusinessDetailScreen } from './BusinessDetail.js';
+import { ToastProvider } from '../components/primitives.js';
 import { BusinessMapContext } from './BusinessMapContext.js';
 import * as api from '../api.js';
 import type { Business, BusinessHour, Service, Product } from '../api.js';
+
+/** Mirrors the app root: BusinessDetailScreen always renders under ToastProvider. */
+const renderDetail = (props: ComponentProps<typeof BusinessDetailScreen>) =>
+  render(
+    <ToastProvider>
+      <BusinessDetailScreen {...props} />
+    </ToastProvider>,
+  );
 
 afterEach(cleanup);
 
@@ -70,32 +80,32 @@ beforeEach(() => {
 describe('BusinessDetail location display (Phase 11)', () => {
   it('shows real distance only when the server sent one AND coordinates are configured', async () => {
     vi.mocked(api.getBusiness).mockResolvedValue(business({ distanceKm: 1.24, latitude: 31.5204, longitude: 74.3587 }));
-    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} />);
+    renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}});
     await screen.findByText('Gulberg Grill');
     expect(screen.getByText(/1\.2 km away/i)).toBeInTheDocument();
   });
 
   it('does not invent a distance when none was computed', async () => {
-    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} />);
+    renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}});
     await screen.findByText('Gulberg Grill');
     expect(screen.queryByText(/away/i)).not.toBeInTheDocument();
   });
 
   it('falls back to the address line when no distance was computed', async () => {
-    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} />);
+    renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}});
     await screen.findByText('Gulberg Grill');
     expect(screen.getByText(/Gulberg, Lahore/)).toBeInTheDocument();
   });
 
   it('offers Directions when real coordinates exist', async () => {
     vi.mocked(api.getBusiness).mockResolvedValue(business({ latitude: 31.5204, longitude: 74.3587 }));
-    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} />);
+    renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}});
     const directions = await screen.findByRole('link', { name: /directions/i });
     expect(directions.getAttribute('href')).toContain('destination=31.5204,74.3587');
   });
 
   it('offers Directions via address search when only an address is configured', async () => {
-    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} />);
+    renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}});
     const directions = await screen.findByRole('link', { name: /directions/i });
     expect(directions.getAttribute('href')).toContain(encodeURIComponent('12 Food Street, Lahore'));
   });
@@ -104,13 +114,13 @@ describe('BusinessDetail location display (Phase 11)', () => {
     vi.mocked(api.getBusiness).mockResolvedValue(
       business({ address: '', city: '', locality: null }),
     );
-    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} />);
+    renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}});
     await screen.findByText('Gulberg Grill');
     expect(screen.queryByRole('link', { name: /directions/i })).toBeNull();
   });
 
   it('renders no location map card when the business has no coordinates (no fake location)', async () => {
-    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} />);
+    renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}});
     await screen.findByText('Gulberg Grill');
     expect(screen.queryByRole('region', { name: /location/i })).toBeNull();
   });
@@ -174,7 +184,7 @@ describe('BusinessDetail sticky CTA matrix (Phase 2C)', () => {
   it('offers Book when the business has bookable services', async () => {
     vi.mocked(api.getBusiness).mockResolvedValue(business({ services: [svc()], isOpenNow: true }));
     const onBook = vi.fn();
-    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} onBook={onBook} />);
+    renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}, onBook: onBook});
     const cta = await screen.findByRole('button', { name: 'Book a service' });
     expect(cta).toBeEnabled();
     fireEvent.click(cta);
@@ -183,7 +193,7 @@ describe('BusinessDetail sticky CTA matrix (Phase 2C)', () => {
 
   it('offers Order when orderable and signed in, and opens the Products tab', async () => {
     vi.mocked(api.getBusiness).mockResolvedValue(business({ products: [product()], isOpenNow: true }));
-    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} canOrder onOpenCart={() => {}} />);
+    renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}, canOrder: true, onOpenCart: () => {}});
     const cta = await screen.findByRole('button', { name: 'Order products' });
     expect(cta).toBeEnabled();
     fireEvent.click(cta);
@@ -195,7 +205,7 @@ describe('BusinessDetail sticky CTA matrix (Phase 2C)', () => {
     vi.mocked(api.getBusiness).mockResolvedValue(
       business({ services: [svc()], products: [product()], isOpenNow: true }),
     );
-    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} onBook={() => {}} canOrder onOpenCart={() => {}} />);
+    renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}, onBook: () => {}, canOrder: true, onOpenCart: () => {}});
     await screen.findByRole('button', { name: 'Book a service' });
     expect(screen.queryByRole('button', { name: 'Order products' })).toBeNull();
   });
@@ -204,7 +214,7 @@ describe('BusinessDetail sticky CTA matrix (Phase 2C)', () => {
     vi.mocked(api.getBusiness).mockResolvedValue(
       business({ services: [svc({ isActive: false, durationMinutes: null })] }),
     );
-    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} onBook={() => {}} />);
+    renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}, onBook: () => {}});
     await screen.findByText('Gulberg Grill');
     expect(screen.queryByRole('button', { name: 'Book a service' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Unavailable' })).toBeDisabled();
@@ -212,7 +222,7 @@ describe('BusinessDetail sticky CTA matrix (Phase 2C)', () => {
 
   it('never shows Order when products are missing or ordering is off', async () => {
     vi.mocked(api.getBusiness).mockResolvedValue(business({ products: [product()] }));
-    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} canOrder={false} />);
+    renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}, canOrder: false});
     await screen.findByText('Gulberg Grill');
     expect(screen.queryByRole('button', { name: 'Order products' })).toBeNull();
     const cta = screen.getByRole('button', { name: 'Unavailable' });
@@ -223,7 +233,7 @@ describe('BusinessDetail sticky CTA matrix (Phase 2C)', () => {
 
   it('shows a disabled Closed CTA when the business is closed and nothing is actionable', async () => {
     vi.mocked(api.getBusiness).mockResolvedValue(business({ isOpenNow: false }));
-    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} />);
+    renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}});
     await screen.findByText('Gulberg Grill');
     const cta = screen.getByRole('button', { name: 'Closed' });
     expect(cta).toBeDisabled();
@@ -233,7 +243,7 @@ describe('BusinessDetail sticky CTA matrix (Phase 2C)', () => {
   it('keeps the sticky Book CTA usable even when the business is closed right now', async () => {
     // Future bookings are still valid; closed-now must not kill the action.
     vi.mocked(api.getBusiness).mockResolvedValue(business({ services: [svc()], isOpenNow: false }));
-    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} onBook={() => {}} />);
+    renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}, onBook: () => {}});
     expect(await screen.findByRole('button', { name: 'Book a service' })).toBeEnabled();
   });
 });
@@ -247,7 +257,7 @@ describe('BusinessDetail trust area (Phase 2C)', () => {
       averageRating: 4.5,
       reviewCount: 12,
     });
-    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} />);
+    renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}});
     await screen.findByText('Gulberg Grill');
     const glance = screen.getByRole('region', { name: 'At a glance' });
     expect(within(glance).getByText(/4\.5/)).toBeTruthy();
@@ -256,7 +266,7 @@ describe('BusinessDetail trust area (Phase 2C)', () => {
 
   it('shows open state with today’s hours from the real hours payload', async () => {
     vi.mocked(api.getBusiness).mockResolvedValue(business({ isOpenNow: true, hours: allDayHours() }));
-    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} />);
+    renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}});
     await screen.findByText('Gulberg Grill');
     const glance = screen.getByRole('region', { name: 'At a glance' });
     // The hero badge also says "Open now"; scope to the trust block.
@@ -269,7 +279,7 @@ describe('BusinessDetail trust area (Phase 2C)', () => {
     vi.mocked(api.getBusiness).mockResolvedValue(
       business({ services: [svc(), svc({ id: 'svc-2', name: 'Shave', durationMinutes: 20 })] }),
     );
-    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} onBook={() => {}} />);
+    renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}, onBook: () => {}});
     await screen.findByText('Gulberg Grill');
     expect(screen.getByText('Online booking')).toBeTruthy();
     expect(screen.getByText('2 services')).toBeTruthy();
@@ -279,7 +289,7 @@ describe('BusinessDetail trust area (Phase 2C)', () => {
     vi.mocked(api.getBusiness).mockResolvedValue(
       business({ services: [svc({ isActive: false, durationMinutes: null })] }),
     );
-    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} onBook={() => {}} />);
+    renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}, onBook: () => {}});
     await screen.findByText('Gulberg Grill');
     expect(screen.queryByText('Online booking')).toBeNull();
   });
@@ -288,7 +298,7 @@ describe('BusinessDetail trust area (Phase 2C)', () => {
     vi.mocked(api.getBusiness).mockResolvedValue(
       business({ phone: '0300 1234567', email: 'hi@gulberg.test' }),
     );
-    render(<BusinessDetailScreen idOrSlug="gulberg-grill" onBack={() => {}} />);
+    renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}});
     await screen.findByText('Gulberg Grill');
     expect(screen.getByText('0300 1234567')).toBeTruthy();
     expect(screen.getByText('hi@gulberg.test')).toBeTruthy();

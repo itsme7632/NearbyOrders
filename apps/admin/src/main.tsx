@@ -132,26 +132,29 @@ function LoginScreen() {
 
 /* ------------------------------- dashboard ------------------------------ */
 
-function Dashboard() {
+/** Exported for the triage test; the shell renders it internally. */
+export function Dashboard(props: { onTriage: (section: Section, status?: string) => void }) {
   const stats = useAsync(() => api.getDashboard(), []);
   if (stats.loading) return <div className="loading">Loading platform metrics…</div>;
   if (stats.error) return <div className="form-error">{stats.error}</div>;
   const d = stats.data!;
-  const cards: { label: string; value: number | string }[] = [
+  // Phase 3G: attention cards are triage shortcuts — one click opens the
+  // matching section pre-filtered to the queue that needs work.
+  const cards: { label: string; value: number | string; triage?: { section: Section; status?: string } }[] = [
     { label: 'Users', value: d.users },
     { label: 'Customers', value: d.customers },
     { label: 'Business owners', value: d.businessOwners },
     { label: 'Businesses', value: d.businesses },
     { label: 'Active businesses', value: d.activeBusinesses },
-    { label: 'Pending businesses', value: d.pendingBusinesses },
-    { label: 'Suspended', value: d.suspendedBusinesses },
+    { label: 'Pending businesses', value: d.pendingBusinesses, triage: { section: 'businesses', status: 'PENDING' } },
+    { label: 'Suspended', value: d.suspendedBusinesses, triage: { section: 'businesses', status: 'SUSPENDED' } },
     { label: 'Orders', value: d.orders },
-    { label: 'Pending orders', value: d.pendingOrders },
+    { label: 'Pending orders', value: d.pendingOrders, triage: { section: 'orders', status: 'PENDING' } },
     { label: 'Bookings', value: d.bookings },
-    { label: 'Pending bookings', value: d.pendingBookings },
-    { label: 'Payment requests', value: d.pendingSubscriptionPayments },
+    { label: 'Pending bookings', value: d.pendingBookings, triage: { section: 'bookings', status: 'PENDING' } },
+    { label: 'Payment requests', value: d.pendingSubscriptionPayments, triage: { section: 'payments', status: 'PENDING' } },
     { label: 'Reviews', value: d.reviews },
-    { label: 'Hidden reviews', value: d.hiddenReviews },
+    { label: 'Hidden reviews', value: d.hiddenReviews, triage: { section: 'reviews', status: 'hidden' } },
     { label: 'Push devices', value: d.pushDevices.total },
     { label: 'Active push devices', value: d.pushDevices.active },
   ];
@@ -159,11 +162,28 @@ function Dashboard() {
     <>
       <div className="stat-grid">
         {cards.map((c) => {
-          const attention = /Pending|Hidden|Suspended/.test(c.label) && Number(c.value) > 0;
-          return (
-            <div key={c.label} className={`stat-card${attention ? ' stat-attention' : ''}`}>
+          // Attention is a property of the queue (triage shortcut with a
+          // nonzero count), not of the label text.
+          const attention = Boolean(c.triage) && Number(c.value) > 0;
+          const inner = (
+            <>
               <span className="stat-num">{c.value}</span>
               <span className="stat-label">{c.label}</span>
+            </>
+          );
+          return c.triage ? (
+            <button
+              key={c.label}
+              type="button"
+              className={`stat-card stat-triage${attention ? ' stat-attention' : ''}`}
+              onClick={() => props.onTriage(c.triage!.section, c.triage!.status)}
+              aria-label={`${c.label}: ${c.value} — open queue`}
+            >
+              {inner}
+            </button>
+          ) : (
+            <div key={c.label} className={`stat-card${attention ? ' stat-attention' : ''}`}>
+              {inner}
             </div>
           );
         })}
@@ -308,8 +328,8 @@ function Users() {
 
 /* ------------------------------ businesses ------------------------------ */
 
-function Businesses() {
-  const [status, setStatus] = useState('');
+function Businesses(props: { initialStatus?: string }) {
+  const [status, setStatus] = useState(props.initialStatus ?? '');
   const [q, setQ] = useState('');
   const [query, setQuery] = useState('');
   const businesses = useAsync(() => api.listBusinesses({ status: status || undefined, q: query || undefined }), [status, query]);
@@ -422,8 +442,8 @@ function Businesses() {
 
 /* ---------------------------- orders / bookings -------------------------- */
 
-function Orders() {
-  const [status, setStatus] = useState('');
+function Orders(props: { initialStatus?: string }) {
+  const [status, setStatus] = useState(props.initialStatus ?? '');
   const orders = useAsync(() => api.listOrders(status), [status]);
   return (
     <>
@@ -478,8 +498,8 @@ function Orders() {
   );
 }
 
-function Bookings() {
-  const [status, setStatus] = useState('');
+function Bookings(props: { initialStatus?: string }) {
+  const [status, setStatus] = useState(props.initialStatus ?? '');
   const bookings = useAsync(() => api.listBookings(status), [status]);
   return (
     <>
@@ -540,8 +560,8 @@ function Bookings() {
 
 /* -------------------------------- reviews ------------------------------- */
 
-function Reviews() {
-  const [status, setStatus] = useState<'' | 'visible' | 'hidden'>('');
+function Reviews(props: { initialStatus?: '' | 'visible' | 'hidden' }) {
+  const [status, setStatus] = useState<'' | 'visible' | 'hidden'>(props.initialStatus ?? '');
   const reviews = useAsync(() => api.listReviews(status), [status]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -784,8 +804,8 @@ function Subscriptions() {
 
 /* --------------------------- payment requests --------------------------- */
 
-function PaymentRequests() {
-  const [status, setStatus] = useState('PENDING');
+function PaymentRequests(props: { initialStatus?: string }) {
+  const [status, setStatus] = useState(props.initialStatus ?? 'PENDING');
   const reqs = useAsync(() => api.listPaymentRequests(status), [status]);
   const [reasonFor, setReasonFor] = useState<string | null>(null);
   const [reason, setReason] = useState('');
@@ -982,6 +1002,21 @@ function AuditLog() {
 function AdminApp() {
   const [session, setSessionState] = useState<api.Session | null>(api.getSession());
   const [section, setSection] = useState<Section>('dashboard');
+  // Phase 3G: dashboard triage carries a pre-applied filter into the target
+  // section. Manual nav clears it so filters never leak between visits.
+  const [triage, setTriage] = useState<{ section: Section; status?: string } | null>(null);
+  const goSection = (s: Section) => {
+    setTriage(null);
+    setSection(s);
+  };
+  const triageTo = (s: Section, status?: string) => {
+    setTriage({ section: s, status });
+    setSection(s);
+  };
+  // Remounts a section when a triage shortcut targets it — including when it
+  // is already open — so the pre-applied filter takes effect. Manual nav
+  // clears triage, which also remounts and resets any triage filter.
+  const triageKey = (s: Section) => `${s}:${triage?.section === s ? triage.status ?? '' : ''}`;
 
   useEffect(() => {
     // Keep in sync with logout triggered by a 401 inside the API client.
@@ -1005,7 +1040,7 @@ function AdminApp() {
         <p className="admin-side-sub">Admin panel</p>
         <nav aria-label="Admin sections">
           {SECTIONS.map((s) => (
-            <button key={s.key} className={`admin-nav-item${section === s.key ? ' active' : ''}`} onClick={() => setSection(s.key)}>
+            <button key={s.key} className={`admin-nav-item${section === s.key ? ' active' : ''}`} onClick={() => goSection(s.key)}>
               <span className="admin-nav-glyph" aria-hidden>
                 {SECTION_ICONS[s.key]}
               </span>
@@ -1030,15 +1065,18 @@ function AdminApp() {
             </button>
           </div>
         </div>
-        {section === 'dashboard' ? <Dashboard /> : null}
+        {/* Phase 3G: keying on the triage target forces a remount when a
+            dashboard shortcut jumps into an already-open section, so the
+            pre-applied filter actually takes effect. */}
+        {section === 'dashboard' ? <Dashboard onTriage={triageTo} /> : null}
         {section === 'users' ? <Users /> : null}
-        {section === 'businesses' ? <Businesses /> : null}
-        {section === 'orders' ? <Orders /> : null}
-        {section === 'bookings' ? <Bookings /> : null}
-        {section === 'reviews' ? <Reviews /> : null}
+        {section === 'businesses' ? <Businesses key={triageKey('businesses')} initialStatus={triage?.section === 'businesses' ? triage.status : undefined} /> : null}
+        {section === 'orders' ? <Orders key={triageKey('orders')} initialStatus={triage?.section === 'orders' ? triage.status : undefined} /> : null}
+        {section === 'bookings' ? <Bookings key={triageKey('bookings')} initialStatus={triage?.section === 'bookings' ? triage.status : undefined} /> : null}
+        {section === 'reviews' ? <Reviews key={triageKey('reviews')} initialStatus={triage?.section === 'reviews' ? (triage.status as '' | 'visible' | 'hidden' | undefined) : undefined} /> : null}
         {section === 'categories' ? <Categories /> : null}
         {section === 'subscriptions' ? <Subscriptions /> : null}
-        {section === 'payments' ? <PaymentRequests /> : null}
+        {section === 'payments' ? <PaymentRequests key={triageKey('payments')} initialStatus={triage?.section === 'payments' ? triage.status : undefined} /> : null}
         {section === 'audit' ? <AuditLog /> : null}
       </main>
     </div>

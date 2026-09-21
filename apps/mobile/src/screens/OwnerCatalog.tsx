@@ -19,19 +19,45 @@ import { AlertIcon, OrdersIcon, StoreIcon } from '../components/icons.js';
 
 export function OwnerServices(props: { businessId: string }) {
   const services = useAsyncData<Service[]>(() => listServices(props.businessId), [props.businessId]);
+  // Phase 3F: local-only visibility filter — the server list is unchanged.
+  const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
+
+  const list = services.data ?? [];
+  const visible = list.filter((s) => (filter === 'all' ? true : filter === 'active' ? s.isActive : !s.isActive));
 
   return (
     <section className="card">
-      <h2>Services</h2>
+      <div className="section-head-v3">
+        <h2>
+          Services{list.length ? <span className="count-note"> · {list.length}</span> : null}
+        </h2>
+      </div>
+      {list.length > 1 ? (
+        <div className="filter-row" role="group" aria-label="Filter services by status" style={{ marginBottom: 8 }}>
+          {(
+            [
+              ['all', 'All'],
+              ['active', 'Active'],
+              ['inactive', 'Inactive'],
+            ] as const
+          ).map(([v, label]) => (
+            <button key={v} type="button" className={`chip${filter === v ? ' chip-active' : ''}`} onClick={() => setFilter(v)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {services.loading ? (
         <Loading />
       ) : services.error ? (
         <ErrorState message={services.error} onRetry={services.reload} />
-      ) : !services.data?.length ? (
+      ) : !list.length ? (
         <EmptyState icon={<StoreIcon size={30} />} title="No services yet" body="Add your first service below so customers can book it later." />
+      ) : !visible.length ? (
+        <EmptyState icon={<StoreIcon size={30} />} title={`No ${filter} services`} body="Try a different filter to see the rest of your catalog." />
       ) : (
         <ul className="manage-list">
-          {services.data.map((s) => (
+          {visible.map((s) => (
             <li key={s.id} className={`manage-item${s.isActive ? '' : ' manage-item-off'}`}>
               <div className="item-row">
                 <span className="item-name">{s.name}</span>
@@ -95,9 +121,12 @@ function ServiceRow(props: { service: Service; onSaved: () => void }) {
 
   const toggle = async (isActive: boolean) => {
     setBusy(true);
+    setError(null);
     try {
       await updateService(props.service.id, { isActive });
       props.onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update service status');
     } finally {
       setBusy(false);
     }
@@ -105,9 +134,12 @@ function ServiceRow(props: { service: Service; onSaved: () => void }) {
 
   const remove = async () => {
     setBusy(true);
+    setError(null);
     try {
       await deleteService(props.service.id);
       props.onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Delete failed');
     } finally {
       setBusy(false);
     }
@@ -145,14 +177,17 @@ function ServiceRow(props: { service: Service; onSaved: () => void }) {
   }
 
   return (
-    <div className="btn-row">
-      <Toggle checked={props.service.isActive} onChange={(v) => toggle(v)} label={props.service.isActive ? 'Active' : 'Inactive'} />
-      <Button sm variant="secondary" onClick={() => setEditing(true)}>
-        Edit
-      </Button>
-      <Button sm variant="danger" onClick={remove} disabled={busy}>
-        Delete
-      </Button>
+    <div>
+      {error && !editing ? <ErrorState message={error} /> : null}
+      <div className="btn-row">
+        <Toggle checked={props.service.isActive} onChange={(v) => toggle(v)} label={props.service.isActive ? 'Active' : 'Inactive'} />
+        <Button sm variant="secondary" onClick={() => setEditing(true)}>
+          Edit
+        </Button>
+        <Button sm variant="danger" onClick={remove} disabled={busy}>
+          Delete
+        </Button>
+      </div>
     </div>
   );
 }
@@ -342,19 +377,45 @@ function ProductThumb(props: { imageUrl: string | null; name: string }) {
 /** Exported for tests. */
 export function OwnerProducts(props: { businessId: string }) {
   const products = useAsyncData<Product[]>(() => listProducts(props.businessId), [props.businessId]);
+  // Phase 3F: local-only availability filter — the server list is unchanged.
+  const [filter, setFilter] = useState<'all' | 'available' | 'unavailable'>('all');
+
+  const list = products.data ?? [];
+  const visible = list.filter((p) => (filter === 'all' ? true : filter === 'available' ? p.isActive : !p.isActive));
 
   return (
     <section className="card">
-      <h2>Products</h2>
+      <div className="section-head-v3">
+        <h2>
+          Products{list.length ? <span className="count-note"> · {list.length}</span> : null}
+        </h2>
+      </div>
+      {list.length > 1 ? (
+        <div className="filter-row" role="group" aria-label="Filter products by availability" style={{ marginBottom: 8 }}>
+          {(
+            [
+              ['all', 'All'],
+              ['available', 'Available'],
+              ['unavailable', 'Unavailable'],
+            ] as const
+          ).map(([v, label]) => (
+            <button key={v} type="button" className={`chip${filter === v ? ' chip-active' : ''}`} onClick={() => setFilter(v)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {products.loading ? (
         <Loading />
       ) : products.error ? (
         <ErrorState message={products.error} onRetry={products.reload} />
-      ) : !products.data?.length ? (
+      ) : !list.length ? (
         <EmptyState icon={<OrdersIcon size={30} />} title="No products yet" body="Add your first product to start building your menu." />
+      ) : !visible.length ? (
+        <EmptyState icon={<OrdersIcon size={30} />} title={`No ${filter} products`} body="Try a different filter to see the rest of your catalog." />
       ) : (
         <ul className="manage-list">
-          {products.data.map((p) => (
+          {visible.map((p) => (
             <li key={p.id} className={`manage-item manage-item-product${p.isActive ? '' : ' manage-item-off'}`}>
               <div className="item-row">
                 <span className="product-title">

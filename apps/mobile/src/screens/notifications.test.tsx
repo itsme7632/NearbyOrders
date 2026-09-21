@@ -70,6 +70,15 @@ describe('groupNotifications (pure helper)', () => {
 });
 
 describe('NotificationsScreen', () => {
+  it('shows a Settings link that opens notification preferences', async () => {
+    vi.spyOn(api, 'listNotifications').mockResolvedValue(page([]));
+    const onOpenPreferences = vi.fn();
+    render(<NotificationsScreen onOpenNotification={() => {}} onOpenPreferences={onOpenPreferences} />);
+    await screen.findByText('No notifications yet');
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(onOpenPreferences).toHaveBeenCalled();
+  });
+
   it('renders unread and read notifications with relative timestamps', async () => {
     vi.spyOn(api, 'listNotifications').mockResolvedValue(
       page([

@@ -45,11 +45,15 @@ export function OwnerBusinessHome(props: {
   const active = businesses.data.find((b) => b.id === selectedId) ?? businesses.data[0];
   const base = `/owner/${active.id}`;
   const place = [active.locality, active.city].filter(Boolean).join(', ');
+  const todayLabel = new Date().toLocaleDateString('en-PK', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
     <div className="screen">
       <header className="owner-head">
-        <h1>Business Overview</h1>
+        <div>
+          <h1>Today</h1>
+          <p className="owner-sub">{todayLabel}</p>
+        </div>
       </header>
       {/* Identity band: the operating business, its state, and the switcher. */}
       <section aria-label="Selected business" style={{ marginTop: 4 }}>
@@ -74,11 +78,20 @@ export function OwnerBusinessHome(props: {
         ) : null}
       </section>
 
-      {/* Business plan: the real subscription state from the backend. */}
-      <PlanCard businessId={active.id} onOpen={() => props.onOpen(`${base}/subscription`)} />
+      {/* Phase 3E: queue-first order — attention → today's queue → revenue →
+          upcoming → gaps → plan → manage → period analytics. */}
+      <OverviewData
+        businessId={active.id}
+        onOpen={props.onOpen}
+        base={base}
+        onOpenBooking={props.onOpenBooking}
+        onOpenOrder={props.onOpenOrder}
+      />
 
-      <OverviewData businessId={active.id} onOpen={props.onOpen} base={base} onOpenBooking={props.onOpenBooking} />
-      <PeriodAnalytics businessId={active.id} />
+      {/* Business plan: the real subscription state from the backend. */}
+      <div style={{ marginTop: 14 }}>
+        <PlanCard businessId={active.id} onOpen={() => props.onOpen(`${base}/subscription`)} />
+      </div>
 
       {/* Manage band: dense icon rail into the catalog + operations. */}
       <section aria-label="Quick actions" style={{ marginTop: 14 }}>
@@ -125,6 +138,9 @@ export function OwnerBusinessHome(props: {
           </Button>
         </div>
       ) : null}
+
+      {/* Period analytics sit at the bottom: useful context, not the job. */}
+      <PeriodAnalytics businessId={active.id} />
     </div>
   );
 }
@@ -162,6 +178,7 @@ function OverviewData(props: {
   onOpen: (path: string) => void;
   base: string;
   onOpenBooking: (id: string) => void;
+  onOpenOrder: (id: string) => void;
 }) {
   const overview = useAsyncData<OwnerOverview>(() => getOwnerOverview(props.businessId), [props.businessId]);
 
@@ -170,9 +187,73 @@ function OverviewData(props: {
   if (!overview.data) return null;
   const o = overview.data;
 
+  const attention = [
+    o.needsAttention.pendingOrders > 0
+      ? {
+          key: 'orders',
+          count: o.needsAttention.pendingOrders,
+          label: o.needsAttention.pendingOrders === 1 ? 'order' : 'orders',
+          detail: 'waiting for your accept or reject',
+          onClick: () => props.onOpen(`${props.base}/orders`),
+        }
+      : null,
+    o.needsAttention.pendingBookings > 0
+      ? {
+          key: 'bookings',
+          count: o.needsAttention.pendingBookings,
+          label: o.needsAttention.pendingBookings === 1 ? 'booking' : 'bookings',
+          detail: 'waiting for your confirm or decline',
+          onClick: () => props.onOpen(`${props.base}/bookings`),
+        }
+      : null,
+    o.needsAttention.pendingPayments > 0
+      ? {
+          key: 'payments',
+          count: o.needsAttention.pendingPayments,
+          label: o.needsAttention.pendingPayments === 1 ? 'payment proof' : 'payment proofs',
+          detail: 'awaiting verification',
+          onClick: () => props.onOpen(`${props.base}/payments`),
+        }
+      : null,
+  ].filter((a): a is NonNullable<typeof a> => a !== null);
+
+  // Actionable queue: newest first, capped so this stays a glanceable
+  // "what's next" list — the full lists live one tap away.
+  const queueOrders = (o.recentOrders ?? []).slice(0, 3);
+
   return (
     <>
-      <section aria-label="Overview metrics" style={{ marginTop: 12 }}>
+      {/* Needs attention: the first thing an owner sees — every item is one
+          tap from its action. */}
+      <section aria-label="Needs attention" style={{ marginTop: 12 }}>
+        {attention.length ? (
+          <div className="activity-card">
+            {attention.map((a) => (
+              <button key={a.key} type="button" className="activity-row attention-row" onClick={a.onClick}>
+                <span className="activity-icon tone-yellow" aria-hidden>
+                  <AlertIcon size={18} />
+                </span>
+                <span className="activity-main">
+                  <span className="activity-title">
+                    {a.count} {a.label}
+                  </span>{' '}
+                  <span className="activity-sub">{a.detail}</span>
+                </span>
+                <span className="activity-when" aria-hidden>
+                  ›
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="calm-note" role="status">
+            <CheckIcon size={16} /> All caught up — nothing needs your action right now.
+          </p>
+        )}
+      </section>
+
+      {/* Today at a glance: today counts plus the newest orders, directly openable. */}
+      <section aria-label="Today at a glance" style={{ marginTop: 12 }}>
         <div className="metric-grid-v3">
           <button type="button" className="metric-card-v3" onClick={() => props.onOpen(`${props.base}/orders`)}>
             <span className="metric-card-v3-top">
@@ -195,6 +276,32 @@ function OverviewData(props: {
             <span className="metric-card-v3-label">{o.needsAttention.pendingBookings} pending</span>
           </button>
         </div>
+        {queueOrders.length ? (
+          <div className="activity-card" style={{ marginTop: 8 }}>
+            <p className="activity-card-label">Latest orders</p>
+            {queueOrders.map((ord) => {
+              const customer = [ord.customer?.firstName, ord.customer?.lastName].filter(Boolean).join(' ');
+              return (
+                <button key={ord.id} type="button" className="activity-row" onClick={() => props.onOpenOrder(ord.id)}>
+                  <span className="activity-icon tone-green" aria-hidden>
+                    <OrdersIcon size={18} />
+                  </span>
+                  <span className="activity-main">
+                    <span className="activity-title">
+                      Order · {ord.status.charAt(0) + ord.status.slice(1).toLowerCase()}
+                    </span>
+                    <span className="activity-sub">
+                      {[customer, ord.fulfillmentType?.toLowerCase()].filter(Boolean).join(' · ')}
+                    </span>
+                  </span>
+                  <span className="activity-when">
+                    <Money minor={ord.totalMinor ?? ord.subtotalMinor} currency={ord.currency} />
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
       </section>
 
       {/* Completed revenue today, straight from the server's PKT day window. */}
@@ -205,14 +312,6 @@ function OverviewData(props: {
             <Money minor={o.today.revenueMinor} currency={o.business.currency} />
           </span>
         </div>
-        {o.needsAttention.pendingPayments > 0 ? (
-          <button type="button" className="cart-line attention-row" onClick={() => props.onOpen(`${props.base}/payments`)}>
-            <span className="attention-text">
-              <strong>{o.needsAttention.pendingPayments}</strong> payment proof{o.needsAttention.pendingPayments === 1 ? '' : 's'} awaiting verification
-            </span>
-            <span aria-hidden>›</span>
-          </button>
-        ) : null}
       </section>
 
       {o.upcomingBookings.length > 0 ? (
@@ -232,7 +331,9 @@ function OverviewData(props: {
                     {b.date} · {b.startTime} · {b.customerName} · {b.status.toLowerCase()}
                   </span>
                 </span>
-                <span className="activity-when" aria-hidden>›</span>
+                <span className="activity-when" aria-hidden>
+                  ›
+                </span>
               </button>
             ))}
           </div>

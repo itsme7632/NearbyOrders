@@ -29,6 +29,23 @@ vi.mock('../api.js', async (importOriginal) => ({
   listMyReviews: vi.fn(),
 }));
 
+// The address form's pin section uses the real map; mock the picker with a
+// tappable stand-in so these tests exercise the form wiring, not Leaflet.
+vi.mock('../components/PinDropPicker.js', () => ({
+  PinDropPicker: (props: {
+    value: { latitude: number; longitude: number } | null;
+    onChange: (v: { latitude: number; longitude: number } | null) => void;
+  }) => (
+    <button
+      type="button"
+      data-testid="mock-pin-picker"
+      onClick={() => props.onChange({ latitude: 31.5, longitude: 74.3 })}
+    >
+      mock-pin-picker
+    </button>
+  ),
+}));
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -206,6 +223,62 @@ describe('AddressesScreen', () => {
     render(<AddressesScreen onBack={() => {}} />);
     fireEvent.click(await screen.findByText('Delete'));
     await waitFor(() => expect(api.deleteAddress).toHaveBeenCalledWith('a1'));
+  });
+
+  it('shows the pin hint on address cards that have coordinates', async () => {
+    vi.mocked(api.listAddresses).mockResolvedValue([
+      addr({ id: 'a1', latitude: 31.5, longitude: 74.3 }),
+      addr({ id: 'a2', label: 'Work' }),
+    ]);
+    render(<AddressesScreen onBack={() => {}} />);
+    expect(await screen.findByText('Home')).toBeTruthy();
+    expect(screen.getAllByText(/map pin set/i)).toHaveLength(1);
+  });
+
+  it('create form offers an optional pin and sends coordinates only when placed', async () => {
+    vi.mocked(api.listAddresses).mockResolvedValue([]);
+    vi.mocked(api.createAddress).mockResolvedValue(addr({ id: 'new' }));
+
+    render(<AddressesScreen onBack={() => {}} />);
+    fireEvent.click(await screen.findByText('Add an address'));
+
+    // The pin section is collapsed by default and never invents coordinates.
+    expect(screen.queryByTestId('mock-pin-picker')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /pin on map/i }));
+    fireEvent.click(screen.getByTestId('mock-pin-picker'));
+
+    fireEvent.change(screen.getByPlaceholderText('Home, Work…'), { target: { value: 'Home' } });
+    fireEvent.change(screen.getByPlaceholderText('House, street, area, city'), {
+      target: { value: 'House 12, Street 4, Gulberg III, Lahore' },
+    });
+    const recipient = screen.getAllByLabelText(/Recipient name/i)[0] as HTMLInputElement;
+    fireEvent.change(recipient, { target: { value: 'Ayesha Khan' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save address' }));
+    await waitFor(() =>
+      expect(api.createAddress).toHaveBeenCalledWith({
+        label: 'Home',
+        recipientName: 'Ayesha Khan',
+        phone: null,
+        addressText: 'House 12, Street 4, Gulberg III, Lahore',
+        coordinates: { latitude: 31.5, longitude: 74.3 },
+      }),
+    );
+  });
+
+  it('editing an address without touching the pin keeps its coordinates', async () => {
+    vi.mocked(api.listAddresses).mockResolvedValue([addr({ id: 'a1', latitude: 31.5, longitude: 74.3 })]);
+    vi.mocked(api.updateAddress).mockResolvedValue(addr({ id: 'a1' }));
+
+    render(<AddressesScreen onBack={() => {}} />);
+    fireEvent.click(await screen.findByText('Edit'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() =>
+      expect(api.updateAddress).toHaveBeenCalledWith(
+        'a1',
+        expect.objectContaining({ coordinates: { latitude: 31.5, longitude: 74.3 } }),
+      ),
+    );
   });
 });
 

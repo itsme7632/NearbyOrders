@@ -3,6 +3,7 @@ import {
   listFavorites,
   saveFavorite,
   unsaveFavorite,
+  getSession,
   listAddresses,
   createAddress,
   updateAddress,
@@ -16,7 +17,14 @@ import {
 import { useAsyncData } from '../hooks.js';
 import { BusinessRow, Button, EmptyState, ErrorState, ListSkeleton } from '../components/ui.js';
 import { HeartIcon } from '../components/icons.js';
-import { useToast } from '../components/primitives.js';
+import { SegmentedControl, useToast } from '../components/primitives.js';
+import { favoriteToBusiness, pruneCollections } from '../saved-collections.js';
+import {
+  CollectionsView,
+  MoveToCollectionSheet,
+  type NotifyFn,
+} from './SavedCollections.js';
+import { PinDropPicker } from '../components/PinDropPicker.js';
 
 /* ------------------------------------------------------------------ */
 /* Shared screen scaffolding                                           */
@@ -40,8 +48,24 @@ function ScreenHead(props: { title: string; sub?: string; children?: React.React
 
 export function SavedBusinessesScreen(props: { onBack: () => void; onOpenBusiness: (id: string) => void }) {
   const toast = useToast();
+  const notify: NotifyFn = (kind, message) => {
+    if (kind === 'success') toast.success(message);
+    else if (kind === 'error') toast.error(message);
+    else toast.info(message);
+  };
   const saved = useAsyncData(() => listFavorites(), []);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  // Phase 3A: lightweight local-first collections over the same favorites.
+  const [view, setView] = useState<'all' | 'collections'>('all');
+  const [fileTarget, setFileTarget] = useState<FavoriteEntry['business'] | null>(null);
+  const [shelfTick, setShelfTick] = useState(0);
+  const userId = getSession()?.user.id ?? '';
+
+  // Memberships referencing unsaved businesses are dropped whenever the
+  // favorites list refreshes — an unsave silently leaves every collection.
+  useEffect(() => {
+    if (userId && saved.data) pruneCollections(userId, saved.data.map((e) => e.business.id));
+  }, [userId, saved.data]);
 
   const remove = async (businessId: string) => {
     if (removingId) return;
@@ -69,7 +93,7 @@ export function SavedBusinessesScreen(props: { onBack: () => void; onOpenBusines
         <EmptyState
           icon={<HeartIcon size={30} />}
           title="Nothing saved yet"
-          body="Tap the heart on any business to keep it here for quick access."
+          body="Tap the heart on any business to keep it here for quick access — then file your favorites into little collections like “Weekend food” or “Places to try”."
           action={
             <Button variant="ghost" onClick={props.onBack}>
               Explore businesses
@@ -83,69 +107,115 @@ export function SavedBusinessesScreen(props: { onBack: () => void; onOpenBusines
   return (
     <div className="screen">
       <ScreenHead title="Saved businesses" sub={`${entries.length} saved`} />
-      <ul className="fav-list">
-        {entries.map(({ business }) => (
-          // Same BusinessRow treatment as Explore/Search; the unsave heart
-          // overlays the row's trailing edge as a separate action.
-          <li key={business.id} style={{ position: 'relative' }}>
-            <BusinessRow business={favoriteToBusiness(business)} onOpen={() => props.onOpenBusiness(business.id)} />
-            <button
-              type="button"
-              className="fav-heart"
-              aria-label={`Remove ${business.name} from saved`}
-              title="Remove from Saved"
-              disabled={removingId === business.id}
-              onClick={() => void remove(business.id)}
-              style={{
-                position: 'absolute',
-                right: 2,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                width: 36,
-                height: 36,
-                borderRadius: '50%',
-                background: 'var(--card)',
-                border: '1px solid var(--border)',
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: removingId === business.id ? 0.5 : 1,
-              }}
-            >
-              <HeartIcon size={18} filled />
-            </button>
-          </li>
-        ))}
-      </ul>
+      <SegmentedControl
+        value={view}
+        onChange={setView}
+        label="Saved view"
+        options={[
+          { value: 'all', label: 'All saved' },
+          { value: 'collections', label: 'Collections' },
+        ]}
+      />
+      <div style={{ marginTop: 12 }}>
+        {view === 'collections' ? (
+          <CollectionsView
+            userId={userId}
+            entries={entries}
+            onOpenBusiness={props.onOpenBusiness}
+            onRemove={(id) => void remove(id)}
+            onChanged={() => setShelfTick((t) => t + 1)}
+            notify={notify}
+          />
+        ) : (
+          <SavedList
+            entries={entries}
+            removingId={removingId}
+            onOpenBusiness={props.onOpenBusiness}
+            onRemove={(id) => void remove(id)}
+            onFile={(b) => setFileTarget(b)}
+            shelfTick={shelfTick}
+            userId={userId}
+          />
+        )}
+      </div>
+      <MoveToCollectionSheet
+        userId={userId}
+        business={fileTarget}
+        onClose={() => setFileTarget(null)}
+        onChanged={() => setShelfTick((t) => t + 1)}
+        notify={notify}
+      />
     </div>
   );
 }
 
 /**
- * The favorites API returns a display subset of the business; adapt it to the
- * full Business shape BusinessRow expects (absent fields stay null/empty —
- * never invented).
+ * The "All saved" list: the same favorites rows as before, each with an
+ * organize (shelf) action that files the business into local collections.
  */
-function favoriteToBusiness(f: FavoriteEntry['business']): Business {
-  return {
-    id: f.id,
-    name: f.name,
-    slug: f.slug,
-    description: null,
-    imageUrl: f.imageUrl,
-    isVerified: f.isVerified,
-    address: f.address,
-    city: f.city,
-    locality: null,
-    latitude: null,
-    longitude: null,
-    phone: null,
-    email: null,
-    currency: 'PKR',
-    categories: [],
-    averageRating: f.averageRating,
-    reviewCount: f.reviewCount,
-  };
+function SavedList(props: {
+  entries: FavoriteEntry[];
+  removingId: string | null;
+  onOpenBusiness: (id: string) => void;
+  onRemove: (businessId: string) => void;
+  onFile: (b: FavoriteEntry['business']) => void;
+  shelfTick: number;
+  userId: string;
+}) {
+  // Re-render shelf badges when collections change.
+  void props.shelfTick;
+  return (
+    <ul className="fav-list">
+      {props.entries.map(({ business }) => (
+        // Same BusinessRow treatment as Explore/Search; the unsave heart
+        // overlays the row's trailing edge as a separate action.
+        <li key={business.id} style={{ position: 'relative' }}>
+          <BusinessRow business={favoriteToBusiness(business)} onOpen={() => props.onOpenBusiness(business.id)} />
+          <span className="fav-actions" role="group" aria-label={`Actions for ${business.name}`}>
+            <button
+              type="button"
+              className="fav-action-btn"
+              aria-label={`File ${business.name} in a collection`}
+              title="File in a collection"
+              onClick={() => props.onFile(business)}
+            >
+              <ShelvesGlyph />
+            </button>
+            <button
+              type="button"
+              className="fav-heart fav-action-btn"
+              aria-label={`Remove ${business.name} from saved`}
+              title="Remove from Saved"
+              disabled={props.removingId === business.id}
+              onClick={() => props.onRemove(business.id)}
+              style={{ opacity: props.removingId === business.id ? 0.5 : 1 }}
+            >
+              <HeartIcon size={18} filled />
+            </button>
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
 }
+
+/** Compact shelf glyph for the per-row "file in a collection" action. */
+function ShelvesGlyph({ size = 17 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
+      <path d="M4 5h16" />
+      <path d="M4 12h16" />
+      <path d="M4 19h10" />
+    </svg>
+  );
+}
+
+/**
+ * The favorites API returns a display subset of the business; adapt it to the
+ * full Business shape BusinessRow expects. Canonical implementation lives in
+ * saved-collections.ts (re-exported here so existing importers keep working).
+ */
+export { favoriteToBusiness } from '../saved-collections.js';
 
 /* ------------------------------------------------------------------ */
 /* My reviews                                                          */
@@ -206,9 +276,16 @@ export function MyReviewsScreen(props: { onBack: () => void; onOpenBusiness: (id
 /* Addresses                                                           */
 /* ------------------------------------------------------------------ */
 
-type AddressDraft = { label: string; recipientName: string; phone: string; addressText: string };
+type AddressDraft = {
+  label: string;
+  recipientName: string;
+  phone: string;
+  addressText: string;
+  latitude: number | null;
+  longitude: number | null;
+};
 
-const EMPTY_DRAFT: AddressDraft = { label: '', recipientName: '', phone: '', addressText: '' };
+const EMPTY_DRAFT: AddressDraft = { label: '', recipientName: '', phone: '', addressText: '', latitude: null, longitude: null };
 
 function AddressForm(props: {
   initial?: AddressDraft;
@@ -219,7 +296,11 @@ function AddressForm(props: {
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState<AddressDraft>(props.initial ?? EMPTY_DRAFT);
+  const [showPin, setShowPin] = useState(
+    () => (props.initial?.latitude ?? null) !== null || (props.initial?.longitude ?? null) !== null,
+  );
   const canSubmit = draft.label.trim() && draft.recipientName.trim() && draft.addressText.trim().length >= 5 && !props.busy;
+  const hasPin = draft.latitude !== null && draft.longitude !== null;
   return (
     <form
       className="addr-form"
@@ -251,6 +332,27 @@ function AddressForm(props: {
           required
         />
       </label>
+      {/* Phase 3C: optional map pin. Coordinates are never invented — the
+          pin only exists once the user places it. */}
+      <div className="addr-pin-section">
+        <button
+          type="button"
+          className="addr-link"
+          aria-expanded={showPin}
+          onClick={() => setShowPin((s) => !s)}
+        >
+          {showPin ? '▾ Hide map pin' : '▸ Pin on map (optional)'}
+          {hasPin && !showPin ? ' — pin placed ✓' : null}
+        </button>
+        {showPin ? (
+          <div style={{ marginTop: 8 }}>
+            <PinDropPicker
+              value={hasPin ? { latitude: draft.latitude as number, longitude: draft.longitude as number } : null}
+              onChange={(v) => setDraft((d) => ({ ...d, latitude: v?.latitude ?? null, longitude: v?.longitude ?? null }))}
+            />
+          </div>
+        ) : null}
+      </div>
       {props.error ? (
         <p className="addr-error" role="alert">
           {props.error}
@@ -293,6 +395,9 @@ export function AddressesScreen(props: { onBack: () => void }) {
         recipientName: draft.recipientName.trim(),
         phone: draft.phone.trim() || null,
         addressText: draft.addressText.trim(),
+        ...(draft.latitude !== null && draft.longitude !== null
+          ? { coordinates: { latitude: draft.latitude, longitude: draft.longitude } }
+          : {}),
       });
       setMode('list');
       refresh();
@@ -312,6 +417,12 @@ export function AddressesScreen(props: { onBack: () => void }) {
         recipientName: draft.recipientName.trim(),
         phone: draft.phone.trim() || null,
         addressText: draft.addressText.trim(),
+        // The pin is authoritative from the form: a removed pin clears it
+        // server-side; untouched pins round-trip unchanged.
+        coordinates:
+          draft.latitude !== null && draft.longitude !== null
+            ? { latitude: draft.latitude, longitude: draft.longitude }
+            : null,
       });
       setEditingId(null);
       refresh();
@@ -355,7 +466,7 @@ export function AddressesScreen(props: { onBack: () => void }) {
       <div className="screen">
         <ScreenHead title="Edit address" />
         <AddressForm
-          initial={{ label: editing.label, recipientName: editing.recipientName, phone: editing.phone ?? '', addressText: editing.addressText }}
+          initial={{ label: editing.label, recipientName: editing.recipientName, phone: editing.phone ?? '', addressText: editing.addressText, latitude: editing.latitude, longitude: editing.longitude }}
           submitLabel="Save changes"
           busy={busy}
           error={actionError}
@@ -414,6 +525,9 @@ export function AddressesScreen(props: { onBack: () => void }) {
               <p className="addr-recipient">{a.recipientName}</p>
               <p className="addr-text">{a.addressText}</p>
               {a.phone ? <p className="addr-phone">{a.phone}</p> : null}
+              {a.latitude !== null && a.longitude !== null ? (
+                <p className="addr-pin-hint">📍 Map pin set — couriers can find you</p>
+              ) : null}
               <div className="addr-card-actions">
                 {!a.isDefault ? (
                   <button type="button" className="addr-link" onClick={() => void setDefault(a.id)} disabled={busy}>
@@ -538,15 +652,17 @@ export function useSavedBusiness(businessId: string) {
     };
   }, [businessId]);
 
-  const toggle = async () => {
-    if (busy || saved === null) return;
+  const toggle = async (): Promise<'ok' | 'error'> => {
+    if (busy || saved === null) return 'ok';
     setBusy(true);
     const next = !saved;
     try {
       const r = next ? await saveFavorite(businessId) : await unsaveFavorite(businessId);
       setSaved(r.saved);
+      return 'ok';
     } catch {
-      // keep previous state; the button simply did nothing this time
+      // keep previous state; the caller surfaces the failure to the user
+      return 'error';
     } finally {
       setBusy(false);
     }

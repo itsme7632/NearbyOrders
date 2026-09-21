@@ -147,6 +147,33 @@ export function SegmentedControl<T extends string>(props: {
   );
 }
 
+/**
+ * Accessible on/off toggle (Phase 3D). A native-feeling switch built on a
+ * <button role="switch">: full keyboard support, a 48px touch target, and
+ * an honest on/off label for screen readers. Disabled while a save is in
+ * flight so a tap can never queue conflicting states.
+ */
+export function Toggle(props: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={props.checked}
+      aria-label={props.label}
+      disabled={props.disabled}
+      className={`toggle${props.checked ? ' toggle-on' : ''}`}
+      onClick={() => props.onChange(!props.checked)}
+    >
+      <span className="toggle-knob" aria-hidden />
+    </button>
+  );
+}
+
 /* ------------------------------ Toast ------------------------------ */
 
 export type ToastKind = 'success' | 'error' | 'info';

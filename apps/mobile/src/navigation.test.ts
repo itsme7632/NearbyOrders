@@ -116,5 +116,16 @@ describe('Warm Proximity navigation architecture (Phase 2)', () => {
     expect(parseHash('#/saved-businesses')).toEqual({ name: 'saved-businesses' });
     expect(parseHash('#/order/ord-1')).toEqual({ name: 'order', orderId: 'ord-1' });
     expect(parseHash('#/booking/bkg-1')).toEqual({ name: 'booking', bookingId: 'bkg-1' });
+    // Phase 3D: notification preferences deep link.
+    expect(parseHash('#/notification-preferences')).toEqual({ name: 'notification-preferences' });
+  });
+
+  it('keeps the floating-action hierarchy disjoint by route (Phase 3J)', () => {
+    // CartPill mounts only for route.name === 'tabs'; Business Detail (with
+    // its own sticky CTA bar) renders under route.name === 'business'. The
+    // two floating actions therefore can never overlap on screen.
+    expect(parseHash('#/')).toEqual({ name: 'tabs' });
+    expect(parseHash('#/business/gulberg-grill')).toEqual({ name: 'business', idOrSlug: 'gulberg-grill' });
+    expect(parseHash('#/business/gulberg-grill').name).not.toBe('tabs');
   });
 });

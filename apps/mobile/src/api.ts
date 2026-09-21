@@ -107,6 +107,11 @@ export type Business = {
   hours?: BusinessHour[];
   services?: Service[];
   products?: Product[];
+  /** Phase 3H: authoritative delivery capability from the public detail DTO. */
+  deliveryEnabled?: boolean;
+  codEnabled?: boolean;
+  /** Delivery fee in minor units; null when delivery is not enabled. */
+  deliveryFeeMinor?: number | null;
 };
 
 export type Service = {

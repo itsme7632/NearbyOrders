@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { ToastProvider } from '../components/primitives.js';
 import { ReviewForm, Stars } from '../components/ReviewForm.js';
 import { BusinessDetailScreen } from './BusinessDetail.js';
 import { OrderDetailScreen } from './Orders.js';
@@ -113,9 +114,9 @@ const reviewPage = (patch: Partial<ReviewPage> = {}): ReviewPage => ({
 });
 
 function renderDetail() {
-  return render(
+  return render(<ToastProvider>
     <BusinessDetailScreen idOrSlug="b1" onBack={() => {}} canOrder={false} />,
-  );
+  </ToastProvider>);
 }
 
 describe('BusinessDetail reviews section', () => {
