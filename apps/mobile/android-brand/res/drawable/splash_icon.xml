@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Wraps the static splash vector as an animated-vector (no animators) so the
+     Android 12+ splash pipeline renders it at full size instead of upscaling a
+     108dp pre-render (which shows up blurry on xhdpi+ devices). -->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/splash_icon_vector" />

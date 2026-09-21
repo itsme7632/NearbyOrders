@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "cap:add:android": "tsc -b && vite build && cap add android",
-    "cap:sync": "tsc -b && vite build && cap sync android"
+    "cap:sync": "tsc -b && vite build && cap sync android",
+    "android:brand": "node scripts/sync-android-brand.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.1",
