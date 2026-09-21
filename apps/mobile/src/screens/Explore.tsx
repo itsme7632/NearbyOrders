@@ -43,6 +43,8 @@ export function ExploreScreen(props: {
   const [radiusKm, setRadiusKm] = useState<number>(DEFAULT_RADIUS_KM);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locNote, setLocNote] = useState<string | null>(null);
+  const [locDenied, setLocDenied] = useState(false);
+  const [locDismissed, setLocDismissed] = useState(false);
   const [locating, setLocating] = useState(false);
   const [selectedMarker, setSelectedMarker] = useState<string | null>(null);
   const [filters, setFilters] = useState<ExploreFilters>(DEFAULT_EXPLORE_FILTERS);
@@ -90,6 +92,8 @@ export function ExploreScreen(props: {
 
   const enableNearby = () => {
     setLocNote(null);
+    setLocDenied(false);
+    setLocDismissed(false);
     setLocating(true);
     requestCustomerLocation()
       .then((outcome: LocationOutcome) => {
@@ -97,8 +101,16 @@ export function ExploreScreen(props: {
           setCoords(outcome.coords);
           setRadiusKm(DEFAULT_RADIUS_KM);
           setMode('nearby');
+          setLocDenied(false);
+        } else if (outcome.status === 'denied') {
+          // Denied stays non-blocking: the full list keeps working and a calm
+          // card explains the situation with a retry and a dismiss path.
+          setLocNote(locationOutcomeHint(outcome));
+          setLocDenied(true);
+          setLocDismissed(false);
         } else {
           setLocNote(locationOutcomeHint(outcome));
+          setLocDenied(false);
         }
       })
       .finally(() => setLocating(false));
@@ -108,6 +120,8 @@ export function ExploreScreen(props: {
     setMode('all');
     setCoords(null);
     setLocNote(null);
+    setLocDenied(false);
+    setLocDismissed(false);
     setSelectedMarker(null);
     setView('list');
   };
@@ -221,7 +235,27 @@ export function ExploreScreen(props: {
         </section>
       ) : null}
 
-      {locNote ? (
+      {locDenied && !locDismissed ? (
+        <div className="location-denied-card" role="status" aria-live="polite">
+          <span className="location-denied-icon" aria-hidden>
+            <PinIcon size={16} />
+          </span>
+          <div className="location-denied-body">
+            <p className="location-denied-title">Location is off</p>
+            <p className="location-denied-text">
+              {locNote ?? 'Nearby mode needs location access. You can keep browsing every business in the list either way.'}
+            </p>
+            <div className="location-denied-actions">
+              <button type="button" className="btn btn-sm btn-secondary" onClick={enableNearby} disabled={locating}>
+                {locating ? 'Trying again…' : 'Try again'}
+              </button>
+              <button type="button" className="link-inline" onClick={() => setLocDismissed(true)}>
+                Continue without location
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : locNote ? (
         <p className="hint" role="status">
           {locNote}
         </p>

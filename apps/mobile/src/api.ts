@@ -229,6 +229,18 @@ export const login = (email: string, password: string) =>
     return s;
   });
 
+/** Result of POST /auth/register: the created account (no session — callers log in next). */
+export type RegisterResult = { id: string; email: string; role: string };
+
+/**
+ * Creates a new account through the configured API base (never a raw
+ * relative fetch, which breaks on Capacitor where there is no same-origin
+ * API). The server returns 201 with the created user; callers then call
+ * login() to establish the native session.
+ */
+export const register = (email: string, password: string, role: 'CUSTOMER' | 'BUSINESS_OWNER') =>
+  request<RegisterResult>('/auth/register', { method: 'POST', body: { email, password, role } });
+
 export const logout = () => setSession(null);
 
 /* ------------------------------ account ----------------------------- */

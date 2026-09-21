@@ -103,9 +103,15 @@
 html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; }
 
+/* Systematic safe-area handling: every screen inherits the device's top and
+   bottom insets from `main`, so no content ever sits under the Android
+   status bar or the system gesture bar. Screens opt out only for deliberate
+   full-bleed surfaces (which then add the inset back to their own padding). */
+#root { min-height: 100dvh; }
+
 main {
-  min-height: 100vh;
-  padding: 16px clamp(14px, 4vw, 20px) 96px;
+  min-height: 100dvh;
+  padding: calc(16px + env(safe-area-inset-top)) clamp(14px, 4vw, 20px) calc(96px + env(safe-area-inset-bottom));
   max-width: 640px;
   margin: 0 auto;
   width: 100%;
@@ -1231,17 +1237,21 @@ nav.business-nav .nav-item.active {
 .auth-card h1 { margin: 0 0 4px; }
 .auth-lede { margin: 0 0 14px; font-size: 14px; line-height: 1.5; color: var(--muted); }
 /* Reference-style input row: leading icon + a single placeholder-only input.
-   The permanent label is rendered by the wrapping Field outside the box. */
+   The permanent label is rendered by the wrapping Field outside the box.
+   Exactly ONE visual boundary lives on .auth-input itself: the inner native
+   input is fully neutralized (no border, outline, shadow, or appearance),
+   including Android autofill, so focus can never render as a doubled edge. */
 .auth-input {
   display: flex;
   align-items: stretch;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--card);
-  transition: border-color 0.08s ease;
+  transition: border-color 0.08s ease, box-shadow 0.08s ease;
 }
 .auth-input:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(92, 19, 16, 0.1); }
 .auth-input.input-invalid { border-color: var(--error); }
+.auth-input.input-invalid:focus-within { border-color: var(--error); box-shadow: 0 0 0 3px rgba(194, 53, 36, 0.1); }
 .auth-input-icon {
   flex: 0 0 auto;
   width: 42px;
@@ -1251,8 +1261,14 @@ nav.business-nav .nav-item.active {
   color: var(--muted);
 }
 .auth-input-field { flex: 1; min-width: 0; display: flex; align-items: center; padding-right: 10px; }
-.auth-input input {
+/* The inner input must never paint its own edge: .field input rules also
+   match these descendants, so this higher-specificity rule wins and keeps
+   the single .auth-input boundary intact on every platform. */
+.auth-input input,
+.field .auth-input input,
+.auth-input .password-slot input {
   border: 0;
+  border-radius: 0;
   padding: 0;
   width: 100%;
   font: inherit;
@@ -1260,14 +1276,38 @@ nav.business-nav .nav-item.active {
   background: transparent;
   color: var(--navy);
   height: 44px;
+  min-height: 0;
+  outline: none;
+  box-shadow: none;
+  -webkit-appearance: none;
+  appearance: none;
 }
 .auth-input input::placeholder { color: #a8a29e; }
-.auth-input input:focus { outline: none; }
+.auth-input input:focus,
+.field .auth-input input:focus,
+.auth-input .password-slot input:focus {
+  border: 0;
+  outline: none;
+  box-shadow: none;
+}
+/* Autofill: neutralize WebKit's inset wash so the single boundary survives
+   credential autofill on Android/Chrome. */
+.auth-input input:-webkit-autofill,
+.auth-input input:-webkit-autofill:hover,
+.auth-input input:-webkit-autofill:focus,
+.auth-input input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 60px var(--card) inset;
+  box-shadow: 0 0 0 60px var(--card) inset;
+  -webkit-text-fill-color: var(--navy);
+  caret-color: var(--navy);
+  border: 0;
+  outline: none;
+}
 .password-slot { position: relative; display: flex; align-items: center; flex: 1; min-width: 0; }
 .password-slot input { padding-right: 40px; }
 .password-toggle {
   position: absolute;
-  right: -6px;
+  right: 0;
   top: 50%;
   transform: translateY(-50%);
   width: 40px;
@@ -1894,7 +1934,9 @@ input[aria-invalid='true'] { border-color: #b91c1c; }
    v3 VISUAL SYSTEM — marketplace surfaces, brand presence, density
    ================================================================== */
 
-/* ---- App header: branded dark-ink bar (Customer Home + Business) ---- */
+/* ---- App header: branded dark-ink bar (Customer Home + Business) ----
+   Full-bleed: the background extends under the status bar while the content
+   keeps the safe-area inset, so the bar is never covered and never overlaps. */
 .app-header-v3 {
   display: flex;
   align-items: center;
@@ -1902,8 +1944,8 @@ input[aria-invalid='true'] { border-color: #b91c1c; }
   gap: 8px;
   background: var(--navy);
   color: #fff;
-  margin: -16px calc(-1 * clamp(14px, 4vw, 20px)) 0;
-  padding: 12px clamp(14px, 4vw, 20px);
+  margin: calc(-1 * (16px + env(safe-area-inset-top))) calc(-1 * clamp(14px, 4vw, 20px)) 0;
+  padding: calc(12px + env(safe-area-inset-top)) clamp(14px, 4vw, 20px) 12px;
 }
 .app-header-v3 .logo { color: #fff; }
 .app-header-v3 .bell-btn { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.18); color: #fff; }
@@ -2735,10 +2777,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 }
 .app-header-v3 {
   background: linear-gradient(160deg, var(--brand-strong) 0%, var(--brand-pressed) 70%);
-  border-radius: var(--radius-lg);
-  padding: 12px 14px;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  padding: calc(12px + env(safe-area-inset-top)) 14px 12px;
   color: #fff;
-  margin-bottom: 6px;
+  margin: calc(-1 * (16px + env(safe-area-inset-top))) calc(-1 * clamp(14px, 4vw, 20px)) 6px;
 }
 .detail-hero-media,
 .detail-hero-media-v3 {
@@ -3836,6 +3878,8 @@ nav.nav-v3, nav.business-nav-v3 {
 /* ==================================================================
    Auth (sign in / create account): clean editorial entry — brand
    lockup, clear welcome, focused form. No hero, no floating card.
+   The screen scrolls naturally with the Android keyboard (normal
+   document flow, dynamic viewport height) and honors both safe areas.
    ================================================================== */
 .auth-screen {
   display: block;
@@ -3844,6 +3888,48 @@ nav.nav-v3, nav.business-nav-v3 {
   margin: 0 auto;
   width: 100%;
   padding-top: 10px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  overflow-x: clip;
+}
+@media (min-width: 480px) {
+  .auth-screen { min-height: calc(100dvh - env(safe-area-inset-top) - 40px); }
+}
+
+/* Panel: a quiet card that groups the task — flat warm surface, single
+   1px boundary, no gradients, no glass. */
+.auth-panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 18px 16px 16px;
+}
+
+/* Mode switch: restrained segmented control at the top of the panel. */
+.auth-mode-switch {
+  display: flex;
+  gap: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 3px;
+  margin-bottom: 20px;
+}
+.auth-mode-tab {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 10px;
+  border-radius: 9px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.auth-mode-tab-active {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
 }
 
 /* Brand lockup: compact mark + wordmark, left-aligned, editorial. */
@@ -3875,6 +3961,14 @@ nav.nav-v3, nav.business-nav-v3 {
 
 /* Welcome: a confident headline + one supporting line. */
 .auth-intro { margin: 0 0 20px; }
+.auth-kicker {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--action);
+}
 .auth-intro h1 {
   margin: 0 0 6px;
   font-size: var(--font-display);
@@ -3904,8 +3998,10 @@ nav.nav-v3, nav.business-nav-v3 {
 .role-seg {
   flex: 1;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 2px;
   padding: 9px 10px;
   border-radius: 9px;
   font-size: 13.5px;
@@ -3913,11 +4009,63 @@ nav.nav-v3, nav.business-nav-v3 {
   color: var(--muted);
   transition: background 0.06s ease, color 0.06s ease;
 }
+.role-seg-name { font-weight: 700; font-size: 13.5px; line-height: 1.2; }
+.role-seg-desc { font-size: 11.5px; font-weight: 500; opacity: 0.75; line-height: 1.2; }
 .role-seg-active { background: var(--card); color: var(--ink); box-shadow: var(--shadow-sm); }
+.role-seg-active .role-seg-desc { opacity: 0.65; }
 
 /* Legal / recovery rows sit calmly under the form. */
 .agree-row { margin-top: 14px; }
 .auth-switch { margin: 20px 0 0; }
+
+/* Assurances: quiet checklist under the form — plain ink, no badges. */
+.auth-assurances {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 8px;
+}
+.auth-assurances li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.auth-assurances svg { color: var(--success); flex: 0 0 auto; }
+
+/* Location denied: calm, informative, non-blocking. Plain card treatment —
+   never error styling — with a retry action and an explicit way to carry
+   on without location. */
+.location-denied-card {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: 12px 14px;
+  margin: 10px 0 0;
+}
+.location-denied-icon {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+.location-denied-body { flex: 1; min-width: 0; }
+.location-denied-title { margin: 0 0 2px; font-size: 14px; font-weight: 800; color: var(--ink); }
+.location-denied-text { margin: 0 0 10px; font-size: 13px; line-height: 1.45; color: var(--muted); }
+.location-denied-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
 /* ==================================================================
    WARM PROXIMITY — PHASE 1 FOUNDATION

@@ -148,6 +148,8 @@ export function HomeScreen(props: {
   const [locating, setLocating] = useState(false);
   const [coords, setCoords] = useState<Coords | null>(null);
   const [locNotice, setLocNotice] = useState<string | null>(null);
+  const [locDenied, setLocDenied] = useState(false);
+  const [locDismissed, setLocDismissed] = useState(false);
   const nearbyKey = coords ? `${coords.lat.toFixed(4)},${coords.lng.toFixed(4)}` : 'all';
 
   const businesses = useAsyncData<Business[]>(async () => {
@@ -177,21 +179,30 @@ export function HomeScreen(props: {
     if (locating) return;
     setLocating(true);
     setLocNotice(null);
+    setLocDenied(false);
+    setLocDismissed(false);
     requestCustomerLocation()
       .then((outcome) => {
         if (outcome.status === 'granted') {
           setCoords(outcome.coords);
           setLocNotice(null);
+          setLocDenied(false);
+          setLocDismissed(false);
         } else if (outcome.status === 'denied') {
           // Denied is sticky but retryable: the chip stays tappable so the
           // customer can retry after enabling permission in system settings.
+          // A calm, dismissible card explains what happened — browsing and
+          // search keep working either way.
           setCoords(null);
           setLocNotice(locationOutcomeHint(outcome));
+          setLocDenied(true);
+          setLocDismissed(false);
         } else {
           // Unavailable/error: quietly keep the plain feed — the app must not
           // pretend location exists.
           setCoords(null);
           setLocNotice(null);
+          setLocDenied(false);
         }
       })
       .finally(() => setLocating(false));
@@ -200,6 +211,8 @@ export function HomeScreen(props: {
   const disableNearby = () => {
     setCoords(null);
     setLocNotice(null);
+    setLocDenied(false);
+    setLocDismissed(false);
   };
 
   const homeCategories = categories.data?.slice(0, HOME_CATEGORY_LIMIT) ?? [];
@@ -249,6 +262,27 @@ export function HomeScreen(props: {
           </span>
         ) : null}
       </div>
+      {locDenied && !locDismissed && !nearby ? (
+        <div className="location-denied-card" role="status" aria-live="polite">
+          <span className="location-denied-icon" aria-hidden>
+            <PinIcon size={16} />
+          </span>
+          <div className="location-denied-body">
+            <p className="location-denied-title">Location is off</p>
+            <p className="location-denied-text">
+              {locNotice ?? 'Nearby discovery works best with location access. You can keep browsing and searching all businesses either way.'}
+            </p>
+            <div className="location-denied-actions">
+              <button type="button" className="btn btn-sm btn-secondary" onClick={enableNearby} disabled={locating}>
+                {locating ? 'Trying again…' : 'Try again'}
+              </button>
+              <button type="button" className="link-inline" onClick={() => setLocDismissed(true)}>
+                Continue without location
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Hero: editorial greeting fused with the primary search entry. The
           entry is a single tappable control that opens the real Search

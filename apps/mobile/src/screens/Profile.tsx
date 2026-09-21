@@ -6,6 +6,7 @@ import {
   login,
   logout,
   onSessionChange,
+  register,
   updateMyProfile,
   whoami,
   type MyProfile,
@@ -59,12 +60,14 @@ function PasswordInput(props: {
   invalid?: boolean;
   placeholder: string;
   label: string;
+  name?: string;
 }) {
   const [visible, setVisible] = useState(false);
   return (
     <div className="password-slot">
       <input
         type={visible ? 'text' : 'password'}
+        name={props.name}
         value={props.value}
         onChange={(e) => props.onChange(e.target.value)}
         autoComplete={props.autoComplete}
@@ -523,20 +526,38 @@ export function ProfileScreen(props: {
     setError(null);
     try {
       if (registering) {
-        const res = await fetch('/api/v1/auth/register', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ email: email.trim(), password, role }),
-        });
-        const body = await res.json().catch(() => null);
-        if (!res.ok) throw new Error(body?.error?.message ?? 'Registration failed');
+        // Create the account through the configured API base, then establish
+        // the native session with a real login. Errors are mapped per step so
+        // a signup failure never shows login-specific wording.
+        try {
+          await register(email.trim(), password, role);
+        } catch (regErr) {
+          if (regErr instanceof ApiError && regErr.status === 409)
+            setError('An account with this email already exists. Try signing in instead.');
+          else if (regErr instanceof ApiError && regErr.status === 400)
+            setError(regErr.message || 'Please check the highlighted fields and try again.');
+          else if (regErr instanceof ApiError && regErr.status === 0) setError(regErr.message);
+          else setError(regErr instanceof Error ? regErr.message : 'Could not create your account. Please try again.');
+          return;
+        }
+        try {
+          await login(email.trim(), password);
+        } catch {
+          // The account exists now; only the automatic sign-in failed.
+          setError('Your account was created, but we could not sign you in automatically. Please sign in with your new credentials.');
+          setMode('login');
+          return;
+        }
+      } else {
+        try {
+          await login(email.trim(), password);
+        } catch (loginErr) {
+          if (loginErr instanceof ApiError && loginErr.status === 401)
+            setError('Incorrect email or password. Please try again.');
+          else if (loginErr instanceof ApiError && loginErr.status === 0) setError(loginErr.message);
+          else setError(loginErr instanceof Error ? loginErr.message : 'Sign in failed. Please try again.');
+        }
       }
-      await login(email.trim(), password);
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) setError('Incorrect email or password. Please try again.');
-      else if (e instanceof ApiError && e.status === 409) setError('An account with this email already exists. Try signing in instead.');
-      else if (e instanceof ApiError && e.status === 0) setError(e.message);
-      else setError(e instanceof Error ? e.message : 'Authentication failed. Please try again.');
     } finally {
       setBusy(false);
     }
@@ -549,7 +570,7 @@ export function ProfileScreen(props: {
   };
 
   return (
-    <div className="screen auth-screen">
+    <div className={`screen auth-screen${registering ? ' auth-mode-register' : ' auth-mode-login'}`}>
       {/* Brand lockup: compact mark + wordmark, matching the in-app header. */}
       <header className="auth-brand">
         <span className="auth-brand-mark" aria-hidden>
@@ -564,12 +585,38 @@ export function ProfileScreen(props: {
       </header>
 
       <div className="auth-panel">
+        <div
+          className="auth-mode-switch"
+          role="tablist"
+          aria-label="Choose between signing in and creating an account"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={!registering}
+            className={`auth-mode-tab${!registering ? ' auth-mode-tab-active' : ''}`}
+            onClick={() => switchMode('login')}
+          >
+            Sign in
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={registering}
+            className={`auth-mode-tab${registering ? ' auth-mode-tab-active' : ''}`}
+            onClick={() => switchMode('register')}
+          >
+            Create account
+          </button>
+        </div>
+
         <div className="auth-intro">
-          <h1>{registering ? 'Create your account' : 'Welcome back'}</h1>
+          <p className="auth-kicker">{registering ? 'Join NearbyOrders' : 'Welcome back'}</p>
+          <h1>{registering ? 'Create your account' : 'Sign in to continue'}</h1>
           <p className="auth-lede">
             {registering
-              ? 'Join as a customer or list your business. It takes less than a minute.'
-              : 'Sign in to book services and order from local businesses.'}
+              ? 'One account for discovering local businesses, booking services, and placing orders.'
+              : 'Pick up where you left off — your orders, bookings, and saved places are here.'}
           </p>
         </div>
 
@@ -585,6 +632,7 @@ export function ProfileScreen(props: {
               <input
                 type="email"
                 inputMode="email"
+                name="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 onBlur={() => setTouched(true)}
@@ -597,14 +645,18 @@ export function ProfileScreen(props: {
             </AuthInput>
           </Field>
 
-          <Field label="Password" hint={passwordMessage ?? undefined}>
+          <Field
+            label="Password"
+            hint={passwordMessage ?? (registering ? 'Use at least 12 characters.' : undefined)}
+          >
             <AuthInput icon={<LockIcon size={18} />} invalid={Boolean(passwordMessage)}>
               <PasswordInput
                 value={password}
                 onChange={setPassword}
+                name={registering ? 'new-password' : 'current-password'}
                 autoComplete={registering ? 'new-password' : 'current-password'}
                 invalid={Boolean(passwordMessage)}
-                placeholder="Enter your password"
+                placeholder={registering ? 'At least 12 characters' : 'Enter your password'}
                 label="Password"
               />
             </AuthInput>
@@ -617,9 +669,10 @@ export function ProfileScreen(props: {
                   <PasswordInput
                     value={confirm}
                     onChange={setConfirm}
+                    name="new-password"
                     autoComplete="new-password"
                     invalid={Boolean(confirmMessage)}
-                    placeholder="Confirm your password"
+                    placeholder="Repeat your password"
                     label="Confirm password"
                   />
                 </AuthInput>
@@ -635,7 +688,8 @@ export function ProfileScreen(props: {
                     className={`role-seg${role === 'CUSTOMER' ? ' role-seg-active' : ''}`}
                     onClick={() => setRole('CUSTOMER')}
                   >
-                    Customer
+                    <span className="role-seg-name">Customer</span>
+                    <span className="role-seg-desc">Discover & order</span>
                   </button>
                   <button
                     type="button"
@@ -644,11 +698,19 @@ export function ProfileScreen(props: {
                     className={`role-seg${role === 'BUSINESS_OWNER' ? ' role-seg-active' : ''}`}
                     onClick={() => setRole('BUSINESS_OWNER')}
                   >
-                    Business owner
+                    <span className="role-seg-name">Business owner</span>
+                    <span className="role-seg-desc">List & manage</span>
                   </button>
                 </div>
                 <p className="hint">{roleCopy(role)}</p>
               </fieldset>
+
+              <label className="agree-row">
+                <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
+                <span>
+                  I agree to the <b>Terms of Service</b> and <b>Privacy Policy</b>
+                </span>
+              </label>
             </>
           ) : (
             <div className="auth-row">
@@ -670,16 +732,22 @@ export function ProfileScreen(props: {
           <Button full type="submit" disabled={!canSubmit}>
             {busy ? 'Please wait…' : registering ? 'Create account' : 'Sign in'}
           </Button>
-
-          {registering ? (
-            <label className="agree-row">
-              <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
-              <span>
-                I agree to the <b>Terms of Service</b> and <b>Privacy Policy</b>
-              </span>
-            </label>
-          ) : null}
         </form>
+
+        <ul className="auth-assurances" aria-label="Why create an account">
+          <li>
+            <CheckIcon size={15} />
+            <span>Real local businesses near you</span>
+          </li>
+          <li>
+            <CheckIcon size={15} />
+            <span>Orders and bookings in one place</span>
+          </li>
+          <li>
+            <CheckIcon size={15} />
+            <span>Free for customers</span>
+          </li>
+        </ul>
 
         <p className="auth-switch">
           {registering ? 'Already have an account? ' : 'New here? '}
