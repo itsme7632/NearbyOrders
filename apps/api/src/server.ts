@@ -109,7 +109,15 @@ export async function buildApp(): Promise<FastifyInstance> {
   const authRateMax = Number(process.env.AUTH_RATE_LIMIT_MAX ?? 10);
 
   await app.register(helmet);
-  await app.register(cors, { origin: env.cors.split(',') });
+  // The API serves GET/POST/PUT/PATCH/DELETE routes (e.g. PATCH
+  // /api/v1/auth/profile); the CORS preflight must advertise all of them or
+  // WebView/browser clients cannot call mutating endpoints cross-origin —
+  // the request is blocked before it reaches the route and surfaces as a
+  // network error. @fastify/cors defaults to GET,HEAD,POST only.
+  await app.register(cors, {
+    origin: env.cors.split(','),
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+  });
   await app.register(rateLimit, { max: rateMax, timeWindow: '1 minute' });
   await app.register(jwt, { secret: env.access });
   await app.register(multipart, {

@@ -106,12 +106,17 @@ body { margin: 0; }
 /* Systematic safe-area handling: every screen inherits the device's top and
    bottom insets from `main`, so no content ever sits under the Android
    status bar or the system gesture bar. Screens opt out only for deliberate
-   full-bleed surfaces (which then add the inset back to their own padding). */
+   full-bleed surfaces (which then add the inset back to their own padding).
+   Inset source is a fallback chain: on Android the bundled Capacitor
+   SystemBars plugin injects the REAL native inset as --safe-area-inset-*
+   (the WebView's env(safe-area-inset-*) is 0 there — Chromium only maps
+   display cutouts, not the status bar — which is why a bare env() left the
+   header under the status bar); on iOS and web the env() fallback applies. */
 #root { min-height: 100dvh; }
 
 main {
   min-height: 100dvh;
-  padding: calc(16px + env(safe-area-inset-top)) clamp(14px, 4vw, 20px) calc(96px + env(safe-area-inset-bottom));
+  padding: calc(16px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px))) clamp(14px, 4vw, 20px) calc(96px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
   max-width: 640px;
   margin: 0 auto;
   width: 100%;
@@ -203,7 +208,7 @@ nav {
   background: white;
   display: flex;
   justify-content: space-around;
-  padding: 12px 8px calc(12px + env(safe-area-inset-bottom));
+  padding: 12px 8px calc(12px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
   box-shadow: 0 -3px 14px rgba(28, 25, 23, 0.07);
 }
 nav button {
@@ -1944,8 +1949,8 @@ input[aria-invalid='true'] { border-color: #b91c1c; }
   gap: 8px;
   background: var(--navy);
   color: #fff;
-  margin: calc(-1 * (16px + env(safe-area-inset-top))) calc(-1 * clamp(14px, 4vw, 20px)) 0;
-  padding: calc(12px + env(safe-area-inset-top)) clamp(14px, 4vw, 20px) 12px;
+  margin: calc(-1 * (16px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)))) calc(-1 * clamp(14px, 4vw, 20px)) 0;
+  padding: calc(12px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px))) clamp(14px, 4vw, 20px) 12px;
 }
 .app-header-v3 .logo { color: #fff; }
 .app-header-v3 .bell-btn { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.18); color: #fff; }
@@ -2483,7 +2488,7 @@ nav.nav-v3 {
   background: var(--card);
   border-top: 1px solid var(--border);
   box-shadow: 0 -6px 20px rgba(17, 24, 39, 0.06);
-  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  padding: 8px 8px calc(8px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
 }
 nav.nav-v3 .nav-item {
   color: var(--muted);
@@ -2572,7 +2577,7 @@ nav.business-nav,
 nav.business-nav-v3 {
   left: 10px;
   right: 10px;
-  bottom: calc(8px + env(safe-area-inset-bottom));
+  bottom: calc(8px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
   border-radius: 22px;
   border: 1px solid var(--border);
   background: var(--nav-surface);
@@ -2778,9 +2783,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .app-header-v3 {
   background: linear-gradient(160deg, var(--brand-strong) 0%, var(--brand-pressed) 70%);
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-  padding: calc(12px + env(safe-area-inset-top)) 14px 12px;
+  padding: calc(12px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px))) 14px 12px;
   color: #fff;
-  margin: calc(-1 * (16px + env(safe-area-inset-top))) calc(-1 * clamp(14px, 4vw, 20px)) 6px;
+  margin: calc(-1 * (16px + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)))) calc(-1 * clamp(14px, 4vw, 20px)) 6px;
 }
 .detail-hero-media,
 .detail-hero-media-v3 {
@@ -2857,7 +2862,7 @@ nav.business-nav-v3 {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(8px + env(safe-area-inset-bottom));
+  bottom: calc(8px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
   width: min(460px, calc(100% - 20px));
   border: 1px solid var(--border);
   border-radius: 18px;
@@ -3888,11 +3893,11 @@ nav.nav-v3, nav.business-nav-v3 {
   margin: 0 auto;
   width: 100%;
   padding-top: 10px;
-  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  padding-bottom: calc(24px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
   overflow-x: clip;
 }
 @media (min-width: 480px) {
-  .auth-screen { min-height: calc(100dvh - env(safe-area-inset-top) - 40px); }
+  .auth-screen { min-height: calc(100dvh - var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) - 40px); }
 }
 
 /* Panel: a quiet card that groups the task — flat warm surface, single
@@ -4243,7 +4248,7 @@ nav.nav-v3, nav.business-nav-v3 {
   overflow: hidden;
   box-shadow: var(--shadow-lg);
   animation: sheet-up 0.22s ease;
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
 }
 .sheet-header {
   display: flex;
@@ -4360,7 +4365,7 @@ nav.nav-v3, nav.business-nav-v3 {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(96px + env(safe-area-inset-bottom));
+  bottom: calc(96px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
   z-index: 80;
   display: flex;
   flex-direction: column;
@@ -4432,7 +4437,7 @@ nav.nav-v3, nav.business-nav-v3 {
 
 /* Bottom clearance so the last section never hides under the bottom nav /
    floating CartPill region; safe-area aware. */
-.home-screen { padding-bottom: calc(28px + env(safe-area-inset-bottom)); }
+.home-screen { padding-bottom: calc(28px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))); }
 
 /* Location context chip is a real button (opt-in nearby); keep it visually
    quiet so it reads as context, not a CTA. */

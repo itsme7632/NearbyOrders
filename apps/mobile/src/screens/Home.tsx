@@ -15,7 +15,7 @@ import {
   type MyProfile,
   type Order,
 } from '../api.js';
-import { formatDistanceKm, locationOutcomeHint, requestCustomerLocation } from '../location.js';
+import { formatDistanceKm, isDeniedOutcome, locationOutcomeHint, requestCustomerLocation } from '../location.js';
 import { useAsyncData } from '../hooks.js';
 import { BusinessRow, EmptyState, ErrorState, Money, RatingChip, SectionHeader } from '../components/ui.js';
 import { BookingStatusBadge } from './Bookings.js';
@@ -188,11 +188,11 @@ export function HomeScreen(props: {
           setLocNotice(null);
           setLocDenied(false);
           setLocDismissed(false);
-        } else if (outcome.status === 'denied') {
+        } else if (isDeniedOutcome(outcome)) {
           // Denied is sticky but retryable: the chip stays tappable so the
-          // customer can retry after enabling permission in system settings.
-          // A calm, dismissible card explains what happened — browsing and
-          // search keep working either way.
+          // customer can retry after enabling permission in system settings
+          // (permanently-denied says so explicitly). A calm, dismissible card
+          // explains what happened — browsing and search keep working either way.
           setCoords(null);
           setLocNotice(locationOutcomeHint(outcome));
           setLocDenied(true);

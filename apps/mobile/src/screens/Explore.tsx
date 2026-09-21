@@ -12,7 +12,7 @@ import {
   type ExploreFilters,
 } from '../components/ExploreFilters.js';
 import { ExploreIcon, PinIcon } from '../components/icons.js';
-import { requestCustomerLocation, locationOutcomeHint, type LocationOutcome } from '../location.js';
+import { requestCustomerLocation, locationOutcomeHint, isDeniedOutcome, type LocationOutcome } from '../location.js';
 import { DEFAULT_RADIUS_KM, RADIUS_OPTIONS_KM } from '@nearbyorders/shared';
 import { useMapProvider } from '../maps/useMapProvider.js';
 import { ExploreMapView } from './ExploreMapView.js';
@@ -102,7 +102,7 @@ export function ExploreScreen(props: {
           setRadiusKm(DEFAULT_RADIUS_KM);
           setMode('nearby');
           setLocDenied(false);
-        } else if (outcome.status === 'denied') {
+        } else if (isDeniedOutcome(outcome)) {
           // Denied stays non-blocking: the full list keeps working and a calm
           // card explains the situation with a retry and a dismiss path.
           setLocNote(locationOutcomeHint(outcome));
