@@ -1,11 +1,32 @@
 import { useState } from 'react';
-import { getSession, listBusinesses, listCategories, whoami, type Business, type Category, type MyProfile } from '../api.js';
+import {
+  getSession,
+  listBusinesses,
+  listCategories,
+  listFavorites,
+  listMyBookings,
+  listMyOrders,
+  listNearbyBusinesses,
+  whoami,
+  type Booking,
+  type Business,
+  type Category,
+  type FavoriteEntry,
+  type MyProfile,
+  type Order,
+} from '../api.js';
+import { formatDistanceKm, locationOutcomeHint, requestCustomerLocation } from '../location.js';
 import { useAsyncData } from '../hooks.js';
-import { BusinessRow, EmptyState, ErrorState, RatingChip, SectionHeader } from '../components/ui.js';
-import { BookingsIcon, ExploreIcon, HomeIcon, OrdersIcon, PinIcon, ProfileIcon, StoreIcon } from '../components/icons.js';
+import { BusinessRow, EmptyState, ErrorState, Money, RatingChip, SectionHeader } from '../components/ui.js';
+import { BookingStatusBadge } from './Bookings.js';
+import { orderLabel } from './Orders.js';
+import { BookingsIcon, ExploreIcon, HeartIcon, HomeIcon, OrdersIcon, PinIcon, ProfileIcon, StoreIcon } from '../components/icons.js';
 
 /** Primary categories shown on Home; the rest live in Explore behind "See all". */
 const HOME_CATEGORY_LIMIT = 8;
+
+/** Radius used for the opt-in nearby feed — tight enough to feel local. */
+const NEARBY_RADIUS_KM = 10;
 
 /** Category name → icon glyph. Unknown categories get the generic storefront. */
 const CATEGORY_ICONS: Record<string, (size: number) => React.ReactNode> = {
@@ -58,19 +79,128 @@ function dominantPlace(businesses: Business[]): string | null {
   return best;
 }
 
+/** Order statuses that represent work still in flight for the customer. */
+const ACTIVE_ORDER_STATUSES: ReadonlySet<Order['status']> = new Set(['PENDING', 'ACCEPTED', 'PREPARING', 'READY']);
+
+type Coords = { lat: number; lng: number };
+
+/**
+ * One subtle, data-driven contextual section — at most one renders. Priority:
+ * an in-flight order beats an upcoming booking beats a reorder prompt beats
+ * saved places. Everything comes from real customer data; nothing is faked.
+ */
+type HomeContext =
+  | { kind: 'order'; order: Order }
+  | { kind: 'booking'; booking: Booking }
+  | { kind: 'reorder'; order: Order }
+  | { kind: 'saved'; favorites: FavoriteEntry[] };
+
+function pickContext(orders: Order[], bookings: Booking[], favorites: FavoriteEntry[]): HomeContext | null {
+  const byCreatedDesc = (a: { createdAt: string }, b: { createdAt: string }) =>
+    b.createdAt.localeCompare(a.createdAt);
+  const active = orders.filter((o) => ACTIVE_ORDER_STATUSES.has(o.status)).sort(byCreatedDesc)[0];
+  if (active) return { kind: 'order', order: active };
+
+  // bookingDate is an ISO calendar date (YYYY-MM-DD), so a lexicographic
+  // comparison against today is a correct chronological comparison.
+  const today = new Date().toISOString().slice(0, 10);
+  const upcoming = bookings
+    .filter((b) => (b.status === 'CONFIRMED' || b.status === 'PENDING') && b.bookingDate >= today)
+    .sort((a, b) => a.bookingDate.localeCompare(b.bookingDate) || a.startTime.localeCompare(b.startTime))[0];
+  if (upcoming) return { kind: 'booking', booking: upcoming };
+
+  const lastCompleted = orders.filter((o) => o.status === 'COMPLETED').sort(byCreatedDesc)[0];
+  if (lastCompleted) return { kind: 'reorder', order: lastCompleted };
+
+  if (favorites.length) return { kind: 'saved', favorites: favorites.slice(0, 3) };
+  return null;
+}
+
+function formatBookingWhen(booking: Booking): string {
+  try {
+    const [y, m, d] = booking.bookingDate.split('-').map(Number);
+    const date = new Date(y, (m ?? 1) - 1, d ?? 1);
+    const day = date.toLocaleDateString('en-PK', { weekday: 'short', day: 'numeric', month: 'short' });
+    return `${day} · ${booking.startTime}`;
+  } catch {
+    return `${booking.bookingDate} · ${booking.startTime}`;
+  }
+}
+
 export function HomeScreen(props: {
-  onSearch: (q: string) => void;
+  onOpenSearch: () => void;
   onOpenBusiness: (id: string) => void;
+  onOpenOrder: (id: string) => void;
+  onOpenBooking: (id: string) => void;
   onExploreCategory: (slug: string) => void;
   onSeeAllCategories: () => void;
 }) {
-  const [query, setQuery] = useState('');
   const categories = useAsyncData<Category[]>(() => listCategories(), []);
-  const businesses = useAsyncData<Business[]>(() => listBusinesses({ q: '', limit: 20 }), []);
   // Signed-in customers get a personal greeting; signed-out sessions skip the
   // profile fetch entirely. A profile failure degrades to the generic greeting.
   const signedIn = getSession() !== null;
-  const me = useAsyncData<MyProfile | null>(() => (signedIn ? whoami().catch(() => null) : Promise.resolve(null)), []);
+  const me = useAsyncData<MyProfile | null>(() => (signedIn ? whoami().catch(() => null) : Promise.resolve(null)), [signedIn]);
+
+  // Opt-in nearby mode: no permission prompt fires until the customer taps the
+  // location context. On grant the feed comes from the dedicated nearby
+  // endpoint with server-computed distances; every other state keeps the
+  // plain discovery feed so the app stays useful without location.
+  const [locating, setLocating] = useState(false);
+  const [coords, setCoords] = useState<Coords | null>(null);
+  const [locNotice, setLocNotice] = useState<string | null>(null);
+  const nearbyKey = coords ? `${coords.lat.toFixed(4)},${coords.lng.toFixed(4)}` : 'all';
+
+  const businesses = useAsyncData<Business[]>(async () => {
+    if (coords) {
+      return listNearbyBusinesses({ lat: coords.lat, lng: coords.lng, radiusKm: NEARBY_RADIUS_KM, limit: 20 });
+    }
+    return listBusinesses({ q: '', limit: 20 });
+  }, [nearbyKey]);
+
+  // Contextual section data: signed-in customers only, fetched in parallel.
+  // Each fetch degrades to an empty list so one failure never kills the card.
+  const contextData = useAsyncData<{ orders: Order[]; bookings: Booking[]; favorites: FavoriteEntry[] } | null>(
+    async () => {
+      if (!signedIn) return null;
+      const [orders, bookings, favorites] = await Promise.all([
+        listMyOrders().catch((): Order[] => []),
+        listMyBookings().catch((): Booking[] => []),
+        listFavorites().catch((): FavoriteEntry[] => []),
+      ]);
+      return { orders, bookings, favorites };
+    },
+    [signedIn],
+  );
+  const context = contextData.data ? pickContext(contextData.data.orders, contextData.data.bookings, contextData.data.favorites) : null;
+
+  const enableNearby = () => {
+    if (locating) return;
+    setLocating(true);
+    setLocNotice(null);
+    requestCustomerLocation()
+      .then((outcome) => {
+        if (outcome.status === 'granted') {
+          setCoords(outcome.coords);
+          setLocNotice(null);
+        } else if (outcome.status === 'denied') {
+          // Denied is sticky but retryable: the chip stays tappable so the
+          // customer can retry after enabling permission in system settings.
+          setCoords(null);
+          setLocNotice(locationOutcomeHint(outcome));
+        } else {
+          // Unavailable/error: quietly keep the plain feed — the app must not
+          // pretend location exists.
+          setCoords(null);
+          setLocNotice(null);
+        }
+      })
+      .finally(() => setLocating(false));
+  };
+
+  const disableNearby = () => {
+    setCoords(null);
+    setLocNotice(null);
+  };
 
   const homeCategories = categories.data?.slice(0, HOME_CATEGORY_LIMIT) ?? [];
   const popular = businesses.data ?? [];
@@ -85,15 +215,34 @@ export function HomeScreen(props: {
   const feed = showOpenNow ? popular.filter((b) => b.isOpenNow !== true) : spotlightRest;
   const place = dominantPlace(popular);
   const firstName = me.data?.firstName?.trim() || null;
+  const nearby = coords !== null;
 
   return (
-    <div className="screen">
-      {/* Location context: where the customer is, answered by real data. */}
-      <div className="home-context" aria-label="Location context">
-        <span className="home-context-place">
-          <PinIcon size={13} />
-          {place ? `Around ${place}` : 'Your neighborhood'}
-        </span>
+    <div className="screen home-screen">
+      {/* Location context: tappable. Idle shows the honest area summary;
+          granted switches the feed to real nearby results with distances. */}
+      <div className="home-context" aria-label="Location context" aria-live="polite">
+        {locating ? (
+          <span className="home-context-place" aria-label="Locating">
+            <PinIcon size={13} />
+            Locating…
+          </span>
+        ) : nearby ? (
+          <button type="button" className="home-context-place home-context-toggle" onClick={disableNearby} aria-label="Nearby mode on. Tap to show all businesses.">
+            <PinIcon size={13} />
+            Near you
+          </button>
+        ) : locNotice ? (
+          <button type="button" className="home-context-place home-context-toggle" onClick={enableNearby} aria-label="Location is off. Tap to try again.">
+            <PinIcon size={13} />
+            Location off — tap to retry
+          </button>
+        ) : (
+          <button type="button" className="home-context-place home-context-toggle" onClick={enableNearby} aria-label="Show businesses near your location">
+            <PinIcon size={13} />
+            {place ? `Around ${place}` : 'Your neighborhood'}
+          </button>
+        )}
         {showOpenNow ? (
           <span className="home-context-open">
             {openNow.length} open now
@@ -101,7 +250,9 @@ export function HomeScreen(props: {
         ) : null}
       </div>
 
-      {/* Hero: editorial greeting fused with the primary search control. */}
+      {/* Hero: editorial greeting fused with the primary search entry. The
+          entry is a single tappable control that opens the real Search
+          screen — Home implements no search of its own. */}
       <section className="home-hero" aria-label="Welcome">
         <p className="home-hero-kicker">
           {daypartGreeting()}
@@ -110,27 +261,20 @@ export function HomeScreen(props: {
         <h1 className="home-hero-title">
           Find the best <em>near you</em>
         </h1>
-        <form
-          role="search"
-          className="home-hero-search"
-          onSubmit={(e) => {
-            e.preventDefault();
-            props.onSearch(query);
-          }}
+        <button
+          type="button"
+          className="home-hero-search home-hero-search-entry"
+          onClick={props.onOpenSearch}
+          aria-label="Search businesses, services and products"
         >
           <span className="home-hero-search-icon" aria-hidden>
             <ExploreIcon size={18} />
           </span>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search food, services, shops…"
-            aria-label="Search businesses"
-          />
-          <button type="submit" className="search-go" aria-label="Search">
+          <span className="home-hero-search-placeholder">Search food, services, shops…</span>
+          <span className="search-go" aria-hidden>
             <ExploreIcon size={16} />
-          </button>
-        </form>
+          </span>
+        </button>
       </section>
 
       {/* Categories: one horizontal rail — high density, low bulk. */}
@@ -138,9 +282,11 @@ export function HomeScreen(props: {
         <SectionHeader
           title="Browse categories"
           action={
-            <button type="button" className="see-all-link" onClick={props.onSeeAllCategories}>
-              See all
-            </button>
+            categories.data && categories.data.length > HOME_CATEGORY_LIMIT ? (
+              <button type="button" className="see-all-link" onClick={props.onSeeAllCategories}>
+                See all
+              </button>
+            ) : null
           }
         />
         {categories.loading ? (
@@ -168,12 +314,19 @@ export function HomeScreen(props: {
         )}
       </section>
 
+      {/* Contextual card: at most one, only from real customer data. */}
+      {context ? (
+        <section aria-label="For you" className="rail-section">
+          <ContextCard context={context} onOpenBusiness={props.onOpenBusiness} onOpenOrder={props.onOpenOrder} onOpenBooking={props.onOpenBooking} />
+        </section>
+      ) : null}
+
       {/* Discovery feed: an actionable "open now" lead when the server provides
           open/closed status, followed by the remaining places as a scannable
           editorial list. Real data only. */}
       {businesses.loading ? (
         <section aria-label="Businesses" className="rail-section">
-          <SectionHeader title="Popular near you" />
+          <SectionHeader title={nearby ? 'Near you' : 'Popular near you'} />
           <div className="skeleton-card" style={{ padding: 0, overflow: 'hidden' }} aria-hidden>
             <div className="skeleton" style={{ height: 130, borderRadius: 0 }} />
             <div style={{ padding: 12 }}>
@@ -186,7 +339,7 @@ export function HomeScreen(props: {
         <ErrorState message={businesses.error} onRetry={businesses.reload} />
       ) : !popular.length ? (
         <section aria-label="Businesses" className="rail-section">
-          <SectionHeader title="Popular near you" />
+          <SectionHeader title={nearby ? 'Near you' : 'Popular near you'} />
           <EmptyState
             icon={<StoreIcon size={28} />}
             title="No businesses yet"
@@ -197,7 +350,7 @@ export function HomeScreen(props: {
         <>
           <section aria-label={showOpenNow ? 'Open now' : 'Featured business'} className="rail-section">
             <SectionHeader
-              title={showOpenNow ? 'Open now near you' : 'Popular near you'}
+              title={showOpenNow ? 'Open now near you' : nearby ? 'Near you' : 'Popular near you'}
               action={
                 <button type="button" className="see-all-link" onClick={props.onSeeAllCategories}>
                   See all
@@ -251,6 +404,112 @@ export function HomeScreen(props: {
   );
 }
 
+/** The single contextual card, chosen by pickContext. Subtle, data-driven. */
+function ContextCard(props: {
+  context: HomeContext;
+  onOpenBusiness: (id: string) => void;
+  onOpenOrder: (id: string) => void;
+  onOpenBooking: (id: string) => void;
+}) {
+  const { context } = props;
+  if (context.kind === 'order') {
+    const o = context.order;
+    const label = orderLabel(o.status);
+    const itemCount = o.items.reduce((sum, i) => sum + i.quantity, 0);
+    return (
+      <button type="button" className="home-context-card" onClick={() => props.onOpenOrder(o.id)}>
+        <span className="home-context-card-icon" aria-hidden>
+          <OrdersIcon size={20} />
+        </span>
+        <span className="home-context-card-body">
+          <span className="home-context-card-kicker">
+            Your order <span className={`badge ${label.cls}`}>{label.text}</span>
+          </span>
+          <span className="home-context-card-title">{o.business.name}</span>
+          <span className="home-context-card-sub">
+            {itemCount} item{itemCount === 1 ? '' : 's'}
+            {o.totalMinor !== undefined ? (
+              <>
+                {' · '}
+                <Money minor={o.totalMinor} currency={o.currency} />
+              </>
+            ) : null}
+          </span>
+        </span>
+        <span className="home-context-card-cta" aria-hidden>
+          View ›
+        </span>
+      </button>
+    );
+  }
+  if (context.kind === 'booking') {
+    const b = context.booking;
+    return (
+      <button type="button" className="home-context-card" onClick={() => props.onOpenBooking(b.id)}>
+        <span className="home-context-card-icon" aria-hidden>
+          <BookingsIcon size={20} />
+        </span>
+        <span className="home-context-card-body">
+          <span className="home-context-card-kicker">
+            Upcoming booking <BookingStatusBadge status={b.status} />
+          </span>
+          <span className="home-context-card-title">{b.serviceName ?? 'Booking'} · {b.businessName}</span>
+          <span className="home-context-card-sub">{formatBookingWhen(b)}</span>
+        </span>
+        <span className="home-context-card-cta" aria-hidden>
+          View ›
+        </span>
+      </button>
+    );
+  }
+  if (context.kind === 'reorder') {
+    const o = context.order;
+    return (
+      <button type="button" className="home-context-card" onClick={() => props.onOpenBusiness(o.business.id)}>
+        <span className="home-context-card-icon" aria-hidden>
+          <OrdersIcon size={20} />
+        </span>
+        <span className="home-context-card-body">
+          <span className="home-context-card-kicker">Order again</span>
+          <span className="home-context-card-title">{o.business.name}</span>
+          <span className="home-context-card-sub">Your favorites are one tap away</span>
+        </span>
+        <span className="home-context-card-cta" aria-hidden>
+          Reorder ›
+        </span>
+      </button>
+    );
+  }
+  return (
+    <section aria-label="Saved places" className="home-saved">
+      <SectionHeader title="Your saved places" />
+      <div className="biz-rows home-feed-rows">
+        {context.favorites.map((f) => (
+          <button type="button" key={f.business.id} className="biz-row" onClick={() => props.onOpenBusiness(f.business.id)}>
+            <span className="biz-row-media" aria-hidden>
+              {f.business.imageUrl ? (
+                <img src={f.business.imageUrl} alt="" loading="lazy" />
+              ) : (
+                <span className="pop-card-initial">{f.business.name[0]?.toUpperCase() ?? '?'}</span>
+              )}
+            </span>
+            <span className="biz-row-main">
+              <span className="biz-row-name">{f.business.name}</span>
+              <span className="biz-row-meta">
+                <RatingChip average={f.business.averageRating} count={f.business.reviewCount} />
+                {f.business.isVerified ? <HeartIcon size={13} /> : null}
+              </span>
+            </span>
+            <span className="biz-row-chevron" aria-hidden>
+              ›
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 /**
  * Spotlight card: full-width editorial layout — media left (real image or
  * branded monogram), identity and trust signals right, open state always
@@ -260,6 +519,7 @@ function SpotlightCard(props: { business: Business; onOpen: () => void }) {
   const b = props.business;
   const category = b.categories[0]?.name;
   const place = [b.locality, b.city].filter(Boolean).join(', ');
+  const distance = b.distanceKm !== undefined && b.distanceKm !== null ? formatDistanceKm(b.distanceKm) : null;
   return (
     <button type="button" className="spotlight-card" onClick={props.onOpen}>
       <span className="spotlight-media">
@@ -279,7 +539,12 @@ function SpotlightCard(props: { business: Business; onOpen: () => void }) {
         <span className="spotlight-name">{b.name}</span>
         <RatingChip average={b.averageRating} count={b.reviewCount ?? undefined} />
         {b.description ? <span className="spotlight-desc">{b.description}</span> : null}
-        {place ? <span className="spotlight-place">📍 {place}</span> : null}
+        {distance || place ? (
+          <span className="spotlight-place">
+            {distance ? `${distance} · ` : ''}
+            {place}
+          </span>
+        ) : null}
       </span>
     </button>
   );

@@ -180,12 +180,6 @@ export function App() {
     push('/');
   };
 
-  /** Phase 14: Home's search submits to the unified search screen. */
-  const goSearch = (query: string) => {
-    if (!query.trim()) return;
-    push(`/search?q=${encodeURIComponent(query.trim())}`);
-  };
-
   /** Leaves Business mode and returns to the customer experience. */
   const switchToCustomer = () => {
     setAppMode('CUSTOMER');
@@ -348,8 +342,10 @@ export function App() {
   } else if (tab === 'Home') {
     content = (
       <HomeScreen
-        onSearch={goSearch}
+        onOpenSearch={() => push('/search')}
         onOpenBusiness={openBusiness}
+        onOpenOrder={(id) => push(`/order/${id}`)}
+        onOpenBooking={(id) => push(`/booking/${id}`)}
         onExploreCategory={(category) => goExplore({ category })}
         onSeeAllCategories={() => goExplore({})}
       />

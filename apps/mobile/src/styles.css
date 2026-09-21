@@ -4279,3 +4279,107 @@ nav.nav-v3, nav.business-nav-v3 {
     scroll-behavior: auto !important;
   }
 }
+
+/* ---- Phase 4: Home refinement ---- */
+
+/* Bottom clearance so the last section never hides under the bottom nav /
+   floating CartPill region; safe-area aware. */
+.home-screen { padding-bottom: calc(28px + env(safe-area-inset-bottom)); }
+
+/* Location context chip is a real button (opt-in nearby); keep it visually
+   quiet so it reads as context, not a CTA. */
+.home-context-toggle {
+  font: inherit;
+  background: none;
+  border: 0;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+.home-context-toggle:active { background: var(--light); }
+
+/* Hero search entry: opens the real Search screen. Same visual weight as the
+   old field, but honest — it never pretends to search inline. */
+.home-hero-search-entry {
+  width: 100%;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.home-hero-search-entry:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.home-hero-search-placeholder {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home-hero-search-entry .search-go {
+  flex: 0 0 auto;
+  background: var(--brand);
+  color: #fff;
+  border-radius: 999px;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Contextual card: one subtle, data-driven card (active order, upcoming
+   booking, reorder prompt). Editorial, compact, tappable. */
+.home-context-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--brand);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.home-context-card:active { transform: scale(0.985); }
+.home-context-card-icon {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--light);
+  color: var(--brand-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.home-context-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.home-context-card-kicker {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.home-context-card-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home-context-card-sub { font-size: 12.5px; color: var(--ink-soft); }
+.home-context-card-cta { flex: 0 0 auto; font-size: 13px; font-weight: 800; color: var(--brand-strong); }
+
+/* Saved-places contextual rows reuse the standard business-row treatment. */
+.home-saved .home-feed-rows { margin-top: 0; }
