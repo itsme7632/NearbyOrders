@@ -1,7 +1,20 @@
 import type { SearchPage } from '@nearbyorders/shared';
 
-/** Same-origin API base: the Vite dev proxy and the Capacitor https scheme both resolve this. */
-export const API_BASE = '/api/v1';
+/**
+ * API base URL.
+ *
+ * Default is the same-origin relative path '/api/v1', which works for web
+ * (Vite dev proxy) builds. For a Capacitor Android build installed on a
+ * physical device there is no same-origin API, so bake in an absolute URL at
+ * build time via the VITE_API_BASE_URL env var, e.g.:
+ *
+ *   VITE_API_BASE_URL=https://api.example.com/api/v1 pnpm build
+ *
+ * The value must include the full path prefix (…/api/v1); trailing slashes
+ * are stripped. Never point a device build at localhost or 127.0.0.1.
+ */
+const configuredBase = import.meta.env.VITE_API_BASE_URL as string | undefined;
+export const API_BASE = configuredBase?.replace(/\/+$/, '') || '/api/v1';
 
 export class ApiError extends Error {
   constructor(
