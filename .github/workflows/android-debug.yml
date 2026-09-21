@@ -61,7 +61,7 @@ jobs:
         run: pnpm exec cap sync android
 
       - name: Sync NearbyOrders Android brand assets
-        run: pnpm android:brand
+        run: pnpm --filter @nearbyorders/mobile run android:brand
 
       - name: Enable cleartext HTTP for debug build
         working-directory: apps/mobile
