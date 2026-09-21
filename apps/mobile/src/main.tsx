@@ -48,7 +48,7 @@ initModeSessionSync();
 // Android status-bar guarantee: measure the real native inset (WindowInsets)
 // as early as possible so `--native-statusbar-height` is available to the
 // `--sat` CSS token before first paint. Fire-and-forget and non-fatal by
-// design — web/iOS skip it, and the SystemBars/env() fallbacks still apply.
+// design — web/iOS skip it, and the env() fallbacks still apply.
 void applyNativeStatusBarInset();
 
 /** Exported (besides self-mounting below) so tests can render the full app shell. */

@@ -119,7 +119,9 @@ describe('safe-area CSS contract (styles.css)', () => {
   });
 
   it('applies --sat to the root main container padding', () => {
-    const mainRule = css.match(/main\s*{[^}]*}/);
+    // Strip comments: doc prose quotes `main { padding: ... }` snippets.
+    const cssNoComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    const mainRule = cssNoComments.match(/main\s*{[^}]*}/);
     expect(mainRule).not.toBeNull();
     expect(mainRule?.[0]).toContain('var(--sat)');
   });

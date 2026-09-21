@@ -1,15 +1,16 @@
 /**
  * Android status-bar inset guarantee.
  *
- * Root cause it addresses: Capacitor 8's built-in SystemBars plugin is
- * supposed to inject the real native inset as `--safe-area-inset-top`, but in
- * its non-passthrough path (WebView below v140, or the viewport-fit=cover
- * DOM handshake not completing) it explicitly zeroes the WindowInsets
- * delivered to the WebView — so BOTH the injected `--safe-area-inset-top`
- * and Chromium's `env(safe-area-inset-top)` are 0 — while its compensating
- * native parent-view padding only runs on Android 15+. Net effect on
- * affected devices: the CSS top inset is 0 on every screen and the status
- * bar covers the app header/content.
+ * Verified chain (2026-09-22, against the installed @capacitor 8.5.1 tree):
+ * there is NO SystemBars plugin in this project — no such package exists in
+ * node_modules, `insetsHandling` appears nowhere in the Capacitor sources,
+ * and `cap sync` registers only geolocation/push-notifications/status-bar —
+ * so nothing ever injects `--safe-area-inset-top`, and on affected Android
+ * devices Chromium's `env(safe-area-inset-top)` reports 0 even with
+ * `viewport-fit=cover`. The only reliable measurement is
+ * `StatusBar.getInfo()`, which is WindowInsets-based
+ * (`getCurrentWindowMetrics().getWindowInsets()` on API 30+) and therefore
+ * correct on every Android version and WebView version.
  *
  * The classic alternative, `StatusBar.setOverlaysWebView({ overlay: false })`,
  * cannot fix this: it toggles deprecated systemUiVisibility flags that are
@@ -17,18 +18,19 @@
  * Android 15+").
  *
  * What this module does instead: read the REAL status-bar height through
- * `StatusBar.getInfo()`, which is WindowInsets-based
- * (`getCurrentWindowMetrics().getWindowInsets()` on API 30+) and therefore
- * reliable on every Android version and WebView version, and expose it as
- * the `--native-statusbar-height` CSS variable. styles.css consumes it via
- * the `--sat` token:
+ * `StatusBar.getInfo()` and expose it as the `--native-statusbar-height`
+ * CSS variable. styles.css consumes it via the `--sat` token:
  *
  *   --sat: max(var(--safe-area-inset-top, env(safe-area-inset-top, 0px)),
  *              var(--native-statusbar-height, 0px));
  *
- * In modes where the SystemBars plugin works, max() is a no-op (both sides
- * agree); in the zeroed mode the native measurement supplies the inset.
- * iOS and web never set the variable, so their behavior is unchanged.
+ * max() keeps the sources from ever double-applying. iOS and web never set
+ * the variable, so their behavior is unchanged.
+ *
+ * The OTHER half of the guarantee lives in styles.css: every `main` padding
+ * rule (including later cascade overrides) must keep var(--sat) in its top
+ * component — a flat padding-top on a later rule silently discards the
+ * inset and was the actual cause of the status-bar overlap (2026-09-22).
  *
  * Never throws, never blocks rendering: call once at startup and forget.
  */
@@ -97,6 +99,6 @@ export const applyNativeStatusBarInset = async (deps: StatusBarDeps = {}): Promi
   try {
     document.documentElement.style.setProperty(NATIVE_STATUS_BAR_VAR, `${Math.round(height)}px`);
   } catch {
-    /* Non-fatal: the SystemBars/env() fallbacks still apply. */
+    /* Non-fatal: the env() fallbacks still apply. */
   }
 };

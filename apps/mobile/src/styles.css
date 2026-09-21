@@ -100,17 +100,17 @@
   background: var(--bg);
   /* --sat: the systematic Android TOP inset. max() of every source so the
      app always clears the status bar no matter which native path is active:
-     - --safe-area-inset-top: injected by Capacitor's SystemBars plugin from
-       the real WindowInsets (0 when the plugin zeroes insets in its
-       non-passthrough path — see statusBar.ts for why);
-     - env(safe-area-inset-top): iOS / web fallback (Chromium only maps
-       display cutouts, not the status bar, on some Android paths);
+     - --safe-area-inset-top: reserved for a native-injected value (no plugin
+       currently injects it — kept first so one can take precedence if added);
+     - env(safe-area-inset-top): iOS / web fallback (reports 0 on affected
+       Android devices even with viewport-fit=cover);
      - --native-statusbar-height: measured at startup via
        StatusBar.getInfo() (WindowInsets-based, reliable on every Android
        version/WebView version); only ever set on native Android, so iOS
        and web behavior is unchanged.
-     In modes where the plugin works, both sides agree and max() is a no-op —
-     it can never double-apply. */
+     On this project's devices the native measurement is the source that
+     actually clears the status bar; max() keeps every source from ever
+     double-applying. */
   --sat: max(var(--safe-area-inset-top, env(safe-area-inset-top, 0px)), var(--native-statusbar-height, 0px));
 }
 * { box-sizing: border-box; }
@@ -121,11 +121,15 @@ body { margin: 0; }
    bottom insets from `main`, so no content ever sits under the Android
    status bar or the system gesture bar. Screens opt out only for deliberate
    full-bleed surfaces (which then add the inset back to their own padding).
-   The top inset is the `--sat` token: max() of the SystemBars plugin's
-   injected --safe-area-inset-top, the env() fallback (iOS/web), and the
-   natively measured --native-statusbar-height (see statusBar.ts). The max()
-   guarantees the real inset wins even when the plugin zeroes its insets,
-   and is a no-op when all sources agree — so it can never double-apply. */
+   The top inset is the `--sat` token: max() of a reserved native-injected
+   --safe-area-inset-top, the env() fallback (iOS/web), and the natively
+   measured --native-statusbar-height (see statusBar.ts). The max()
+   guarantees the real inset wins and is a no-op when all sources agree —
+   so it can never double-apply.
+   CRITICAL: any later `main { padding: ... }` rule wins the cascade over the
+   base rule below (equal specificity). Every such override MUST keep
+   var(--sat) in its top component — a flat padding-top reintroduces the
+   status-bar overlap on all screens. */
 #root { min-height: 100dvh; }
 
 main {
@@ -1634,7 +1638,8 @@ button.hub-row:active { background: var(--bg); }
 .owner-biz-name { font-weight: 700; font-size: 15px; min-width: 0; overflow-wrap: anywhere; }
 
 @media (min-width: 480px) {
-  main { padding: 20px 20px 96px; }
+  /* Same cascade-warning as the base shell rule: preserve --sat. */
+  main { padding: calc(20px + var(--sat)) 20px 96px; }
   .form-grid { grid-template-columns: 1fr 1fr; gap: 0 10px; }
 }
 
@@ -2862,7 +2867,11 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
    ================================================================== */
 
 /* ---- Shell: tighter page rhythm ---- */
-main { padding: 12px clamp(14px, 4vw, 20px) 88px; }
+/* WARNING: this rule wins the cascade over the base `main` rule (equal
+   specificity, later in the file), so it MUST preserve the --sat top inset.
+   A flat padding-top here was the actual cause of the Android status bar
+   covering the app header: it silently discarded the systematic inset. */
+main { padding: calc(12px + var(--sat)) clamp(14px, 4vw, 20px) 88px; }
 .header-spacer { flex: 1 1 auto; }
 
 /* ---- Compact brand header ---- */
