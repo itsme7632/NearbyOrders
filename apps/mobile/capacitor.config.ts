@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'NearbyOrders',
   webDir: 'dist',
   server: {
-    androidScheme: 'https',
+    androidScheme: 'http',
   },
 };
 
