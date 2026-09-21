@@ -41,8 +41,15 @@ import {
 } from './screens/customer-experience.js';
 import { useUnreadNotifications } from './useUnreadNotifications.js';
 import { usePushRegistration } from './usePushRegistration.js';
+import { applyNativeStatusBarInset } from './statusBar.js';
 
 initModeSessionSync();
+
+// Android status-bar guarantee: measure the real native inset (WindowInsets)
+// as early as possible so `--native-statusbar-height` is available to the
+// `--sat` CSS token before first paint. Fire-and-forget and non-fatal by
+// design — web/iOS skip it, and the SystemBars/env() fallbacks still apply.
+void applyNativeStatusBarInset();
 
 /** Exported (besides self-mounting below) so tests can render the full app shell. */
 export function App() {
