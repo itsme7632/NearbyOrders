@@ -11,10 +11,11 @@
  *   SEED_DEMO_DATA=1 pnpm --filter @nearbyorders/api prisma:seed
  */
 import { PrismaClient } from '@prisma/client';
+import { pathToFileURL } from 'node:url';
 import argon2 from 'argon2';
 import { PLAN_CATALOG } from '../src/lib.js';
 
-const prisma = new PrismaClient();
+export const prisma = new PrismaClient();
 
 const CORE_CATEGORIES: { name: string; slug: string }[] = [
   { name: 'Food & Restaurants', slug: 'food-restaurants' },
@@ -276,10 +277,18 @@ async function main() {
   }
 }
 
-main()
-  .then(() => console.log('Seed complete.'))
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(() => prisma.$disconnect());
+// Only run the full seed when this file is the executed entry point
+// (`pnpm prisma:seed`). Importers (e.g. prisma/seed-categories.ts, which
+// reuses upsertCoreCategories for a production-safe categories-only run)
+// must NOT trigger the full seed — it prunes categories and creates
+// dev/test payment methods that must never touch production data.
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+  main()
+    .then(() => console.log('Seed complete.'))
+    .catch((e) => {
+      console.error(e);
+      process.exit(1);
+    })
+    .finally(() => prisma.$disconnect());
+}
+

@@ -140,6 +140,38 @@ main {
   width: 100%;
 }
 
+/* Edge-to-edge scroll clipping boundary. The app scrolls the DOCUMENT inside
+   an edge-to-edge WebView with a transparent Android status bar, so without
+   a real boundary every scrolled element — in-flow content and
+   `position: sticky; top: 0` chrome alike — renders underneath the system
+   status bar. The --sat top padding on `main` only offsets content at rest;
+   it cannot clip anything while scrolling.
+   This fixed, opaque gutter covers exactly the status-bar region (0..--sat)
+   with the app background, turning the inset into a protected/non-content
+   area: scrolled content slides underneath it and is visually clipped at the
+   system-bar boundary, like a normal Android app.
+   - position: fixed takes no layout space, so the at-rest top spacing from
+     main's padding is untouched: the inset can never double-apply.
+   - z-index 30 sits above sticky in-flow chrome (.tab-strip/.explore-top at
+     z-index 5) but below overlays (sheet backdrop 60, toasts 80, skip link
+     200), so dialogs and toasts still paint over it.
+   - pointer-events: none keeps the protected region non-interactive.
+   - On web --sat is 0 (the gutter collapses to nothing); on iOS it equals
+     the notch inset and paints the same background the root already shows.
+   CRITICAL: sticky chrome must stick BELOW this gutter (top: var(--sat)),
+   never at top: 0 — a top: 0 sticky bar would slide under the gutter and
+   have its upper band hidden behind it. */
+.statusbar-gutter {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--sat);
+  background: var(--bg);
+  z-index: 30;
+  pointer-events: none;
+}
+
 .app-header {
   display: flex;
   justify-content: space-between;
@@ -2368,7 +2400,9 @@ button.manage-row:active { background: var(--bg); }
 /* ---- Profile tabs (business profile content navigation) ---- */
 .tab-strip {
   position: sticky;
-  top: 0;
+  /* Stick below the protected status-bar gutter, never at the viewport top:
+     top: 0 would slide the bar under the gutter and hide its upper band. */
+  top: var(--sat);
   z-index: 5;
   display: flex;
   gap: 2px;
@@ -3181,7 +3215,9 @@ nav.business-nav-v3 .nav-item.active {
 /* ---- Explore: spatial layout ---- */
 .explore-top {
   position: sticky;
-  top: 0;
+  /* Stick below the protected status-bar gutter, never at the viewport top:
+     top: 0 would slide the bar under the gutter and hide its upper band. */
+  top: var(--sat);
   z-index: 5;
   background: var(--bg);
   margin: 0 calc(-1 * clamp(14px, 4vw, 20px));

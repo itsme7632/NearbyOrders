@@ -408,6 +408,12 @@ export function App() {
   return (
     <ToastProvider>
     <main className={authFlow ? 'auth-mode' : undefined}>
+      {/* Edge-to-edge scroll clipping boundary: fixed opaque gutter covering
+          exactly the Android status-bar region (0..--sat). Scrolled content
+          slides underneath it instead of rendering behind the system status
+          bar. position: fixed takes no layout space, so at-rest spacing is
+          untouched. See .statusbar-gutter in styles.css. */}
+      <div className="statusbar-gutter" aria-hidden="true" />
       {/* Phase 3I: keyboard / screen-reader users can jump past the header. */}
       {/* Skip link: jumps keyboard users past the header/nav to the main
           content. tabIndex={-1} lets the target receive programmatic focus so
