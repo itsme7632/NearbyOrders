@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import {
   getBusinessSubscription,
+  listSubscriptionPlans,
   startBusinessTrial,
   cancelBusinessSubscription,
   type Subscription,
+  type SubscriptionPlan,
 } from '../api.js';
 import { useAsyncData } from '../hooks.js';
-import { Button, ErrorState, Loading, Money } from '../components/ui.js';
+import { Button, EmptyState, ErrorState, Loading, Money } from '../components/ui.js';
 import { formatMoney } from '@nearbyorders/shared';
+import { CheckIcon, StarIcon } from '../components/icons.js';
 import { OwnerPayments } from './OwnerSubscriptionPayments.js';
 
 const SUBSCRIPTION_STATUS_LABEL: Record<Subscription['status'], string> = {
@@ -18,8 +21,29 @@ const SUBSCRIPTION_STATUS_LABEL: Record<Subscription['status'], string> = {
   SUSPENDED: 'Suspended',
 };
 
+/**
+ * What the single NearbyOrders Business plan actually includes. Derived only
+ * from the plan description stored in the backend ("appear in search, take
+ * bookings and orders, and manage your storefront") plus platform
+ * capabilities that genuinely exist (catalog showcase, customer reviews).
+ * Nothing is invented: there is no priority-support tier, no second plan.
+ */
+const PLAN_BENEFITS = [
+  'Get discovered by more customers',
+  'Accept bookings and orders',
+  'Showcase your services & products',
+  'Customer reviews and ratings',
+] as const;
+
+/**
+ * Business subscription as a professional pricing page: the trial hero, the
+ * one real plan with its honest benefits, the live subscription state, and
+ * the manual payment flow. There is exactly one backend plan
+ * (PLAN_CATALOG) — tiers are never invented here.
+ */
 export function OwnerSubscription(props: { businessId: string; businessName?: string }) {
   const subscription = useAsyncData<Subscription | null>(() => getBusinessSubscription(props.businessId), [props.businessId]);
+  const plans = useAsyncData<SubscriptionPlan[]>(() => listSubscriptionPlans(), []);
   const [busy, setBusy] = useState(false);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,86 +62,176 @@ export function OwnerSubscription(props: { businessId: string; businessName?: st
     }
   };
 
-  if (subscription.loading) return <Loading label="Loading subscription…" />;
+  if (subscription.loading || plans.loading) return <Loading label="Loading subscription…" />;
   if (subscription.error) return <ErrorState message={subscription.error} onRetry={subscription.reload} />;
+  if (plans.error) return <ErrorState message={plans.error} onRetry={plans.reload} />;
 
   const sub = subscription.data;
-  const plan = sub?.plan;
+  // The plan shown comes from the live subscription when one exists, else
+  // from the public plan catalog — the price is never hard-coded here.
+  const plan = sub?.plan ?? plans.data?.[0] ?? null;
+  // No subscription and no plan in the catalog: say so honestly instead of
+  // inventing trial terms or a price for the hero below.
+  if (!plan) {
+    return (
+      <EmptyState
+        icon={<StarIcon size={22} />}
+        title="No plans available right now"
+        body="Subscription plans couldn't be loaded. Pull to refresh or try again later — nothing has been invented here."
+        action={<Button onClick={() => { subscription.reload(); plans.reload(); }}>Retry</Button>}
+      />
+    );
+  }
   const isLive = sub?.status === 'TRIAL' || sub?.status === 'ACTIVE';
   const periodEnd = sub ? new Date(sub.currentPeriodEndAt).toLocaleDateString() : null;
-  const trialEnd = sub?.trialEndAt ? new Date(sub.trialEndAt).toLocaleDateString() : null;
+  const trialDaysLeft =
+    sub?.status === 'TRIAL' && sub.trialEndAt
+      ? Math.max(0, Math.ceil((new Date(sub.trialEndAt).getTime() - Date.now()) / 86_400_000))
+      : null;
 
   return (
-    <section className="card" aria-label="Subscription">
-      <h2>Subscription</h2>
+    <div>
       {error ? <ErrorState message={error} /> : null}
-      {!plan ? (
-        <>
-          <p className="muted">
-            NearbyOrders Business makes your business discoverable with bookings, orders and reviews.
-          </p>
-          <div className="sub-plan-head">
-            <span className="sub-plan-name">NearbyOrders Business</span>
-            <Money minor={299900} />
-            <span className="muted"> /month after a 30-day free trial</span>
-          </div>
-          <p className="hint">You have not started a trial yet. Your data stays intact either way.</p>
-          <Button full disabled={busy} onClick={() => act(() => startBusinessTrial(props.businessId))}>
-            {busy ? 'Starting…' : 'Start 30-day free trial'}
-          </Button>
-        </>
-      ) : (
-        <>
+
+      {/* Intro: what NearbyOrders Business is. */}
+      <section aria-label="About NearbyOrders Business">
+        <h2 className="sub-page-title">{plan.name}</h2>
+        <p className="muted" style={{ marginTop: 2 }}>
+          {plan.description ?? 'Get discovered, accept bookings and orders, and grow your local business.'}
+        </p>
+      </section>
+
+      {/* Trial hero: shown until the business is on a live plan. */}
+      {!isLive ? (
+        <section className="sub-trial-hero" aria-label="Free trial">
+          <span className="sub-trial-icon" aria-hidden>
+            <StarIcon size={22} />
+          </span>
+          <span className="sub-trial-main">
+            <span className="sub-trial-title">{`${plan.trialDays}-day free trial`}</span>
+            <span className="sub-trial-sub">Try all features free{plan ? ` for ${plan.trialDays} days` : ''}. No payment required now.</span>
+          </span>
+        </section>
+      ) : null}
+
+      {/* The plan card: the one real plan, its honest benefits, and the CTA
+          or live state. */}
+      {plan ? (
+        <section className="sub-plan-card" aria-label="Plan">
           <div className="sub-plan-head">
             <span className="sub-plan-name">{plan.name}</span>
-            <Money minor={plan.monthlyPriceMinor} currency={plan.currency} />
-            <span className="muted"> /month</span>
+            <span className="sub-plan-price">
+              <Money minor={plan.monthlyPriceMinor} currency={plan.currency} />
+              <span className="muted"> /month</span>
+            </span>
           </div>
-          <p className={`badge ${isLive ? 'badge-open' : 'badge-closed'}`}>
-            {SUBSCRIPTION_STATUS_LABEL[sub!.status]}
-          </p>
-          <ul className="sub-facts">
-            {sub!.status === 'TRIAL' && trialEnd ? <li>Trial ends {trialEnd}</li> : null}
-            {sub!.status === 'TRIAL' ? <li>After the trial: {formatMoney(plan.monthlyPriceMinor, plan.currency)} /month</li> : null}
-            {periodEnd ? <li>Current period ends {periodEnd}</li> : null}
-            {sub!.status === 'CANCELLED' && sub!.cancelledAt ? (
-              <li>Cancelled: access continues until {periodEnd}</li>
-            ) : null}
-            {sub!.status === 'EXPIRED' ? <li>Ended. Start again any time.</li> : null}
+          {!isLive ? <p className="hint">after {plan.trialDays}-day free trial</p> : null}
+          <ul className="sub-benefits">
+            {PLAN_BENEFITS.map((b) => (
+              <li key={b}>
+                <CheckIcon size={15} />
+                <span>{b}</span>
+              </li>
+            ))}
           </ul>
-          {isLive ? (
-            confirmingCancel ? (
-              <div className="btn-row" role="alert">
-                <Button
-                  sm
-                  variant="danger"
-                  disabled={busy}
-                  onClick={() => act(() => cancelBusinessSubscription(props.businessId))}
-                >
-                  {busy ? 'Cancelling…' : 'Yes, cancel'}
-                </Button>
-                <Button sm variant="ghost" disabled={busy} onClick={() => setConfirmingCancel(false)}>
-                  Keep subscription
-                </Button>
-              </div>
-            ) : (
-              <div className="btn-row">
-                <Button sm variant="danger" onClick={() => setConfirmingCancel(true)} disabled={busy}>
-                  Cancel subscription
-                </Button>
-              </div>
-            )
-          ) : (
+
+          {!sub ? (
             <Button full disabled={busy} onClick={() => act(() => startBusinessTrial(props.businessId))}>
-              {busy ? 'Starting…' : 'Start 30-day free trial'}
+              {busy ? 'Starting…' : `Start ${plan.trialDays}-day free trial`}
             </Button>
+          ) : sub.status === 'TRIAL' ? (
+            <>
+              <p className="sub-state-line" role="status">
+                <span className="badge badge-open">{SUBSCRIPTION_STATUS_LABEL.TRIAL}</span>
+                <span>
+                  {trialDaysLeft !== null
+                    ? `${trialDaysLeft} day${trialDaysLeft === 1 ? '' : 's'} remaining — then ${formatMoney(plan.monthlyPriceMinor, plan.currency)} /month`
+                    : `Trial in progress — then ${formatMoney(plan.monthlyPriceMinor, plan.currency)} /month`}
+                </span>
+              </p>
+              <CancelControl
+                busy={busy}
+                confirming={confirmingCancel}
+                onAsk={() => setConfirmingCancel(true)}
+                onKeep={() => setConfirmingCancel(false)}
+                onConfirm={() => act(() => cancelBusinessSubscription(props.businessId))}
+              />
+            </>
+          ) : sub.status === 'ACTIVE' ? (
+            <>
+              <p className="sub-state-line" role="status">
+                <span className="badge badge-open">{SUBSCRIPTION_STATUS_LABEL.ACTIVE}</span>
+                <span>{periodEnd ? `Renews ${periodEnd}` : 'Active'}</span>
+              </p>
+              <CancelControl
+                busy={busy}
+                confirming={confirmingCancel}
+                onAsk={() => setConfirmingCancel(true)}
+                onKeep={() => setConfirmingCancel(false)}
+                onConfirm={() => act(() => cancelBusinessSubscription(props.businessId))}
+              />
+            </>
+          ) : (
+            <>
+              <p className="sub-state-line" role="status">
+                <span className={`badge ${sub.status === 'SUSPENDED' ? 'badge-warn' : 'badge-closed'}`}>
+                  {SUBSCRIPTION_STATUS_LABEL[sub.status]}
+                </span>
+                <span>
+                  {sub.status === 'CANCELLED' && periodEnd
+                    ? `Access continues until ${periodEnd}`
+                    : sub.status === 'SUSPENDED'
+                      ? 'Payment verification in progress'
+                      : 'Ended. Start again any time.'}
+                </span>
+              </p>
+              <Button full disabled={busy} onClick={() => act(() => startBusinessTrial(props.businessId))}>
+                {busy ? 'Starting…' : `Start ${plan.trialDays}-day free trial`}
+              </Button>
+            </>
           )}
-        </>
+        </section>
+      ) : (
+        <ErrorState message="Plan information is unavailable right now." onRetry={plans.reload} />
       )}
+
       {/* Manual payment flow (Phase 7B): pay-in details, receipt submission
           and history. Rendered for every subscription state — an expired or
           cancelled business pays the same way as a fresh one. */}
-      <OwnerPayments businessId={props.businessId} />
-    </section>
+      <section aria-label="Subscription payments" style={{ marginTop: 16 }}>
+        <div className="section-head-v3">
+          <h2>Payments</h2>
+        </div>
+        <OwnerPayments businessId={props.businessId} />
+      </section>
+    </div>
+  );
+}
+
+function CancelControl(props: {
+  busy: boolean;
+  confirming: boolean;
+  onAsk: () => void;
+  onKeep: () => void;
+  onConfirm: () => void;
+}) {
+  if (!props.confirming) {
+    return (
+      <div className="btn-row" style={{ marginTop: 10 }}>
+        <Button sm variant="ghost" onClick={props.onAsk} disabled={props.busy}>
+          Cancel subscription
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <div className="btn-row" role="alert" style={{ marginTop: 10 }}>
+      <Button sm variant="danger" disabled={props.busy} onClick={props.onConfirm}>
+        {props.busy ? 'Cancelling…' : 'Yes, cancel'}
+      </Button>
+      <Button sm variant="ghost" disabled={props.busy} onClick={props.onKeep}>
+        Keep subscription
+      </Button>
+    </div>
   );
 }

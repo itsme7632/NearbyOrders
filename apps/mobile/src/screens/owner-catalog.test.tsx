@@ -9,8 +9,8 @@ afterEach(cleanup);
 
 vi.mock('../api.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api.js')>()),
-  listServices: vi.fn(),
-  listProducts: vi.fn(),
+  listOwnerServices: vi.fn(),
+  listOwnerProducts: vi.fn(),
   updateProduct: vi.fn(),
 }));
 
@@ -39,7 +39,7 @@ const product = (patch: Partial<Product> = {}): Product => ({
 describe('OwnerServices catalog UX (Phase 3F)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(api.listServices).mockResolvedValue([
+    vi.mocked(api.listOwnerServices).mockResolvedValue([
       service({ id: 'svc-1', name: 'Haircut', isActive: true }),
       service({ id: 'svc-2', name: 'Shave', isActive: false }),
     ]);
@@ -60,7 +60,7 @@ describe('OwnerServices catalog UX (Phase 3F)', () => {
   });
 
   it('shows an honest empty state when the filter matches nothing', async () => {
-    vi.mocked(api.listServices).mockResolvedValue([
+    vi.mocked(api.listOwnerServices).mockResolvedValue([
       service({ id: 'svc-1', name: 'Haircut', isActive: true }),
       service({ id: 'svc-2', name: 'Trim', isActive: true }),
     ]);
@@ -76,7 +76,7 @@ describe('OwnerServices catalog UX (Phase 3F)', () => {
 describe('OwnerProducts catalog UX (Phase 3F)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(api.listProducts).mockResolvedValue([
+    vi.mocked(api.listOwnerProducts).mockResolvedValue([
       product({ id: 'prod-1', name: 'Biryani', isActive: true }),
       product({ id: 'prod-2', name: 'Kebab', isActive: false }),
     ]);
@@ -93,7 +93,7 @@ describe('OwnerProducts catalog UX (Phase 3F)', () => {
   });
 
   it('surfaces toggle failures instead of swallowing them', async () => {
-    vi.mocked(api.listProducts).mockResolvedValue([product({ isActive: true })]);
+    vi.mocked(api.listOwnerProducts).mockResolvedValue([product({ isActive: true })]);
     vi.mocked(api.updateProduct).mockRejectedValue(new Error('Network down'));
     render(<OwnerProducts businessId="biz-1" />);
     await screen.findByText('Biryani');

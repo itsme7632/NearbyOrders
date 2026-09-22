@@ -2,6 +2,7 @@
  * Leaflet + OpenStreetMap implementation of the Phase 12 provider interface.
  * Free tile source, no API key, no vendor lock-in. Only this file knows Leaflet.
  */
+import 'leaflet/dist/leaflet.css';
 import { DEFAULT_MAP_THEME, MapProviderError, type GeocodeResult, type LatLng, type MapMarkerData, type MapProvider, type MapTheme } from './provider.js';
 
 /* Minimal structural types for the Leaflet surface we use — keeps the vendor
@@ -34,17 +35,10 @@ const loadLeaflet = async (): Promise<L> => {
   if (!leafletPromise) {
     leafletPromise = (async () => {
       const mod = (await import('leaflet')) as unknown as { default?: L } & L;
-      const L = mod.default ?? (mod as unknown as L);
-      // Leaflet's CSS is required for correct marker/tile layout; injecting it
-      // from the provider keeps the vendor import inside this module only.
-      if (!document.querySelector('link[data-leaflet]')) {
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = new URL('leaflet/dist/leaflet.css', import.meta.url).toString();
-        link.setAttribute('data-leaflet', 'true');
-        document.head.appendChild(link);
-      }
-      return L;
+      // Leaflet's CSS arrives via the static `import 'leaflet/dist/leaflet.css'`
+      // above, so the bundler includes it with this chunk — no runtime <link>
+      // injection (which resolved against import.meta.url and 404'd in builds).
+      return mod.default ?? (mod as unknown as L);
     })();
   }
   return leafletPromise;
@@ -211,7 +205,9 @@ export const createLeafletProvider = (): { map: MapProvider; geocoding: ReturnTy
 /**
  * Geocoding via OpenStreetMap's Nominatim (free, keyless). Usage policy
  * expects low volumes with a valid referer; fine for owner address search on
- * submit. A vendor provider can replace it behind the same interface.
+ * submit. Results are biased to Pakistan (`countrycodes=pk`) — NearbyOrders
+ * operates in Pakistan (PKR pricing, en-PK locale). A vendor provider can
+ * replace it behind the same interface.
  */
 export const createNominatimGeocoding = (): {
   geocode(q: string): Promise<GeocodeResult[]>;
@@ -222,7 +218,7 @@ export const createNominatimGeocoding = (): {
     if (!trimmed) return [];
     let res: Response;
     try {
-      res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q=${encodeURIComponent(trimmed)}`, {
+      res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=pk&q=${encodeURIComponent(trimmed)}`, {
         headers: { Accept: 'application/json' },
       });
     } catch {

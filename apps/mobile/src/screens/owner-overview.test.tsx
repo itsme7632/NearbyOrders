@@ -11,12 +11,7 @@ vi.mock('../api.js', async (importOriginal) => ({
   getMyBusinesses: vi.fn(),
   getOwnerOverview: vi.fn(),
   getOwnerAnalytics: vi.fn(),
-  getBusinessSubscription: vi.fn().mockResolvedValue(null),
 }));
-
-vi.mock('./subscription-badge.js', () => ({ SubscriptionBadge: () => null }));
-vi.mock('./PlanCard.js', () => ({ PlanCard: () => null }));
-vi.mock('../useCartCount.js', () => ({ useCartCount: () => 0 }));
 
 const biz = (patch: Partial<Business> = {}): Business => ({
   id: 'biz-1',
@@ -35,6 +30,8 @@ const biz = (patch: Partial<Business> = {}): Business => ({
   email: null,
   currency: 'PKR',
   categories: [],
+  averageRating: 4.5,
+  reviewCount: 12,
   ...patch,
 });
 
@@ -42,9 +39,7 @@ const overview = (patch: Partial<OwnerOverview> = {}): OwnerOverview => ({
   business: { id: 'biz-1', name: 'Butt Spices', status: 'APPROVED', isVerified: false, currency: 'PKR', imageUrl: null },
   today: { orders: 2, bookings: 1, revenueMinor: 45500 },
   needsAttention: { pendingOrders: 1, pendingBookings: 1, pendingPayments: 2 },
-  upcomingBookings: [
-    { id: 'bk-9', serviceName: 'Catering', customerName: 'Ayesha K.', date: '2026-09-21', startTime: '18:00', status: 'CONFIRMED' },
-  ],
+  upcomingBookings: [],
   recentOrders: [],
   recentBookings: [],
   profileMissing: ['phone', 'image'],
@@ -59,89 +54,71 @@ const analytics = (period: string): OwnerAnalytics => ({
   catalog: { activeServices: 3, activeProducts: 5 },
 });
 
-describe('business overview (Phase 16)', () => {
+const renderHome = async (props: Record<string, unknown> = {}) => {
+  const { OwnerBusinessHome } = await import('./OwnerBusinessHome.js');
+  return render(<OwnerBusinessHome onOpen={() => {}} onOpenOrder={() => {}} onOpenBooking={() => {}} {...props} />);
+};
+
+describe('business overview (redesigned hub)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.getOwnerAnalytics).mockImplementation(async (_id: string, period: 'today' | 'week' | 'month') => analytics(period));
-  });
-
-  it('renders server metrics verbatim — never derived client-side', async () => {
     vi.mocked(api.getMyBusinesses).mockResolvedValue([biz()]);
     vi.mocked(api.getOwnerOverview).mockResolvedValue(overview());
-
-    const { OwnerBusinessHome } = await import('./OwnerBusinessHome.js');
-    render(<OwnerBusinessHome onOpen={() => {}} onOpenOrder={() => {}} onOpenBooking={() => {}} />);
-
-    await screen.findByText("Today's orders");
-    await waitFor(() => expect(screen.getByText("Today's bookings")).toBeTruthy());
-    // Pending nudges come from the server snapshot (orders AND bookings).
-    expect(screen.getAllByText('1 pending').length).toBe(2);
-    expect(screen.getByText(/awaiting verification/)).toBeTruthy();
-    // Completed revenue is the server's PKT-day figure, not a client sum.
-    expect(screen.getByText(/455/)).toBeTruthy();
-    // The overview fetch is exactly the server call for this business.
-    expect(api.getOwnerOverview).toHaveBeenCalledWith('biz-1');
   });
 
-  it('exposes upcoming bookings with real service, time, and customer', async () => {
-    vi.mocked(api.getMyBusinesses).mockResolvedValue([biz()]);
-    vi.mocked(api.getOwnerOverview).mockResolvedValue(overview());
-
-    const { OwnerBusinessHome } = await import('./OwnerBusinessHome.js');
-    render(<OwnerBusinessHome onOpen={() => {}} onOpenOrder={() => {}} onOpenBooking={() => {}} />);
-
-    expect(await screen.findByText('Catering')).toBeTruthy();
-    expect(screen.getByText(/2026-09-21 · 18:00 · Ayesha K\./)).toBeTruthy();
+  it('greets the owner and names the operating business', async () => {
+    await renderHome();
+    expect(await screen.findByText(/Good (morning|afternoon|evening),/)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Butt Spices!' })).toBeTruthy();
+    expect(screen.getByText('Manage your business and grow with NearbyOrders.')).toBeTruthy();
   });
 
-  it('lists honest profile gaps linked to the right management screens', async () => {
-    vi.mocked(api.getMyBusinesses).mockResolvedValue([biz()]);
-    vi.mocked(api.getOwnerOverview).mockResolvedValue(overview());
+  it('shows the live approval status of the business', async () => {
+    await renderHome();
+    const region = await screen.findByRole('region', { name: 'Business status' });
+    expect(region).toHaveTextContent('Business active');
+    expect(region).toHaveTextContent('visible to customers');
+  });
 
+  it('shows a pending state for an unapproved business', async () => {
+    vi.mocked(api.getMyBusinesses).mockResolvedValue([biz({ status: 'PENDING' })]);
+    await renderHome();
+    const region = await screen.findByRole('region', { name: 'Business status' });
+    expect(region).toHaveTextContent('Pending approval');
+    expect(region).toHaveTextContent('once approved');
+  });
+
+  it('renders this-month metrics verbatim from the server — never invented', async () => {
+    await renderHome();
+    await screen.findByText('Total bookings'); // loaded tiles, not the skeleton
+    const region = screen.getByRole('region', { name: 'Key metrics' });
+    // Bookings tile: server month total.
+    expect(region).toHaveTextContent('Total bookings');
+    expect(region).toHaveTextContent('This month');
+    // Rating tile: the business record's real rating and review count.
+    expect(region).toHaveTextContent('4.5');
+    expect(region).toHaveTextContent('(12 reviews)');
+    // Revenue tile: orders + bookings revenue from the server, integer paisa.
+    expect(region).toHaveTextContent('Revenue');
+    expect(screen.getByText('Rs 1,500')).toBeTruthy(); // 120000 + 30000 minor
+    // The overview asks for exactly the month window for this business.
+    await waitFor(() => expect(api.getOwnerAnalytics).toHaveBeenCalledWith('biz-1', 'month'));
+  });
+
+  it('shows a dash when the business has no rating yet', async () => {
+    vi.mocked(api.getMyBusinesses).mockResolvedValue([biz({ averageRating: null, reviewCount: 0 })]);
+    await renderHome();
+    // Wait for the loaded tiles, not the loading skeleton's empty region.
+    await screen.findByText('Avg. rating');
+    const region = screen.getByRole('region', { name: 'Key metrics' });
+    expect(region).toHaveTextContent('No reviews yet');
+  });
+
+  it('leads with needs-attention and each item opens its queue', async () => {
     const onOpen = vi.fn();
-    const { OwnerBusinessHome } = await import('./OwnerBusinessHome.js');
-    render(<OwnerBusinessHome onOpen={onOpen} onOpenOrder={() => {}} onOpenBooking={() => {}} />);
-
-    fireEvent.click(await screen.findByText('Add a contact phone number'));
-    await waitFor(() => expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/profile'));
-  });
-
-  it('shows no gaps section when the profile is complete', async () => {
-    vi.mocked(api.getMyBusinesses).mockResolvedValue([biz()]);
-    vi.mocked(api.getOwnerOverview).mockResolvedValue(overview({ profileMissing: [] }));
-
-    const { OwnerBusinessHome } = await import('./OwnerBusinessHome.js');
-    render(<OwnerBusinessHome onOpen={() => {}} onOpenOrder={() => {}} onOpenBooking={() => {}} />);
-
-    await screen.findByText("Today's orders");
-    await waitFor(() => expect(screen.queryByText('Complete your profile')).toBeNull());
-  });
-
-  it('switches performance periods and refetches analytics', async () => {
-    vi.mocked(api.getMyBusinesses).mockResolvedValue([biz()]);
-    vi.mocked(api.getOwnerOverview).mockResolvedValue(overview());
-
-    const { OwnerBusinessHome } = await import('./OwnerBusinessHome.js');
-    render(<OwnerBusinessHome onOpen={() => {}} onOpenOrder={() => {}} onOpenBooking={() => {}} />);
-
-    fireEvent.click(await screen.findByRole('tab', { name: 'This week' }));
-    await waitFor(() => expect(api.getOwnerAnalytics).toHaveBeenCalledWith('biz-1', 'week'));
-    // Completed revenue row = orders + bookings revenue from the server.
-    await waitFor(() => expect(screen.getAllByText(/1,500/).length).toBeGreaterThanOrEqual(1));
-  });
-
-  it('Today view leads with needs-attention and each item opens its queue', async () => {
-    vi.mocked(api.getMyBusinesses).mockResolvedValue([biz()]);
-    vi.mocked(api.getOwnerOverview).mockResolvedValue(overview());
-
-    const onOpen = vi.fn();
-    const { OwnerBusinessHome } = await import('./OwnerBusinessHome.js');
-    render(<OwnerBusinessHome onOpen={onOpen} onOpenOrder={() => {}} onOpenBooking={() => {}} />);
-
-    // Wait for the server overview before asserting on the queue.
-    await screen.findByText("Today's orders");
-    expect(screen.getByRole('heading', { name: 'Today' })).toBeTruthy();
-    expect(screen.getByRole('region', { name: 'Needs attention' })).toBeTruthy();
+    await renderHome({ onOpen });
+    await screen.findByRole('button', { name: /1 order waiting for your accept or reject/i });
 
     fireEvent.click(screen.getByRole('button', { name: /1 order waiting for your accept or reject/i }));
     expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/orders');
@@ -152,42 +129,71 @@ describe('business overview (Phase 16)', () => {
   });
 
   it('shows a calm all-caught-up state when nothing needs attention', async () => {
-    vi.mocked(api.getMyBusinesses).mockResolvedValue([biz()]);
     vi.mocked(api.getOwnerOverview).mockResolvedValue(
       overview({ needsAttention: { pendingOrders: 0, pendingBookings: 0, pendingPayments: 0 } }),
     );
-
-    const { OwnerBusinessHome } = await import('./OwnerBusinessHome.js');
-    render(<OwnerBusinessHome onOpen={() => {}} onOpenOrder={() => {}} onOpenBooking={() => {}} />);
-
+    await renderHome();
     expect(await screen.findByText(/all caught up/i)).toBeTruthy();
-    expect(screen.queryByRole('region', { name: 'Needs attention' })).toBeTruthy();
   });
 
-  it('renders the newest orders as an actionable queue opening order detail', async () => {
-    const order = {
-      id: 'ord-1',
-      status: 'PENDING',
-      subtotalMinor: 120000,
-      totalMinor: 125000,
-      currency: 'PKR',
-      fulfillmentType: 'DELIVERY',
-      createdAt: new Date().toISOString(),
-      notes: null,
-      business: { id: 'biz-1', name: 'Butt Spices', slug: 'butt-spices' },
-      customer: { firstName: 'Ayesha', lastName: 'Khan' },
-      items: [],
-    };
-    vi.mocked(api.getMyBusinesses).mockResolvedValue([biz()]);
-    vi.mocked(api.getOwnerOverview).mockResolvedValue(overview({ recentOrders: [order] as never }));
+  it('lists honest profile gaps linked to the right management screens', async () => {
+    const onOpen = vi.fn();
+    await renderHome({ onOpen });
+    fireEvent.click(await screen.findByText('Add a contact phone number'));
+    await waitFor(() => expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/profile'));
+    fireEvent.click(screen.getByText('Add a business image'));
+    await waitFor(() => expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/profile'));
+  });
 
-    const onOpenOrder = vi.fn();
-    const { OwnerBusinessHome } = await import('./OwnerBusinessHome.js');
-    render(<OwnerBusinessHome onOpen={() => {}} onOpenOrder={onOpenOrder} onOpenBooking={() => {}} />);
+  it('shows no gaps section when the profile is complete', async () => {
+    vi.mocked(api.getOwnerOverview).mockResolvedValue(overview({ profileMissing: [] }));
+    await renderHome();
+    await screen.findByText('Total bookings'); // metrics loaded
+    expect(screen.queryByText('Complete your profile')).toBeNull();
+  });
 
-    const row = await screen.findByRole('button', { name: /order · pending/i });
-    expect(row).toHaveTextContent('Ayesha Khan');
-    fireEvent.click(row);
-    expect(onOpenOrder).toHaveBeenCalledWith('ord-1');
+  it('groups management into Business, Catalog, and Growth & account', async () => {
+    const onOpen = vi.fn();
+    await renderHome({ onOpen });
+    expect(await screen.findByText('Manage your business')).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Business' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Catalog' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Growth & account' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /Business information/ }));
+    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/profile');
+    fireEvent.click(screen.getByRole('button', { name: /Location/ }));
+    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/location');
+    fireEvent.click(screen.getByRole('button', { name: /Business hours/ }));
+    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/hours');
+    fireEvent.click(screen.getByRole('button', { name: /Services/ }));
+    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/services');
+    fireEvent.click(screen.getByRole('button', { name: /Products \/ Menu/ }));
+    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/products');
+    fireEvent.click(screen.getByRole('button', { name: /^Subscription/ }));
+    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/subscription');
+    fireEvent.click(screen.getByRole('button', { name: /Reviews/ }));
+    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/reviews');
+  });
+
+  it('shows the business switcher only when the owner has several businesses', async () => {
+    await renderHome();
+    await screen.findByText('Total bookings'); // metrics loaded
+    expect(screen.queryByRole('group', { name: 'Switch business' })).toBeNull();
+
+    cleanup();
+    vi.mocked(api.getMyBusinesses).mockResolvedValue([biz(), biz({ id: 'biz-2', name: 'Second Shop', slug: 'second-shop' })]);
+    await renderHome();
+    expect(await screen.findByRole('group', { name: 'Switch business' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Second Shop' })).toBeTruthy();
+  });
+
+  it('announces a just-created business with its real approval state', async () => {
+    await renderHome({ justCreatedName: 'Butt Spices', justCreatedStatus: 'PENDING' });
+    const banner = await screen.findByText(/has been created/);
+    const card = banner.closest('.created-banner');
+    expect(card).toBeTruthy();
+    expect(card).toHaveTextContent('Butt Spices');
+    expect(card).toHaveTextContent('once approved');
   });
 });

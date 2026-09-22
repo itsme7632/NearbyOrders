@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, within } from '@testing-library/react';
 import * as api from '../api.js';
 import type { Business } from '../api.js';
 
@@ -113,17 +113,19 @@ describe('business overview uses real data and business wording', () => {
     vi.mocked(api.getBusinessSubscription).mockResolvedValue(null);
   });
 
-  it('renders empty overview cards (zeros) rather than invented numbers', async () => {
+  it('renders honest zero states rather than invented numbers', async () => {
     vi.spyOn(api, 'getMyBusinesses').mockResolvedValue([business()]);
     vi.spyOn(api, 'listBusinessOrders').mockResolvedValue([]);
     vi.spyOn(api, 'listBusinessBookings').mockResolvedValue([]);
     vi.spyOn(api, 'listOwnerPayments').mockResolvedValue({ bookingPayments: [], orderPayments: [] });
     const { OwnerBusinessHome } = await import('./OwnerBusinessHome.js');
     render(<OwnerBusinessHome onOpen={() => {}} onOpenOrder={() => {}} onOpenBooking={() => {}} />);
-    expect(await screen.findByText('Butt Spices')).toBeTruthy();
-    await waitFor(() => expect(screen.getByText("Today's orders")).toBeTruthy());
-    await waitFor(() => expect(screen.getByText("Today's bookings")).toBeTruthy());
-    // No fake metrics: with empty server data every count is 0.
-    expect(screen.getAllByText('0').length).toBeGreaterThanOrEqual(2);
+    expect(await screen.findByText('Butt Spices!')).toBeTruthy();
+    // The redesigned Overview shows month-scoped tiles, not day cards.
+    await screen.findByText('Total bookings');
+    const region = screen.getByRole('region', { name: 'Key metrics' });
+    // No fake metrics: with empty server data every count is a real zero.
+    expect(within(region).getByText('0')).toBeTruthy();
+    expect(region).toHaveTextContent('Rs 0');
   });
 });

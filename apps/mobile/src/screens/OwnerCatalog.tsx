@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
-  listServices,
-  listProducts,
+  listOwnerServices,
+  listOwnerProducts,
   createProduct,
   updateService,
   deleteService,
@@ -18,7 +18,7 @@ import { Button, EmptyState, ErrorState, Field, Loading, Money, Toggle } from '.
 import { AlertIcon, OrdersIcon, StoreIcon } from '../components/icons.js';
 
 export function OwnerServices(props: { businessId: string }) {
-  const services = useAsyncData<Service[]>(() => listServices(props.businessId), [props.businessId]);
+  const services = useAsyncData<Service[]>(() => listOwnerServices(props.businessId), [props.businessId]);
   // Phase 3F: local-only visibility filter — the server list is unchanged.
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
@@ -376,7 +376,7 @@ function ProductThumb(props: { imageUrl: string | null; name: string }) {
 
 /** Exported for tests. */
 export function OwnerProducts(props: { businessId: string }) {
-  const products = useAsyncData<Product[]>(() => listProducts(props.businessId), [props.businessId]);
+  const products = useAsyncData<Product[]>(() => listOwnerProducts(props.businessId), [props.businessId]);
   // Phase 3F: local-only availability filter — the server list is unchanged.
   const [filter, setFilter] = useState<'all' | 'available' | 'unavailable'>('all');
 

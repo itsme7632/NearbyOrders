@@ -31,12 +31,16 @@ beforeEach(() => {
   // assertions like "not called yet" see only this test's activity.
   vi.clearAllMocks();
   vi.spyOn(api, 'getBusinessSubscription').mockResolvedValue(null);
+  // The screen reads the plan catalog so the price is never hard-coded.
+  vi.spyOn(api, 'listSubscriptionPlans').mockResolvedValue([plan]);
 });
 
 describe('OwnerSubscription (no subscription yet)', () => {
   it('shows the plan price in minor-unit formatting and the trial CTA', async () => {
     render(<OwnerSubscription businessId="biz-1" />);
-    expect(await screen.findByText('NearbyOrders Business')).toBeTruthy();
+    await screen.findByRole('button', { name: 'Start 30-day free trial' });
+    // The plan name appears in the intro and the plan card; the price once.
+    expect(screen.getAllByText('NearbyOrders Business').length).toBe(2);
     // 299900 minor = Rs 2,999 — integer paisa rendering, no float artifacts.
     expect(screen.getByText('Rs 2,999')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Start 30-day free trial' })).toBeTruthy();
@@ -60,15 +64,31 @@ describe('OwnerSubscription (no subscription yet)', () => {
     expect(screen.queryByText(/upgrade/i)).toBeNull();
     expect(screen.queryByText(/card/i)).toBeNull();
   });
+
+  it('presents the trial hero and honest plan benefits before any subscription', async () => {
+    render(<OwnerSubscription businessId="biz-1" />);
+    await screen.findByRole('button', { name: 'Start 30-day free trial' });
+    // Trial hero: the trial length comes from the plan, not a hard-coded string.
+    expect(screen.getByText('30-day free trial')).toBeTruthy();
+    expect(screen.getByText(/No payment required now/)).toBeTruthy();
+    // Benefits describe only real capabilities — no invented tiers or features.
+    expect(screen.getByText('Accept bookings and orders')).toBeTruthy();
+    expect(screen.getByText('Showcase your services & products')).toBeTruthy();
+    expect(screen.getByText('Customer reviews and ratings')).toBeTruthy();
+    expect(screen.queryByText(/priority support/i)).toBeNull();
+  });
 });
 
 describe('OwnerSubscription (live trial)', () => {
-  it('shows TRIAL status with trial and period end dates', async () => {
+  it('shows TRIAL status with the honest days-remaining state', async () => {
     vi.spyOn(api, 'getBusinessSubscription').mockResolvedValue(trialSub);
     render(<OwnerSubscription businessId="biz-1" />);
     expect(await screen.findByText('Free trial')).toBeTruthy();
-    expect(screen.getByText(/Trial ends/)).toBeTruthy();
-    expect(screen.getByText(/Current period ends/)).toBeTruthy();
+    // Days remaining and the post-trial price come from the server plan —
+    // no invented "Trial ends" phrasing, no hard-coded price.
+    expect(screen.getByText(/day(s)? remaining/i)).toBeTruthy();
+    // The /month price shows in the plan card and the trial state line.
+    expect(screen.getAllByText(/\/month/).length).toBeGreaterThanOrEqual(2);
     expect(screen.getByRole('button', { name: 'Cancel subscription' })).toBeTruthy();
   });
 

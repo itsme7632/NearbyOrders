@@ -16,8 +16,6 @@ vi.mock('../api.js', async (importOriginal) => ({
   getBusinessSubscription: vi.fn().mockResolvedValue(null),
 }));
 
-vi.mock('./subscription-badge.js', () => ({ SubscriptionBadge: () => null }));
-vi.mock('./PlanCard.js', () => ({ PlanCard: () => null }));
 vi.mock('../useCartCount.js', () => ({ useCartCount: () => 0 }));
 
 const biz = (patch: Partial<Business> = {}): Business => ({
@@ -53,7 +51,7 @@ describe('business location entry point (Phase 12.1)', () => {
     const row = await screen.findByText('Location');
     expect(row).toBeTruthy();
     // The subtitle tells the owner what it is for, so the entry is discoverable.
-    expect(screen.getByText(/Map coordinates so nearby customers find you/)).toBeTruthy();
+    expect(screen.getByText(/Set your address and pin on map/)).toBeTruthy();
   });
 
   it('navigates to the selected business location screen when tapped', async () => {

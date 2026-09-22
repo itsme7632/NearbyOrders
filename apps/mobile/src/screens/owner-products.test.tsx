@@ -18,7 +18,7 @@ const product = (patch: Partial<Product> = {}): Product => ({
 });
 
 beforeEach(() => {
-  vi.spyOn(api, 'listProducts').mockResolvedValue([product()]);
+  vi.spyOn(api, 'listOwnerProducts').mockResolvedValue([product()]);
   vi.spyOn(api, 'updateProduct').mockResolvedValue(product());
   vi.spyOn(api, 'createProduct').mockResolvedValue(product());
   vi.spyOn(api, 'deleteProduct').mockResolvedValue(undefined);
@@ -59,7 +59,7 @@ describe('validateProductForm', () => {
 
 describe('OwnerProducts', () => {
   it('shows the empty state when the business has no products', async () => {
-    vi.spyOn(api, 'listProducts').mockResolvedValue([]);
+    vi.spyOn(api, 'listOwnerProducts').mockResolvedValue([]);
     render(<OwnerProducts businessId="biz-1" />);
 
     expect(await screen.findByText('No products yet')).toBeTruthy();
@@ -91,7 +91,7 @@ describe('OwnerProducts', () => {
   });
 
   it('marks the row when a product is unavailable', async () => {
-    vi.spyOn(api, 'listProducts').mockResolvedValue([product({ isActive: false })]);
+    vi.spyOn(api, 'listOwnerProducts').mockResolvedValue([product({ isActive: false })]);
     const { container } = render(<OwnerProducts businessId="biz-1" />);
 
     await screen.findByText('Chicken Biryani');

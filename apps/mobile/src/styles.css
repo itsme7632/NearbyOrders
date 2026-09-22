@@ -774,6 +774,35 @@ p { overflow-wrap: break-word; }
 }
 .badge-open { background: rgba(22, 163, 74, 0.14); color: var(--success); }
 .badge-closed { background: rgba(239, 68, 68, 0.12); color: var(--error); }
+.badge-warn { background: var(--warning-soft); color: var(--warning); }
+
+/* Business subscription pricing page. */
+.sub-page-title { font-size: 22px; font-weight: 800; color: var(--ink); margin: 0; letter-spacing: -0.01em; }
+.sub-trial-hero {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--action-soft); border: 1px solid var(--border); border-radius: 16px;
+  padding: 14px; margin-top: 12px;
+}
+.sub-trial-icon {
+  flex: 0 0 auto; width: 44px; height: 44px; border-radius: 14px;
+  background: var(--action); color: #fff; display: inline-flex; align-items: center; justify-content: center;
+}
+.sub-trial-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sub-trial-title { font-weight: 800; font-size: 16px; color: var(--action-strong); }
+.sub-trial-sub { font-size: 12.5px; color: var(--ink-2); }
+.sub-plan-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 18px;
+  padding: 18px 16px; margin-top: 12px; box-shadow: var(--shadow);
+}
+.sub-plan-head { display: flex; flex-direction: column; gap: 2px; }
+.sub-plan-name { font-weight: 800; font-size: 17px; color: var(--ink); }
+.sub-plan-price { font-size: 20px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
+.sub-plan-price .muted { font-size: 13px; font-weight: 600; }
+.sub-benefits { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+.sub-benefits li { display: flex; align-items: flex-start; gap: 9px; font-size: 14px; color: var(--ink-2); }
+.sub-benefits li svg { flex: 0 0 auto; color: var(--action); margin-top: 2px; }
+.sub-plan-card .btn-row, .sub-plan-card .btn { margin-top: 14px; }
+.sub-state-line { display: flex; align-items: center; gap: 10px; margin: 14px 0 0; font-size: 13.5px; color: var(--ink-2); flex-wrap: wrap; }
 .verified-dot {
   background: var(--success);
   color: #fff;
@@ -1057,6 +1086,57 @@ p { overflow-wrap: break-word; }
 .owner-quick-num { font-size: 22px; font-weight: 800; color: var(--primary); }
 .owner-quick-label { font-size: 12.5px; color: var(--muted); font-weight: 600; }
 .hub-manage-title { font-size: 17px; font-weight: 800; color: var(--navy); margin: 6px 0 2px; }
+
+/* Business Owner overview: greeting header, status card, metric trio. */
+.owner-greet { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-top: 2px; }
+.owner-greet-text { min-width: 0; }
+.owner-greet-hello { font-size: 16px; color: var(--ink-2); margin: 0; }
+.owner-greet-name { font-size: 24px; font-weight: 800; color: var(--ink); margin: 0; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.owner-avatar { flex: 0 0 auto; width: 54px; height: 54px; border-radius: 50%; overflow: hidden; border: 1px solid var(--border); background: var(--brand-softer); display: inline-flex; align-items: center; justify-content: center; }
+.owner-avatar .oc-thumb { width: 100%; height: 100%; border-radius: 50%; }
+.biz-status {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 12px 14px; margin-top: 12px; box-shadow: var(--shadow);
+}
+.biz-status-dot { flex: 0 0 auto; width: 12px; height: 12px; border-radius: 50%; background: var(--disabled); }
+.biz-status[data-status='active'] .biz-status-dot { background: var(--success); box-shadow: 0 0 0 4px var(--success-soft); }
+.biz-status[data-status='pending'] .biz-status-dot { background: var(--warning); box-shadow: 0 0 0 4px var(--warning-soft); }
+.biz-status-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.biz-status-title { font-weight: 700; font-size: 14.5px; color: var(--ink); }
+.biz-status-sub { font-size: 12.5px; color: var(--muted); }
+.metric-trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.metric-tile {
+  background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+  padding: 12px 10px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  text-align: center; box-shadow: var(--shadow); min-width: 0;
+}
+.metric-tile-num { font-size: 21px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.2; overflow-wrap: anywhere; }
+.metric-tile-money { font-size: 16px; }
+.metric-tile-label { font-size: 12px; font-weight: 700; color: var(--ink-2); }
+.metric-tile-sub { font-size: 11px; color: var(--muted); }
+
+/* Business Location screen: map-first pin picker flow. */
+.loc-map-wrap { position: relative; border-radius: 18px; overflow: hidden; border: 1px solid var(--border); box-shadow: var(--shadow); }
+.loc-use-btn {
+  position: absolute; top: 10px; right: 10px; z-index: 5;
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 999px;
+  padding: 8px 12px; font-size: 12.5px; font-weight: 700; color: var(--ink);
+  box-shadow: var(--shadow);
+}
+.loc-use-btn:disabled { opacity: 0.6; }
+.loc-pinned-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 14px; box-shadow: var(--shadow); }
+.loc-pinned-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.loc-pinned-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; font-size: 14.5px; color: var(--ink); }
+.loc-pinned-edit { background: none; border: none; padding: 4px 6px; font-size: 13px; font-weight: 700; color: var(--action); cursor: pointer; }
+.loc-pinned-label { font-size: 13.5px; color: var(--ink-2); margin: 6px 0 0; }
+.loc-coords { display: flex; gap: 16px; margin-top: 10px; }
+.loc-coords > span { display: flex; flex-direction: column; gap: 1px; }
+.loc-coords-label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.loc-coords-value { font-size: 14.5px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
+.location-configured-note { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--success); margin: 0 0 4px; }
+.geocode-results li .btn { justify-content: flex-start; }
 .sub-badge {
   display: flex;
   align-items: center;

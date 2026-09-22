@@ -49,16 +49,15 @@ beforeEach(() => {
 describe('OwnerLocation management (Phase 11)', () => {
   it('shows an honest not-configured state before the owner sets coordinates', async () => {
     render(<OwnerLocation businessId="biz-1" />);
-    await screen.findByText('Set your location');
-    expect(screen.getByText(/never guesses your location/i)).toBeInTheDocument();
+    await screen.findByText(/set your exact business location/i);
+    expect(screen.getByText(/drag the pin to your entrance/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /clear location/i })).toBeNull();
   });
 
   it('shows the configured state with a clear option when coordinates exist', async () => {
     vi.mocked(api.getBusinessLocation).mockResolvedValue(location({ latitude: 31.5204, longitude: 74.3587, isConfigured: true }));
     render(<OwnerLocation businessId="biz-1" />);
-    await screen.findByText('Location settings');
-    expect(screen.getByText(/your location is set/i)).toBeInTheDocument();
+    expect(await screen.findByText(/your location is set/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /clear location/i })).toBeInTheDocument();
   });
 

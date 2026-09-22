@@ -895,6 +895,24 @@ export async function buildApp(): Promise<FastifyInstance> {
   /* ------------------- Subscriptions (Phase 7A foundation) ---------- */
 
   /**
+   * Public plan catalog: the active subscription plans with their real
+   * pricing, so clients never hard-code a price. Falls back to PLAN_CATALOG
+   * (the source of truth `ensurePlan` seeds from) when the table is empty.
+   */
+  app.get('/api/v1/subscription/plans', async () => {
+    const rows = await prisma.plan.findMany({ where: { isActive: true }, orderBy: { monthlyPriceMinor: 'asc' } });
+    const data = (rows.length ? rows : PLAN_CATALOG).map((p) => ({
+      slug: p.slug,
+      name: p.name,
+      description: p.description,
+      monthlyPriceMinor: p.monthlyPriceMinor,
+      currency: p.currency,
+      trialDays: p.trialDays,
+    }));
+    return { data };
+  });
+
+  /**
    * Ensures the seeded plan rows exist. Idempotent (upsert by slug); re-running
    * never clobbers admin-edited prices (update is a no-op). Returns the plan
    * requested by slug.
@@ -1681,6 +1699,34 @@ export async function buildApp(): Promise<FastifyInstance> {
     await ownedBusiness(q, id);
     const b = await prisma.business.findUniqueOrThrow({ where: { id }, select: { deliveryEnabled: true, codEnabled: true, deliveryFeeMinor: true } });
     return { data: b };
+  });
+
+  /**
+   * Owner management reads. The public /businesses/:id/* endpoints only serve
+   * APPROVED businesses (and only active catalog items) — an owner managing a
+   * PENDING business, or reviewing inactive items, would get a 404 "Business
+   * not found". These owner-scoped reads are gated by the same `ownedBusiness`
+   * ownership check but return the owner's own full, unfiltered rows.
+   */
+  app.get('/api/v1/owner/businesses/:id/hours', { preHandler: roles('BUSINESS_OWNER') }, async (q) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    const hours = await prisma.businessHour.findMany({ where: { businessId: id }, orderBy: { dayOfWeek: 'asc' } });
+    return { data: hours };
+  });
+
+  app.get('/api/v1/owner/businesses/:id/services', { preHandler: roles('BUSINESS_OWNER') }, async (q) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    const services = await prisma.service.findMany({ where: { businessId: id }, orderBy: { name: 'asc' } });
+    return { data: services };
+  });
+
+  app.get('/api/v1/owner/businesses/:id/products', { preHandler: roles('BUSINESS_OWNER') }, async (q) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    const products = await prisma.product.findMany({ where: { businessId: id }, orderBy: { name: 'asc' } });
+    return { data: products };
   });
 
   /** Payment DTO: owner/customer-safe fields, no internal reviewer columns. */

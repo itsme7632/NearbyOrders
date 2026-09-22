@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { getHours, putHours, type BusinessHour, type HourInput } from '../api.js';
+import { getOwnerHours, putHours, type BusinessHour, type HourInput } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, ErrorState, Loading, Toggle } from '../components/ui.js';
 import { AlertIcon } from '../components/icons.js';
@@ -27,7 +27,7 @@ export function validateHours(days: HourInput[]): Record<number, string> {
 }
 
 export function OwnerHours(props: { businessId: string }) {
-  const hours = useAsyncData<BusinessHour[]>(() => getHours(props.businessId), [props.businessId]);
+  const hours = useAsyncData<BusinessHour[]>(() => getOwnerHours(props.businessId), [props.businessId]);
   const [days, setDays] = useState<HourInput[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

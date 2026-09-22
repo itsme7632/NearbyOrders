@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   getBusinessLocation,
   updateBusinessLocation,
@@ -8,15 +8,17 @@ import {
 import { useAsyncData } from '../hooks.js';
 import { Button, ErrorState, Field, Loading } from '../components/ui.js';
 import { PinIcon } from '../components/icons.js';
+import { requestCustomerLocation, type LocationOutcome } from '../location.js';
 import { useMapProvider } from '../maps/useMapProvider.js';
 import { MapCanvas } from '../maps/MapCanvas.js';
 import type { GeocodeResult, LatLng } from '../maps/provider.js';
 
 /**
- * Business location management (Phase 12). The owner places a draggable pin
- * on a real map (or searches for their address), sees exactly what customers
- * will see, and saves through the dedicated, ownership-checked endpoints.
- * Nothing is invented: an unset location shows as "not configured", and
+ * Business location management: map first, then search / use-my-location,
+ * then pin confirmation, then save — the Business Owner reference flow.
+ *
+ * The map renders for real (Leaflet + OpenStreetMap tiles, draggable pin);
+ * nothing is faked. An unset location shows as "not configured", and
  * clearing removes the business from distance-based nearby results.
  */
 
@@ -35,6 +37,22 @@ const parseCoordinate = (raw: string, min: number, max: number, name: string): {
   return { value };
 };
 
+/** Owner-appropriate copy for a failed "use my location" attempt. */
+const locationFailureHint = (outcome: LocationOutcome): string | null => {
+  switch (outcome.status) {
+    case 'granted':
+      return null;
+    case 'denied':
+      return 'Location permission was denied. You can still place the pin manually.';
+    case 'permanently-denied':
+      return 'Location is turned off for NearbyOrders. Enable it in your device settings to use your current location, or place the pin manually.';
+    case 'unavailable':
+      return 'Your current location is not available right now. Place the pin manually.';
+    case 'error':
+      return outcome.message;
+  }
+};
+
 export function OwnerLocation(props: { businessId: string }) {
   const location = useAsyncData<BusinessLocation>(() => getBusinessLocation(props.businessId), [props.businessId]);
   const businesses = useAsyncData(() => getMyBusinesses(), []);
@@ -44,15 +62,18 @@ export function OwnerLocation(props: { businessId: string }) {
   const [hydratedFor, setHydratedFor] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
-  // Address search state (Phase 12): results, busy flag, and the label of the
-  // chosen place so the owner can confirm what they picked.
+  // Address search state: results, busy flag, and the label of the chosen
+  // place so the owner can confirm what they picked.
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<GeocodeResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [pickedLabel, setPickedLabel] = useState<string | null>(null);
+  // Human-readable label for the current pin: the picked search result, or a
+  // best-effort reverse-geocoded address. Never blocks saving.
+  const [pinLabel, setPinLabel] = useState<string | null>(null);
   // True once the owner edits fields/pin/search this session; the initial
   // camera only auto-pans while the form is untouched.
   const [dirty, setDirty] = useState(false);
@@ -60,6 +81,7 @@ export function OwnerLocation(props: { businessId: string }) {
   const { handle: mapHandle } = useMapProvider();
   const map = mapHandle.provider;
   const mapReady = mapHandle.ready;
+  const latRef = useRef<HTMLInputElement | null>(null);
 
   // Hydrate the inputs once per loaded business; further edits stay local.
   useEffect(() => {
@@ -100,6 +122,16 @@ export function OwnerLocation(props: { businessId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, mapReady, location.data]);
 
+  // Best-effort reverse-geocoded label for a pin position. Never blocks.
+  const describePin = async (p: LatLng) => {
+    try {
+      const hit = await mapHandle.geocoding.reverseGeocode(p);
+      if (hit) setPinLabel(hit.label);
+    } catch {
+      /* label stays as-is; the coordinates are what get saved */
+    }
+  };
+
   // Draggable pin → coordinate fields.
   useEffect(() => {
     if (!map || !mapReady) return;
@@ -107,10 +139,27 @@ export function OwnerLocation(props: { businessId: string }) {
       setLat(p.lat.toFixed(6));
       setLng(p.lng.toFixed(6));
       setDirty(true);
-      setPickedLabel(null);
       setSaved(null);
       setError(null);
+      void describePin(p);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, mapReady, mapHandle]);
+
+  // Tap the map → place (or move) the pin there.
+  useEffect(() => {
+    if (!map || !mapReady) return;
+    return mapHandle.onMapClick((p: LatLng) => {
+      setLat(p.lat.toFixed(6));
+      setLng(p.lng.toFixed(6));
+      setDirty(true);
+      setPinLabel(null);
+      setSaved(null);
+      setError(null);
+      map.setDraggableMarker(p);
+      void describePin(p);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, mapReady, mapHandle]);
 
   const runAddressSearch = async () => {
@@ -120,7 +169,7 @@ export function OwnerLocation(props: { businessId: string }) {
       const results = await mapHandle.geocoding.geocode(searchQuery);
       if (!results.length) {
         setSearchResults([]);
-        setSearchError('No places matched that search. Try adding the city.');
+        setSearchError('No places matched that search. Try adding the city, e.g. "Main Bazaar, Sheikhupura".');
       } else {
         setSearchResults(results);
       }
@@ -132,17 +181,38 @@ export function OwnerLocation(props: { businessId: string }) {
     }
   };
 
-  const pickResult = (r: GeocodeResult) => {
-    setLat(r.position.lat.toFixed(6));
-    setLng(r.position.lng.toFixed(6));
+  const placePin = (position: LatLng, label: string | null) => {
+    setLat(position.lat.toFixed(6));
+    setLng(position.lng.toFixed(6));
     setDirty(true);
-    setPickedLabel(r.label);
-    setSearchResults([]);
-    setSearchQuery('');
+    setPinLabel(label);
     setSaved(null);
     setError(null);
-    map?.setDraggableMarker(r.position);
-    map?.panTo(r.position, 16);
+    map?.setDraggableMarker(position);
+    map?.panTo(position, 16);
+  };
+
+  const pickResult = (r: GeocodeResult) => {
+    placePin(r.position, r.label);
+    setSearchResults([]);
+    setSearchQuery('');
+  };
+
+  const useMyLocation = async () => {
+    if (locating) return;
+    setLocating(true);
+    setError(null);
+    try {
+      const outcome = await requestCustomerLocation(8000);
+      if (outcome.status === 'granted') {
+        placePin(outcome.coords, null);
+        void describePin(outcome.coords);
+      } else {
+        setError(locationFailureHint(outcome));
+      }
+    } finally {
+      setLocating(false);
+    }
   };
 
   if (location.loading) return <Loading label="Loading location…" />;
@@ -192,7 +262,7 @@ export function OwnerLocation(props: { businessId: string }) {
       setLat('');
       setLng('');
       setDirty(false);
-      setPickedLabel(null);
+      setPinLabel(null);
       location.reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not clear the location.');
@@ -204,24 +274,17 @@ export function OwnerLocation(props: { businessId: string }) {
   const hasPin = lat.trim() !== '' && lng.trim() !== '';
 
   return (
-    <section className="card">
-      <h2>{configured ? 'Location settings' : 'Set your location'}</h2>
+    <div>
       {configured ? (
         <p className="location-configured-note" role="status">
           <PinIcon size={16} /> Your location is set — nearby customers see your real distance.
         </p>
       ) : (
         <p className="hint">
-          Drop a pin on the map or search for your address so customers can see how far you are and find you with
-          directions. Until then, customers still find you through search and category browsing — NearbyOrders never
-          guesses your location.
+          Set your exact business location so customers can find you easily on NearbyOrders. Search your address, use
+          your current location, or drag the pin to your entrance.
         </p>
       )}
-      {business ? (
-        <p className="hint">
-          Address on your profile: {business.address}, {[business.locality, business.city].filter(Boolean).join(', ')}
-        </p>
-      ) : null}
       {saved ? (
         <p className="save-ok" role="status">
           {saved}
@@ -229,13 +292,16 @@ export function OwnerLocation(props: { businessId: string }) {
       ) : null}
       {error ? <ErrorState message={error} /> : null}
 
-      {/* Map picker: the pin is the source of truth for the fields. */}
-      <div style={{ marginTop: 10 }}>
-        <MapCanvas handle={mapHandle} height={280} ariaLabel="Map pin picker for your business location" />
-        <p className="hint" style={{ marginTop: 6 }}>
-          Drag the pin to your exact entrance. {hasPin ? 'Your pin is placed — review it below.' : 'Search or tap Save after placing.'}
-        </p>
+      {/* Map first: the pin is the source of truth for the fields below. */}
+      <div className="loc-map-wrap" style={{ marginTop: 10 }}>
+        <MapCanvas handle={mapHandle} height={300} ariaLabel="Map pin picker for your business location" />
+        <button type="button" className="loc-use-btn" onClick={useMyLocation} disabled={locating}>
+          <PinIcon size={14} /> {locating ? 'Locating…' : 'Use my location'}
+        </button>
       </div>
+      <p className="hint" style={{ marginTop: 6 }}>
+        Drag the pin to your exact entrance. {hasPin ? 'Your pin is placed — review it below.' : 'Then save your location.'}
+      </p>
 
       {/* Address search (OpenStreetMap/Nominatim via the provider abstraction). */}
       <form
@@ -270,47 +336,84 @@ export function OwnerLocation(props: { businessId: string }) {
           ))}
         </ul>
       ) : null}
-      {pickedLabel ? (
-        <p className="hint" role="status" style={{ marginTop: 6 }}>
-          Pinned: {pickedLabel}
+
+      {/* Pinned location confirmation, mirroring the reference flow. */}
+      {hasPin ? (
+        <section className="loc-pinned-card" aria-label="Pinned location" style={{ marginTop: 12 }}>
+          <div className="loc-pinned-head">
+            <span className="loc-pinned-title">
+              <PinIcon size={16} /> Pinned location
+            </span>
+            <button type="button" className="loc-pinned-edit" onClick={() => latRef.current?.focus()}>
+              Edit
+            </button>
+          </div>
+          {pinLabel ? <p className="loc-pinned-label">{pinLabel}</p> : null}
+          {business ? (
+            <p className="hint" style={{ margin: '4px 0 0' }}>
+              Profile address: {business.address}, {[business.locality, business.city].filter(Boolean).join(', ')}
+            </p>
+          ) : null}
+          <div className="loc-coords">
+            <span>
+              <span className="loc-coords-label">Latitude</span>
+              <span className="loc-coords-value">{Number(lat).toFixed(4)}</span>
+            </span>
+            <span>
+              <span className="loc-coords-label">Longitude</span>
+              <span className="loc-coords-value">{Number(lng).toFixed(4)}</span>
+            </span>
+          </div>
+        </section>
+      ) : business ? (
+        <p className="hint" style={{ marginTop: 10 }}>
+          Address on your profile: {business.address}, {[business.locality, business.city].filter(Boolean).join(', ')}
         </p>
       ) : null}
 
-      <Field label="Latitude" hint={`Decimal degrees, ${LAT_MIN} to ${LAT_MAX}`}>
-        <input
-          inputMode="decimal"
-          value={lat}
-          onChange={(e) => {
-            setLat(e.target.value);
-            setDirty(true);
-          }}
-          placeholder="e.g. 31.5204"
-          aria-label="Latitude"
-        />
-      </Field>
-      <Field label="Longitude" hint={`Decimal degrees, ${LNG_MIN} to ${LNG_MAX}`}>
-        <input
-          inputMode="decimal"
-          value={lng}
-          onChange={(e) => {
-            setLng(e.target.value);
-            setDirty(true);
-          }}
-          placeholder="e.g. 74.3587"
-          aria-label="Longitude"
-        />
-      </Field>
+      <div style={{ marginTop: 12 }}>
+        <Field label="Latitude" hint={`Decimal degrees, ${LAT_MIN} to ${LAT_MAX}`}>
+          <input
+            ref={latRef}
+            inputMode="decimal"
+            value={lat}
+            onChange={(e) => {
+              setLat(e.target.value);
+              setDirty(true);
+            }}
+            placeholder="e.g. 31.5204"
+            aria-label="Latitude"
+          />
+        </Field>
+        <Field label="Longitude" hint={`Decimal degrees, ${LNG_MIN} to ${LNG_MAX}`}>
+          <input
+            inputMode="decimal"
+            value={lng}
+            onChange={(e) => {
+              setLng(e.target.value);
+              setDirty(true);
+            }}
+            placeholder="e.g. 74.3587"
+            aria-label="Longitude"
+          />
+        </Field>
+      </div>
 
-      <div className="btn-row">
-        <Button onClick={save} disabled={saving || clearing}>
+      <div style={{ marginTop: 4 }}>
+        {/* The button stays enabled so tapping it with incomplete input shows
+            the honest validation guidance ("Enter longitude…") instead of a
+            dead control with no explanation. */}
+        <Button full onClick={save} disabled={saving || clearing}>
           {saving ? 'Saving…' : 'Save location'}
         </Button>
         {configured ? (
-          <Button variant="ghost" onClick={clear} disabled={saving || clearing}>
-            {clearing ? 'Clearing…' : 'Clear location'}
-          </Button>
+          <div className="btn-row" style={{ marginTop: 8 }}>
+            <Button variant="ghost" sm onClick={clear} disabled={saving || clearing}>
+              {clearing ? 'Clearing…' : 'Clear location'}
+            </Button>
+          </div>
         ) : null}
       </div>
-    </section>
+    </div>
   );
 }

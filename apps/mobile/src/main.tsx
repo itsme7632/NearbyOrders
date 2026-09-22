@@ -15,7 +15,7 @@ import { BusinessDetailScreen } from './screens/BusinessDetail.js';
 import { BookServiceScreen } from './screens/BookService.js';
 import { BookingDetailScreen } from './screens/Bookings.js';
 import { ProfileScreen, EditProfileScreen, ChangePasswordScreen } from './screens/Profile.js';
-import { OwnerDashboardScreen } from './screens/OwnerDashboard.js';
+// (OwnerDashboardScreen intentionally not imported: /owner renders OwnerBusinessHome.)
 import { OwnerScreen } from './screens/OwnerScreen.js';
 import { OwnerBookingDetailScreen } from './screens/OwnerBookings.js';
 import { OwnerBusinessHome } from './screens/OwnerBusinessHome.js';
@@ -285,6 +285,8 @@ export function App() {
         onListBusiness={() => push('/create-business')}
         onOpenOrder={(id) => push(`/order/${id}`)}
         onOpenBooking={(id) => push(`/booking/${id}`)}
+        justCreatedName={route.justCreatedName ?? null}
+        justCreatedStatus={route.justCreatedStatus ?? null}
       />
     ) : (
       profileAuthScreen

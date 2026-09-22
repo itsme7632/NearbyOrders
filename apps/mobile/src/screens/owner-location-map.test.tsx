@@ -16,6 +16,7 @@ vi.mock('../api.js', async (importOriginal) => ({
 }));
 
 const draggableMoves = new Set<(p: { lat: number; lng: number }) => void>();
+const mapClicks = new Set<(p: { lat: number; lng: number }) => void>();
 const pinPlacements: ({ lat: number; lng: number } | null)[] = [];
 
 const makeProvider = (): MapProvider => ({
@@ -27,7 +28,10 @@ const makeProvider = (): MapProvider => ({
   getCenter: vi.fn(() => ({ lat: 30.3753, lng: 69.3451 })),
   onMapIdle: vi.fn(() => () => {}),
   onMarkerClick: vi.fn(() => () => {}),
-  onMapClick: vi.fn(() => () => {}),
+  onMapClick: vi.fn((cb) => {
+    mapClicks.add(cb);
+    return () => mapClicks.delete(cb);
+  }),
   onDraggableMarkerMove: vi.fn((cb) => {
     draggableMoves.add(cb);
     return () => draggableMoves.delete(cb);
@@ -62,6 +66,8 @@ vi.mock('../maps/useMapProvider.js', async (importOriginal) => ({
 vi.mock('../maps/MapCanvas.js', () => ({
   MapCanvas: () => <div data-testid="owner-map-canvas" />,
 }));
+
+vi.mock('../location.js', () => ({ requestCustomerLocation: vi.fn() }));
 
 const resetTestProvider = () => {
   currentProvider = makeProvider();
@@ -122,6 +128,18 @@ describe('OwnerLocation map picker (Phase 12)', () => {
     });
   });
 
+  it('tapping the map drops the pin there and fills the coordinate fields', async () => {
+    vi.mocked(api.getBusinessLocation).mockResolvedValue(unconfigured);
+    render(<OwnerLocation businessId="biz-1" />);
+    await screen.findByRole('button', { name: /save location/i });
+    mapClicks.forEach((cb) => cb({ lat: 31.5497, lng: 74.3436 }));
+    await waitFor(() => {
+      expect((screen.getByLabelText('Latitude') as HTMLInputElement).value).toBe('31.549700');
+      expect((screen.getByLabelText('Longitude') as HTMLInputElement).value).toBe('74.343600');
+    });
+    expect(pinPlacements).toContainEqual({ lat: 31.5497, lng: 74.3436 });
+  });
+
   it('address search: picking a result fills the fields and drops the pin there', async () => {
     vi.mocked(api.getBusinessLocation).mockResolvedValue(unconfigured);
     render(<OwnerLocation businessId="biz-1" />);
@@ -134,7 +152,7 @@ describe('OwnerLocation map picker (Phase 12)', () => {
     expect((screen.getByLabelText('Longitude') as HTMLInputElement).value).toBe('74.343600');
     const provider = (globalThis as { __testOwnerProvider?: MapProvider }).__testOwnerProvider!;
     expect(provider.setDraggableMarker).toHaveBeenCalledWith({ lat: 31.5155, lng: 74.3436 });
-    await screen.findByText(/pinned: liberty market/i);
+    await screen.findByText(/liberty market, gulberg, lahore/i);
   });
 
   it('address search with no matches shows an honest error', async () => {
@@ -186,5 +204,29 @@ describe('OwnerLocation map picker (Phase 12)', () => {
     expect(api.updateBusinessLocation).toHaveBeenCalledWith('biz-1', { latitude: null, longitude: null });
     const provider = (globalThis as { __testOwnerProvider?: MapProvider }).__testOwnerProvider!;
     await waitFor(() => expect(provider.setDraggableMarker).toHaveBeenCalledWith(null));
+  });
+
+  it('use-my-location fills the fields from the device position', async () => {
+    vi.mocked(api.getBusinessLocation).mockResolvedValue(unconfigured);
+    const loc = await import('../location.js');
+    vi.mocked(loc.requestCustomerLocation).mockResolvedValue({ status: 'granted', coords: { lat: 31.52, lng: 74.35 } });
+    render(<OwnerLocation businessId="biz-1" />);
+    fireEvent.click(await screen.findByRole('button', { name: /use my location/i }));
+    await waitFor(() => {
+      expect((screen.getByLabelText('Latitude') as HTMLInputElement).value).toBe('31.520000');
+    });
+    expect((screen.getByLabelText('Longitude') as HTMLInputElement).value).toBe('74.350000');
+    expect(await screen.findByText(/pinned location/i)).toBeTruthy();
+  });
+
+  it('a denied location permission shows calm guidance, never a fake pin', async () => {
+    vi.mocked(api.getBusinessLocation).mockResolvedValue(unconfigured);
+    const loc = await import('../location.js');
+    vi.mocked(loc.requestCustomerLocation).mockResolvedValue({ status: 'denied' });
+    render(<OwnerLocation businessId="biz-1" />);
+    fireEvent.click(await screen.findByRole('button', { name: /use my location/i }));
+    await screen.findByText(/location permission was denied/i);
+    // No coordinates are fabricated when permission is denied.
+    expect((screen.getByLabelText('Latitude') as HTMLInputElement).value).toBe('');
   });
 });

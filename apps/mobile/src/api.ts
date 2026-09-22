@@ -305,6 +305,9 @@ export type Subscription = {
 export const getBusinessSubscription = (businessId: string) =>
   request<Subscription | null>(`/businesses/${businessId}/subscription`, { auth: true });
 
+/** Public plan catalog: real plans and pricing, never hard-coded client-side. */
+export const listSubscriptionPlans = () => request<SubscriptionPlan[]>('/subscription/plans');
+
 /** Starts the plan's free trial; dates are server-generated, body is empty. */
 export const startBusinessTrial = (businessId: string) =>
   request<Subscription>(`/businesses/${businessId}/subscription/trial`, { method: 'POST', auth: true });
@@ -536,6 +539,14 @@ export const updateBusiness = (
 /* ------------------- services / products / hours ------------------- */
 
 export const listServices = (businessId: string) => request<Service[]>(`/businesses/${businessId}/services`);
+
+/**
+ * Owner management reads: the owner's own services without the public
+ * APPROVED/active filters, so a PENDING business (or inactive items) never
+ * 404s with "Business not found" on the management screens.
+ */
+export const listOwnerServices = (businessId: string) =>
+  request<Service[]>(`/owner/businesses/${businessId}/services`, { auth: true });
 export const createService = (
   businessId: string,
   body: {
@@ -568,6 +579,10 @@ export const updateService = (
 export const deleteService = (id: string) => request<void>(`/services/${id}`, { method: 'DELETE', auth: true });
 
 export const listProducts = (businessId: string) => request<Product[]>(`/businesses/${businessId}/products`);
+
+/** Owner management read: the owner's own products, unfiltered (see listOwnerServices). */
+export const listOwnerProducts = (businessId: string) =>
+  request<Product[]>(`/owner/businesses/${businessId}/products`, { auth: true });
 export const createProduct = (
   businessId: string,
   body: { name: string; description?: string; priceMinor: number; imageUrl?: string },
@@ -577,6 +592,10 @@ export const updateProduct = (id: string, patch: Partial<Pick<Product, 'name' | 
 export const deleteProduct = (id: string) => request<void>(`/products/${id}`, { method: 'DELETE', auth: true });
 
 export const getHours = (businessId: string) => request<BusinessHour[]>(`/businesses/${businessId}/hours`);
+
+/** Owner management read: the owner's own hours, unfiltered (see listOwnerServices). */
+export const getOwnerHours = (businessId: string) =>
+  request<BusinessHour[]>(`/owner/businesses/${businessId}/hours`, { auth: true });
 export const putHours = (businessId: string, days: HourInput[]) =>
   request<BusinessHour[]>(`/businesses/${businessId}/hours`, { method: 'PUT', body: days, auth: true });
 

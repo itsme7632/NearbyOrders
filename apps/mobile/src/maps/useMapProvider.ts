@@ -9,10 +9,17 @@ import {
 /**
  * React binding for the map provider abstraction (Phase 12).
  *
- * `useMapProvider` owns the provider lifecycle for a container ref: mounting,
- * unmounting and re-mounting on container change. Screens receive the ready
- * provider plus per-instance event registries, so handlers can change on every
- * render without re-initializing the underlying map.
+ * `useMapProvider` owns the provider lifecycle for a container element:
+ * mounting when the canvas element appears, unmounting when it goes away or
+ * the component unmounts. Screens receive the ready provider plus
+ * per-instance event registries, so handlers can change on every render
+ * without re-initializing the underlying map.
+ *
+ * The mount is keyed on the canvas element itself (not component mount):
+ * screens that render their map only after an async load (e.g. the business
+ * Location screen, which shows a loader first) would otherwise never get a
+ * mounted map — the one-shot mount effect would run while the canvas does
+ * not exist yet. Keying on the element fixes that whole class of blank maps.
  */
 
 export type MapHandle = {
@@ -53,9 +60,9 @@ const useEventRegistry = <T,>() => {
 export const useMapProvider = (): { handle: MapHandle } => {
   const [provider, setProvider] = useState<MapProvider | null>(null);
   const [ready, setReady] = useState(false);
-  const elementRef = useRef<HTMLDivElement | null>(null);
-  const providerRef = useRef<MapProvider | null>(null);
-  const cancelledRef = useRef(false);
+  // The canvas element, as state: mounting is keyed on the element existing,
+  // so a canvas that renders after an async load still gets a mounted map.
+  const [element, setElement] = useState<HTMLDivElement | null>(null);
 
   const idle = useEventRegistry<LatLng>();
   const markerClick = useEventRegistry<string>();
@@ -63,22 +70,18 @@ export const useMapProvider = (): { handle: MapHandle } => {
   const dragMove = useEventRegistry<LatLng>();
 
   useEffect(() => {
-    cancelledRef.current = false;
-    let mountedEl: HTMLElement | null = null;
+    if (!element) return;
+    let cancelled = false;
+    let map: MapProvider | null = null;
     const tryMount = async () => {
-      const el = elementRef.current;
-      if (!el || providerRef.current) return;
-      const { map } = await createDefaultMapProvider();
-      if (cancelledRef.current) return;
-      // The element may have been swapped between the await and here.
-      if (elementRef.current !== el) return;
-      await map.mount(el, { center: { lat: 30.3753, lng: 69.3451 }, zoom: 5 }); // Pakistan overview until the screen pans
-      if (cancelledRef.current) {
-        map.unmount();
+      const created = await createDefaultMapProvider();
+      if (cancelled) return;
+      await created.map.mount(element, { center: { lat: 30.3753, lng: 69.3451 }, zoom: 5 }); // Pakistan overview until the screen pans
+      if (cancelled) {
+        created.map.unmount();
         return;
       }
-      mountedEl = el;
-      providerRef.current = map;
+      map = created.map;
       map.onMapIdle((c) => idle.emit(c));
       map.onMarkerClick((id) => markerClick.emit(id));
       map.onMapClick((p) => mapClick.emit(p));
@@ -88,24 +91,22 @@ export const useMapProvider = (): { handle: MapHandle } => {
     };
     void tryMount();
     return () => {
-      cancelledRef.current = true;
-      if (mountedEl && providerRef.current) {
-        providerRef.current.unmount();
-        providerRef.current = null;
-        setProvider(null);
-        setReady(false);
-      }
+      cancelled = true;
+      map?.unmount();
+      map = null;
+      setProvider(null);
+      setReady(false);
     };
     // Idle/marker/map-click/drag registries are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [element]);
 
-  // Re-mounts if the canvas element is replaced (React calls ref with null then node).
+  // Ref callback feeds the element into state; React calls it with null on
+  // detach, which cleanly unmounts the map via the effect above.
   const canvasRef = useMemo(
-    () =>
-      (el: HTMLDivElement | null) => {
-        elementRef.current = el;
-      },
+    () => (el: HTMLDivElement | null) => {
+      setElement(el);
+    },
     [],
   );
 
