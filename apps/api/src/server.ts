@@ -1,8 +1,8 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { randomBytes, createHash } from 'node:crypto';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
-import multipart from '@fastify/multipart';
-import type { Prisma } from '@prisma/client';
+import multipart, { type MultipartFile } from '@fastify/multipart';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
@@ -15,6 +15,16 @@ import {
   createNotifications,
   addCalendarMonths,
   paymentRequestCreateSchema,
+  planCreateSchema,
+  planUpdateSchema,
+  verificationUpsertSchema,
+  verificationDocTypeSchema,
+  verificationApproveSchema,
+  verificationDecisionSchema,
+  promotionCreateSchema,
+  promotionUpdateSchema,
+  promotionRequestCreateSchema,
+  promotionRequestReviewSchema,
   paymentMethodSchema,
   paymentMethodUpdateSchema,
   paymentRejectSchema,
@@ -74,7 +84,7 @@ import {
 } from './lib.js';
 import type { AuthUser, NotificationInput } from './lib.js';
 import { dispatchPushNotifications } from './push.js';
-import type { SubscriptionStatus } from '@prisma/client';
+import type { SubscriptionStatus, Prisma } from '@prisma/client';
 import { RECEIPT_ACCEPTED_TYPES, RECEIPT_KEY_PATTERN, RECEIPT_MAX_BYTES, readReceipt, receiptContentType, saveReceipt } from './receiptStorage.js';
 
 declare module 'fastify' {
@@ -168,6 +178,25 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   const currentUser = (q: FastifyRequest) => (q as SessionedRequest).currentUser!;
 
+  /* ------------------- Refresh tokens (persistent login) ------------ */
+  /** Opaque 128-bit token; only the SHA-256 hex digest is ever stored. */
+  const newRefreshToken = (): string => randomBytes(16).toString('hex');
+  const hashRefreshToken = (token: string): string => createHash('sha256').update(token, 'utf8').digest('hex');
+  const REFRESH_TOKEN_TTL_MS = 90 * 86_400_000; // 90 days
+
+  /** Issues a refresh-token row for a user (root or transaction client). */
+  // eslint-disable-next-line no-explicit-any
+  const issueRefreshToken = async (client: any, userId: string) => {
+    const token = newRefreshToken();
+    await client.refreshToken.create({
+      data: { userId, tokenHash: hashRefreshToken(token), expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) },
+    });
+    return token;
+  };
+
+  /** Public shape of the authenticated user in auth responses. */
+  const publicAuthUser = (u: { id: string; email: string; role: string }) => ({ id: u.id, email: u.email, role: u.role });
+
   /** Loads a business owned by the current user, or throws 404 (ownership enforced server-side). */
   const ownedBusiness = async (q: FastifyRequest, id: string) => {
     const b = await prisma.business.findFirst({ where: { id, ownerId: currentUser(q).id, archivedAt: null } });
@@ -203,7 +232,53 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (!user || user.isSuspended || !(await argon2.verify(user.passwordHash, b.password ?? '')))
       return r.status(401).send({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' } });
     const accessToken = app.jwt.sign({ id: user.id, role: user.role }, { expiresIn: '15m' });
-    return { data: { accessToken, user: { id: user.id, email: user.email, role: user.role } } };
+    // Persistent login: an opaque refresh token (only its hash is stored)
+    // with a 90-day lifetime. Additive to the existing response shape.
+    const refreshToken = await issueRefreshToken(prisma, user.id);
+    return { data: { accessToken, refreshToken, user: publicAuthUser(user) } };
+  });
+
+  /**
+   * Rotates a refresh token: the presented token must be live (hash match,
+   * not revoked, not expired) and belong to a non-suspended user. Rotation
+   * revokes the old row and issues a fresh pair, so a stolen token is
+   * single-use — replaying it after rotation yields 401.
+   */
+  app.post('/api/v1/auth/refresh', { config: { rateLimit: { max: authRateMax, timeWindow: '15 minutes' } } }, async (q, r) => {
+    const { refreshToken } = z.object({ refreshToken: z.string().min(1).max(256) }).parse(q.body);
+    const now = new Date();
+    const row = await prisma.refreshToken.findUnique({
+      where: { tokenHash: hashRefreshToken(refreshToken) },
+      include: { user: { select: { id: true, email: true, role: true, isSuspended: true } } },
+    });
+    if (!row || row.revokedAt || row.expiresAt.getTime() <= now.getTime() || row.user.isSuspended)
+      return r.status(401).send({ error: { code: 'INVALID_REFRESH', message: 'Session expired. Please sign in again' } });
+    const rotated = await prisma.$transaction(async (tx) => {
+      await tx.refreshToken.update({ where: { id: row.id }, data: { revokedAt: now } });
+      const next = await issueRefreshToken(tx, row.userId);
+      return next;
+    });
+    const accessToken = app.jwt.sign({ id: row.user.id, role: row.user.role }, { expiresIn: '15m' });
+    return { data: { accessToken, refreshToken: rotated, user: publicAuthUser(row.user) } };
+  });
+
+  /**
+   * Logs out: revokes the presented refresh token, or every live refresh
+   * token for the user when none is presented (sign out everywhere).
+   */
+  app.post('/api/v1/auth/logout', { preHandler: auth }, async (q, r) => {
+    const u = currentUser(q);
+    const parsed = z.object({ refreshToken: z.string().min(1).max(256).optional() }).safeParse(q.body ?? {});
+    const token = parsed.success ? parsed.data.refreshToken : undefined;
+    if (token) {
+      await prisma.refreshToken.updateMany({
+        where: { userId: u.id, tokenHash: hashRefreshToken(token), revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    } else {
+      await prisma.refreshToken.updateMany({ where: { userId: u.id, revokedAt: null }, data: { revokedAt: new Date() } });
+    }
+    return r.status(204).send();
   });
 
   app.get('/api/v1/auth/me', { preHandler: auth }, async (q) => {
@@ -783,6 +858,9 @@ export async function buildApp(): Promise<FastifyInstance> {
         slug: `${slugify(d.name)}-${Date.now().toString(36)}`,
         ownerId: currentUser(q).id,
         status,
+        // Explicitly not trial-eligible at creation: trials are never
+        // auto-started; an admin grants eligibility after review.
+        trialStatus: 'NOT_ELIGIBLE',
         categories: { create: categoryIds.map((categoryId) => ({ categoryId })) },
       },
       include: { categories: { include: { category: true } } },
@@ -900,14 +978,20 @@ export async function buildApp(): Promise<FastifyInstance> {
    * (the source of truth `ensurePlan` seeds from) when the table is empty.
    */
   app.get('/api/v1/subscription/plans', async () => {
-    const rows = await prisma.plan.findMany({ where: { isActive: true }, orderBy: { monthlyPriceMinor: 'asc' } });
+    const rows = await prisma.plan.findMany({ where: { isActive: true }, orderBy: [{ displayOrder: 'asc' }, { monthlyPriceMinor: 'asc' }] });
     const data = (rows.length ? rows : PLAN_CATALOG).map((p) => ({
+      id: 'id' in p && p.id ? p.id : p.slug,
       slug: p.slug,
       name: p.name,
       description: p.description,
       monthlyPriceMinor: p.monthlyPriceMinor,
       currency: p.currency,
       trialDays: p.trialDays,
+      benefits: p.benefits,
+      billingInterval: p.billingInterval,
+      displayOrder: p.displayOrder,
+      isHighlighted: p.isHighlighted,
+      isActive: 'isActive' in p ? Boolean(p.isActive) : true,
     }));
     return { data };
   });
@@ -915,13 +999,13 @@ export async function buildApp(): Promise<FastifyInstance> {
   /**
    * Ensures the seeded plan rows exist. Idempotent (upsert by slug); re-running
    * never clobbers admin-edited prices (update is a no-op). Returns the plan
-   * requested by slug.
+   * requested by slug, or null for an unknown slug.
    */
-  const ensurePlan = async (slug: string) => {
-    const spec = PLAN_CATALOG.find((p) => p.slug === slug);
-    if (!spec) throw Object.assign(new Error('Unknown plan'), { statusCode: 500 });
+  const findPlan = async (slug: string) => {
     const existing = await prisma.plan.findUnique({ where: { slug } });
     if (existing) return existing;
+    const spec = PLAN_CATALOG.find((p) => p.slug === slug);
+    if (!spec) return null;
     try {
       return await prisma.plan.create({ data: { ...spec } });
     } catch (e) {
@@ -931,9 +1015,18 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
   };
 
+  /** Same as findPlan, but an unknown slug is a server misconfiguration. */
+  const ensurePlan = async (slug: string) => {
+    const plan = await findPlan(slug);
+    if (!plan) throw Object.assign(new Error('Unknown plan'), { statusCode: 500 });
+    return plan;
+  };
+
   /**
-   * Client-safe subscription DTO: includes the plan for display and the
-   * evaluated (lazily-expired) status. Historical rows are never returned.
+   * Client-safe subscription DTO: includes the plan for display, the
+   * plan snapshot frozen at activation (so price/name history survives plan
+   * edits), and the evaluated (lazily-expired) status. Historical rows are
+   * never returned.
    */
   const publicSubscription = (s: {
     id: string;
@@ -943,7 +1036,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     currentPeriodStartAt: Date;
     currentPeriodEndAt: Date;
     cancelledAt: Date | null;
-    plan: { slug: string; name: string; description: string | null; monthlyPriceMinor: number; currency: string; trialDays: number };
+    planNameSnapshot: string | null;
+    planPriceMinorSnapshot: number | null;
+    plan: { slug: string; name: string; description: string | null; monthlyPriceMinor: number; currency: string; trialDays: number; benefits: string[]; billingInterval: string; displayOrder: number; isHighlighted: boolean };
   }) => ({
     id: s.id,
     status: evaluateSubscription(s),
@@ -952,6 +1047,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     currentPeriodStartAt: s.currentPeriodStartAt,
     currentPeriodEndAt: s.currentPeriodEndAt,
     cancelledAt: s.cancelledAt,
+    planNameSnapshot: s.planNameSnapshot,
+    planPriceMinorSnapshot: s.planPriceMinorSnapshot,
     plan: s.plan,
   });
 
@@ -963,60 +1060,162 @@ export async function buildApp(): Promise<FastifyInstance> {
       include: { plan: true },
     });
 
+  /**
+   * Owner's current subscription. Also reports the business's verification
+   * and trial status so the owner screen can render them in one round trip.
+   * Opportunistic lazy expiry: a past-period TRIAL row is normalized to
+   * EXPIRED on read (no background job), which also moves the business's
+   * trialStatus from ACTIVE to EXPIRED. While a live trial is in its last
+   * 48 hours, a best-effort TRIAL_ENDING_SOON notification is sent once —
+   * notification failures never fail the read.
+   */
   app.get('/api/v1/businesses/:id/subscription', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
     const id = (q.params as { id: string }).id;
-    await ownedBusiness(q, id);
+    const business = await ownedBusiness(q, id);
     // Opportunistic lazy expiry: normalize a past-period TRIAL/ACTIVE row so
     // reads are consistent even without a background job.
     const current = await latestSubscription(id);
     if (current && evaluateSubscription(current) === 'EXPIRED' && LIVE_SUBSCRIPTION_STATUSES.includes(current.status)) {
-      await prisma.businessSubscription.update({ where: { id: current.id }, data: { status: 'EXPIRED' } });
+      await prisma.$transaction([
+        prisma.businessSubscription.update({ where: { id: current.id }, data: { status: 'EXPIRED' } }),
+        ...(business.trialStatus === 'ACTIVE'
+          ? [prisma.business.update({ where: { id }, data: { trialStatus: 'EXPIRED' } })]
+          : []),
+      ]);
       current.status = 'EXPIRED';
+      business.trialStatus = business.trialStatus === 'ACTIVE' ? 'EXPIRED' : business.trialStatus;
+    }
+    const now = new Date();
+    // Best-effort TRIAL_ENDING_SOON: once, while the trial is in its last 48
+    // hours and still live. Never fails the read.
+    if (
+      current &&
+      evaluateSubscription(current) === 'TRIAL' &&
+      current.trialEndAt &&
+      !current.trialEndingNotifiedAt &&
+      current.trialEndAt.getTime() - now.getTime() <= 48 * 3_600_000
+    ) {
+      const claimed = await prisma.businessSubscription
+        .updateMany({ where: { id: current.id, trialEndingNotifiedAt: null }, data: { trialEndingNotifiedAt: now } })
+        .catch(() => ({ count: 0 }));
+      if (claimed.count > 0) {
+        const remainingDays = Math.max(0, Math.ceil((current.trialEndAt.getTime() - now.getTime()) / 86_400_000));
+        void createNotifications(prisma, [
+          {
+            userId: business.ownerId,
+            type: NOTIFICATION_TYPES.TRIAL_ENDING_SOON,
+            title: 'Trial ending soon',
+            message: `Your ${current.plan.name} trial ends in ${remainingDays} day(s). Submit a payment to keep your listing active.`,
+            entityType: 'BusinessSubscription',
+            entityId: current.id,
+          },
+        ]).catch(() => undefined);
+      }
     }
     const sub = current ? publicSubscription(current) : null;
-    return { data: sub };
+    const trial =
+      sub && sub.status === 'TRIAL' && sub.trialStartAt && sub.trialEndAt
+        ? {
+            startsAt: sub.trialStartAt.toISOString(),
+            endsAt: sub.trialEndAt.toISOString(),
+            daysRemaining: Math.max(0, Math.ceil((sub.trialEndAt.getTime() - now.getTime()) / 86_400_000)),
+          }
+        : null;
+    return {
+      data: {
+        businessId: id,
+        subscription: sub,
+        status: sub?.status ?? null,
+        trial,
+        planNameSnapshot: sub?.planNameSnapshot ?? null,
+        planPriceMinorSnapshot: sub?.planPriceMinorSnapshot ?? null,
+        verificationStatus: business.verificationStatus,
+        trialStatus: business.trialStatus,
+      },
+    };
   });
 
   /**
-   * Starts the plan's free trial. One live (TRIAL/ACTIVE) subscription per
-   * business is enforced the same way double-booking is: a transaction-scoped
-   * advisory lock keyed on the business id, a re-check inside the lock, then
-   * insert. Dates are always server-generated; the client sends nothing.
+   * Starts the chosen plan's free trial. The business must be trial-eligible
+   * (an admin grants eligibility after review; new businesses are
+   * NOT_ELIGIBLE and trials never auto-start), the plan must exist and carry
+   * a trial window, and no live (TRIAL/ACTIVE) subscription may exist. The
+   * trial is one-time per business: applying flips trialStatus to ACTIVE, so
+   * a second apply is rejected. One live subscription per business is enforced
+   * the same way double-booking is: a transaction-scoped advisory lock keyed
+   * on the business id, a re-check inside the lock, then insert. Dates are
+   * always server-generated; the client sends only the plan slug.
    */
-  app.post('/api/v1/businesses/:id/subscription/trial', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+  app.post('/api/v1/businesses/:id/subscription/trial/apply', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
     const id = (q.params as { id: string }).id;
-    await ownedBusiness(q, id);
-    const plan = await ensurePlan('nearbyorders-business');
+    const business = await ownedBusiness(q, id);
+    const { planSlug } = z.object({ planSlug: z.string().trim().min(1).max(80) }).parse(q.body);
+    const plan = await findPlan(planSlug);
+    if (!plan) return r.status(400).send({ error: { code: 'PLAN_NOT_FOUND', message: 'Unknown plan' } });
+    if (!plan.isActive) return r.status(400).send({ error: { code: 'PLAN_NOT_FOUND', message: 'This plan is no longer offered' } });
+    if (plan.trialDays <= 0) return r.status(400).send({ error: { code: 'TRIAL_NOT_AVAILABLE', message: 'This plan has no trial' } });
+    if (business.trialStatus !== 'ELIGIBLE')
+      return r.status(403).send({ error: { code: 'NOT_ELIGIBLE', message: 'This business is not eligible for a free trial' } });
     const now = new Date();
     const trialEnd = new Date(now.getTime() + plan.trialDays * 86_400_000);
     try {
       const created = await prisma.$transaction(async (tx) => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${id}))`;
+        // Re-check everything inside the lock — the authoritative state.
+        const gate = await tx.business.findUniqueOrThrow({ where: { id }, select: { trialStatus: true, ownerId: true } });
+        if (gate.trialStatus !== 'ELIGIBLE') throw Object.assign(new Error('not-eligible'), { code: 'NOT_ELIGIBLE' });
         const existing = await tx.businessSubscription.findFirst({
           where: { businessId: id, status: { in: [...LIVE_SUBSCRIPTION_STATUSES] } },
           select: { id: true },
         });
         if (existing) throw Object.assign(new Error('already-live'), { code: 'ALREADY_SUBSCRIBED' });
-        return tx.businessSubscription.create({
+        const livePlan = await tx.plan.findUnique({ where: { id: plan.id } });
+        if (!livePlan || !livePlan.isActive || livePlan.trialDays <= 0)
+          throw Object.assign(new Error('plan'), { code: 'TRIAL_NOT_AVAILABLE' });
+        const row = await tx.businessSubscription.create({
           data: {
             businessId: id,
-            planId: plan.id,
+            planId: livePlan.id,
             status: 'TRIAL',
             trialStartAt: now,
             trialEndAt: trialEnd,
             currentPeriodStartAt: now,
             currentPeriodEndAt: trialEnd,
+            // Freeze the plan's commercial terms at activation: price/name
+            // history survives later plan edits.
+            planNameSnapshot: livePlan.name,
+            planPriceMinorSnapshot: livePlan.monthlyPriceMinor,
           },
           include: { plan: true },
         });
+        await tx.business.update({
+          where: { id },
+          data: { trialStatus: 'ACTIVE', trialStartedAt: now, trialEndsAt: trialEnd },
+        });
+        return row;
       });
       await prisma.auditLog.create({
         data: { actorId: currentUser(q).id, action: 'SUBSCRIPTION_TRIAL_STARTED', entityType: 'BusinessSubscription', entityId: created.id, metadata: { businessId: id, planSlug: plan.slug } },
       });
+      // Best-effort owner notification, only after commit.
+      void createNotifications(prisma, [
+        {
+          userId: business.ownerId,
+          type: NOTIFICATION_TYPES.TRIAL_STARTED,
+          title: 'Trial started',
+          message: `Your ${plan.trialDays}-day free trial of ${created.plan.name} has started.`,
+          entityType: 'BusinessSubscription',
+          entityId: created.id,
+        },
+      ]).catch(() => undefined);
       return r.status(201).send({ data: publicSubscription(created) });
     } catch (e) {
       if ((e as { code?: string }).code === 'ALREADY_SUBSCRIBED')
         return r.status(409).send({ error: { code: 'ALREADY_SUBSCRIBED', message: 'This business already has an active or trial subscription' } });
+      if ((e as { code?: string }).code === 'NOT_ELIGIBLE')
+        return r.status(403).send({ error: { code: 'NOT_ELIGIBLE', message: 'This business is not eligible for a free trial' } });
+      if ((e as { code?: string }).code === 'TRIAL_NOT_AVAILABLE')
+        return r.status(400).send({ error: { code: 'TRIAL_NOT_AVAILABLE', message: 'This plan has no trial' } });
       throw e;
     }
   });
@@ -1043,6 +1242,282 @@ export async function buildApp(): Promise<FastifyInstance> {
     return { data: publicSubscription(cancelled) };
   });
 
+  /* ------------------- Business verification (Phase 18) ------------- */
+
+  /** Owner-safe verification application DTO (no reviewer internals). */
+  const ownerVerification = (v: {
+    id: string; status: string; legalName: string | null; publicName: string | null; ownerName: string | null;
+    phone: string | null; address: string | null; city: string | null; categoryId: string | null;
+    description: string | null; latitude: number | null; longitude: number | null;
+    registrationInfo: string | null; reviewerMessage: string | null;
+    submittedAt: Date | null; reviewedAt: Date | null; createdAt: Date; updatedAt: Date;
+    documents: { id: string; docType: string; storageKey: string; status: string; uploadedAt: Date }[];
+  }) => ({
+    id: v.id,
+    status: v.status,
+    legalName: v.legalName,
+    publicName: v.publicName,
+    ownerName: v.ownerName,
+    phone: v.phone,
+    address: v.address,
+    city: v.city,
+    categoryId: v.categoryId,
+    description: v.description,
+    latitude: v.latitude,
+    longitude: v.longitude,
+    registrationInfo: v.registrationInfo,
+    reviewerMessage: v.reviewerMessage,
+    submittedAt: v.submittedAt?.toISOString() ?? null,
+    reviewedAt: v.reviewedAt?.toISOString() ?? null,
+    createdAt: v.createdAt.toISOString(),
+    updatedAt: v.updatedAt.toISOString(),
+    documents: v.documents.map((d) => ({ id: d.id, docType: d.docType, status: d.status, uploadedAt: d.uploadedAt.toISOString() })),
+  });
+
+  const VERIFICATION_INCLUDE = {
+    documents: { select: { id: true, docType: true, storageKey: true, status: true, uploadedAt: true }, orderBy: { uploadedAt: 'asc' } },
+  } satisfies Prisma.VerificationApplicationInclude;
+
+  /** Editable while the application is a DRAFT or was sent back for changes. */
+  const VERIFICATION_EDITABLE = ['DRAFT', 'CHANGES_REQUESTED'] as const;
+
+  /** Owner's current verification application (may be null). */
+  app.get('/api/v1/businesses/:id/verification', { preHandler: roles('BUSINESS_OWNER') }, async (q) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    const application = await prisma.verificationApplication.findUnique({ where: { businessId: id }, include: VERIFICATION_INCLUDE });
+    return { data: application ? ownerVerification(application) : null };
+  });
+
+  /**
+   * Creates or updates the verification draft. There is deliberately no
+   * isVerified field anywhere on owner input — verification is granted only
+   * by the admin review flow. A submitted application must be sent back for
+   * changes before it becomes editable again.
+   */
+  app.put('/api/v1/businesses/:id/verification', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    const d = verificationUpsertSchema.parse(q.body);
+    if (d.categoryId) {
+      const category = await prisma.category.findFirst({ where: { id: d.categoryId, isActive: true }, select: { id: true } });
+      if (!category) return r.status(400).send({ error: { code: 'INVALID_CATEGORY', message: 'The selected category is invalid' } });
+    }
+    const existing = await prisma.verificationApplication.findUnique({ where: { businessId: id } });
+    if (existing && !VERIFICATION_EDITABLE.includes(existing.status as (typeof VERIFICATION_EDITABLE)[number]))
+      return r.status(409).send({ error: { code: 'NOT_EDITABLE', message: 'This application is under review and cannot be edited' } });
+    const application = existing
+      ? await prisma.verificationApplication.update({ where: { id: existing.id }, data: { ...d, status: existing.status === 'CHANGES_REQUESTED' ? 'DRAFT' : existing.status }, include: VERIFICATION_INCLUDE })
+      : await prisma.verificationApplication.create({ data: { businessId: id, ...d }, include: VERIFICATION_INCLUDE });
+    return { data: ownerVerification(application) };
+  });
+
+  /**
+   * Submits the draft for admin review. Requires legalName, ownerName, phone
+   * and at least one document; empty strings are treated as missing.
+   */
+  app.post('/api/v1/businesses/:id/verification/submit', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const business = await ownedBusiness(q, id);
+    const application = await prisma.verificationApplication.findUnique({ where: { businessId: id }, include: VERIFICATION_INCLUDE });
+    if (!application) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'No verification application to submit' } });
+    if (!VERIFICATION_EDITABLE.includes(application.status as (typeof VERIFICATION_EDITABLE)[number]))
+      return r.status(409).send({ error: { code: 'NOT_EDITABLE', message: 'This application has already been submitted' } });
+    const missing: string[] = [];
+    if (!application.legalName?.trim()) missing.push('legalName');
+    if (!application.ownerName?.trim()) missing.push('ownerName');
+    if (!application.phone?.trim()) missing.push('phone');
+    if (application.documents.length === 0) missing.push('documents');
+    if (missing.length > 0)
+      return r.status(400).send({ error: { code: 'INCOMPLETE_APPLICATION', message: `Complete these fields before submitting: ${missing.join(', ')}` } });
+    const now = new Date();
+    const submitted = await prisma.$transaction(async (tx) => {
+      const row = await tx.verificationApplication.update({
+        where: { id: application.id },
+        data: { status: 'SUBMITTED', submittedAt: now },
+        include: VERIFICATION_INCLUDE,
+      });
+      await tx.business.update({ where: { id }, data: { verificationStatus: 'PENDING' } });
+      return row;
+    });
+    await prisma.auditLog.create({
+      data: { actorId: currentUser(q).id, action: 'VERIFICATION_SUBMITTED', entityType: 'VerificationApplication', entityId: application.id, metadata: { businessId: id } },
+    });
+    void createNotifications(prisma, [
+      {
+        userId: business.ownerId,
+        type: NOTIFICATION_TYPES.VERIFICATION_SUBMITTED,
+        title: 'Verification submitted',
+        message: 'Your business verification application has been submitted for review.',
+        entityType: 'VerificationApplication',
+        entityId: application.id,
+      },
+    ]).catch(() => undefined);
+    return { data: ownerVerification(submitted) };
+  });
+
+  /**
+   * REAL document upload (product-wide rule: upload, never a URL field). The
+   * owner uploads the document image; the server stores the bytes via the
+   * receipt storage abstraction and keeps an opaque storage key. Documents
+   * are only readable through the authorized view endpoint below.
+   */
+  app.post('/api/v1/businesses/:id/verification/documents', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    const application = await prisma.verificationApplication.findUnique({ where: { businessId: id } });
+    if (!application) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Create the verification application first' } });
+    if (!VERIFICATION_EDITABLE.includes(application.status as (typeof VERIFICATION_EDITABLE)[number]))
+      return r.status(409).send({ error: { code: 'NOT_EDITABLE', message: 'This application is under review and cannot be edited' } });
+    let type = '';
+    let file: MultipartFile | null = null;
+    let fileBytes: Buffer | null = null;
+    // NOTE: the file stream must be consumed inside the iteration — leaving
+    // a file part unread stalls q.parts() forever (busboy backpressure).
+    for await (const part of q.parts()) {
+      if (part.type === 'file') {
+        if (!file) {
+          file = part;
+          fileBytes = await part.toBuffer();
+        } else {
+          part.file.resume();
+        }
+      } else if (part.fieldname === 'type' && typeof part.value === 'string') {
+        type = part.value;
+      }
+    }
+    const docType = verificationDocTypeSchema.safeParse(type);
+    if (!docType.success) return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: docType.error.issues[0]?.message ?? 'Document type is required' } });
+    if (!file) return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'A document image file is required' } });
+    if (!RECEIPT_ACCEPTED_TYPES.includes(file.mimetype as (typeof RECEIPT_ACCEPTED_TYPES)[number])) {
+      return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Documents must be JPG, PNG or WebP images' } });
+    }
+    try {
+      const bytes = fileBytes ?? (await file.toBuffer());
+      const storageKey = await saveReceipt(bytes, file.mimetype);
+      const created = await prisma.verificationDocument.create({
+        data: { applicationId: application.id, docType: docType.data.toUpperCase(), storageKey, status: 'PENDING' },
+      });
+      return r.status(201).send({ data: { id: created.id, docType: created.docType, status: created.status, uploadedAt: created.uploadedAt.toISOString() } });
+    } catch (e) {
+      if ((e as { code?: string }).code === 'FST_PART_FILE_LIMIT_EXCEEDED' || (e as { statusCode?: number }).statusCode === 413)
+        return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: `Documents must be ${Math.round(RECEIPT_MAX_BYTES / (1024 * 1024))} MB or smaller` } });
+      throw e;
+    }
+  });
+
+  /**
+   * Verification document bytes for an authorized viewer only: the owning
+   * business or an ADMIN. Same opaque-key, no-public-URL rule as receipts.
+   */
+  app.get('/api/v1/verification/documents/*', { preHandler: auth }, async (q, r) => {
+    const storageKey = (q.params as { '*': string })['*'];
+    if (!RECEIPT_KEY_PATTERN.test(storageKey))
+      return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Document not found' } });
+    const doc = await prisma.verificationDocument.findFirst({
+      where: { storageKey },
+      include: { application: { select: { business: { select: { ownerId: true } } } } },
+    });
+    if (!doc) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Document not found' } });
+    const user = currentUser(q);
+    const authorized = user.role === 'ADMIN' || doc.application.business.ownerId === user.id;
+    if (!authorized) return r.status(403).send({ error: { code: 'FORBIDDEN', message: 'You cannot view this document' } });
+    const bytes = await readReceipt(storageKey);
+    if (!bytes) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Document not found' } });
+    return r.header('content-type', receiptContentType(storageKey) ?? 'application/octet-stream').send(bytes);
+  });
+
+  /* ------------------- Promotions (Phase 18) ------------------------ */
+
+  /** Public promotion DTO. */
+  const publicPromotion = (p: {
+    id: string; name: string; slug: string; description: string | null; benefits: string[];
+    priceMinor: number | null; currency: string; durationDays: number | null;
+    requirements: string | null; displayOrder: number;
+  }) => ({
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    description: p.description,
+    benefits: p.benefits,
+    priceMinor: p.priceMinor,
+    currency: p.currency,
+    durationDays: p.durationDays,
+    requirements: p.requirements,
+    displayOrder: p.displayOrder,
+  });
+
+  /** Active promotions in display order — visible to everyone. */
+  app.get('/api/v1/promotions', async () => {
+    const promotions = await prisma.promotion.findMany({
+      where: { isActive: true },
+      orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }],
+    });
+    return { data: promotions.map(publicPromotion) };
+  });
+
+  app.get('/api/v1/promotions/:slug', async (q, r) => {
+    const promotion = await prisma.promotion.findFirst({
+      where: { slug: (q.params as { slug: string }).slug, isActive: true },
+    });
+    if (!promotion) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Promotion not found' } });
+    return { data: publicPromotion(promotion) };
+  });
+
+  /** Owner-safe promotion-request DTO. */
+  const ownerPromotionRequest = (p: {
+    id: string; status: string; note: string | null; reviewerMessage: string | null;
+    createdAt: Date; reviewedAt: Date | null;
+    promotion: { id: string; name: string; slug: string };
+  }) => ({
+    id: p.id,
+    status: p.status,
+    note: p.note,
+    reviewerMessage: p.reviewerMessage,
+    createdAt: p.createdAt.toISOString(),
+    reviewedAt: p.reviewedAt?.toISOString() ?? null,
+    promotion: p.promotion,
+  });
+
+  /**
+   * Requests to join a promotion. Requesting is free — it creates a PENDING
+   * row an admin reviews; the team contacts the business about next steps.
+   * There is no paid checkout on promotions. One pending request per
+   * business+promotion (re-request allowed after a decision).
+   */
+  app.post('/api/v1/businesses/:id/promotion-requests', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    const body = promotionRequestCreateSchema.parse(q.body);
+    const promotion = await prisma.promotion.findFirst({ where: { id: body.promotionId, isActive: true } });
+    if (!promotion) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Promotion not found' } });
+    const pending = await prisma.promotionRequest.findFirst({
+      where: { businessId: id, promotionId: promotion.id, status: 'PENDING' },
+      select: { id: true },
+    });
+    if (pending) return r.status(409).send({ error: { code: 'REQUEST_ALREADY_PENDING', message: 'You already have a pending request for this promotion' } });
+    const created = await prisma.promotionRequest.create({
+      data: { businessId: id, promotionId: promotion.id, note: body.note ?? null },
+      include: { promotion: { select: { id: true, name: true, slug: true } } },
+    });
+    await prisma.auditLog.create({
+      data: { actorId: currentUser(q).id, action: 'PROMOTION_REQUEST_CREATED', entityType: 'PromotionRequest', entityId: created.id, metadata: { businessId: id, promotionId: promotion.id } },
+    });
+    return r.status(201).send({ data: ownerPromotionRequest(created) });
+  });
+
+  /** Owner's promotion requests, newest first. */
+  app.get('/api/v1/businesses/:id/promotion-requests', { preHandler: roles('BUSINESS_OWNER') }, async (q) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    const requests = await prisma.promotionRequest.findMany({
+      where: { businessId: id },
+      include: { promotion: { select: { id: true, name: true, slug: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    return { data: requests.map(ownerPromotionRequest) };
+  });
+
   /* ------------------- Manual subscription payments (Phase 7B) ------- */
 
   /** Public shape of a pay-in channel for businesses (no admin-only data). */
@@ -1053,6 +1528,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     accountTitle: string;
     accountNumber: string;
     iban: string | null;
+    qrImageUrl: string | null;
     instructions: string | null;
   }) => ({
     id: m.id,
@@ -1061,6 +1537,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     accountTitle: m.accountTitle,
     accountNumber: m.accountNumber,
     iban: m.iban,
+    qrImageUrl: m.qrImageUrl,
     instructions: m.instructions,
   });
 
@@ -1072,6 +1549,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     currency: string;
     transactionReference: string;
     receiptStorageKey: string;
+    paidAt: Date | null;
+    note: string | null;
     rejectionReason: string | null;
     submittedAt: Date;
     reviewedAt: Date | null;
@@ -1084,6 +1563,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     currency: p.currency,
     transactionReference: p.transactionReference,
     receiptStorageKey: p.receiptStorageKey,
+    paidAt: p.paidAt?.toISOString() ?? null,
+    note: p.note,
     rejectionReason: p.rejectionReason,
     submittedAt: p.submittedAt,
     reviewedAt: p.reviewedAt,
@@ -1176,7 +1657,11 @@ export async function buildApp(): Promise<FastifyInstance> {
    * Submits manual payment proof. The amount is always the server-computed
    * plan price (the client never sends money values); the receipt is a
    * storage key returned by the existing image-upload abstraction — never a
-   * user-facing URL. Duplicate protection: one PENDING request per business.
+   * user-facing URL. `paidAt` records when the business says it actually paid
+   * (admin reference only, never in the future); `note` is an optional owner
+   * remark. The plan price comes from the business's live subscription when
+   * one exists, else the seeded commercial plan. Duplicate protection: one
+   * PENDING request per business.
    */
   app.post('/api/v1/businesses/:id/subscription/payment-requests', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
     const id = (q.params as { id: string }).id;
@@ -1186,10 +1671,10 @@ export async function buildApp(): Promise<FastifyInstance> {
     const method = await prisma.paymentMethod.findFirst({ where: { id: body.paymentMethodId, isActive: true } });
     if (!method) return r.status(400).send({ error: { code: 'INVALID_PAYMENT_METHOD', message: 'Choose a valid payment method' } });
 
-    const plan = await ensurePlan('nearbyorders-business');
     const now = new Date();
     const current = await latestSubscription(id);
-    const live = current && evaluateSubscription(current) === current.status ? current : null; // still TRIAL/ACTIVE by its own clock
+    const live = current && LIVE_SUBSCRIPTION_STATUSES.includes(current.status) && current.currentPeriodEndAt.getTime() > now.getTime() ? current : null;
+    const plan = live?.plan ?? (await ensurePlan('nearbyorders-business'));
 
     // Duplicate guard (checked again inside the advisory-lock transaction).
     const pending = await prisma.subscriptionPaymentRequest.findFirst({ where: { businessId: id, status: 'PENDING' }, select: { id: true } });
@@ -1209,6 +1694,8 @@ export async function buildApp(): Promise<FastifyInstance> {
             currency: plan.currency,
             transactionReference: body.transactionReference,
             receiptStorageKey: body.receiptStorageKey,
+            paidAt: body.paidAt ? new Date(body.paidAt) : null,
+            note: body.note ?? null,
             status: 'PENDING',
             submittedAt: now,
           },
@@ -1275,12 +1762,14 @@ export async function buildApp(): Promise<FastifyInstance> {
     currency: string;
     transactionReference: string;
     receiptStorageKey: string;
+    paidAt: Date | null;
+    note: string | null;
     rejectionReason: string | null;
     submittedAt: Date;
     reviewedAt: Date | null;
     reviewedByUserId: string | null;
     subscription: { id: string; status: string } | null;
-    paymentMethod: { id: string; name: string; type: string; accountTitle: string; accountNumber: string; iban: string | null };
+    paymentMethod: { id: string; name: string; type: string; accountTitle: string; accountNumber: string; iban: string | null; qrImageUrl: string | null };
     business: { id: string; name: string; slug: string; owner: { id: string; email: string; firstName: string | null; lastName: string | null } };
   }) => ({
     id: p.id,
@@ -1289,6 +1778,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     currency: p.currency,
     transactionReference: p.transactionReference,
     receiptStorageKey: p.receiptStorageKey,
+    paidAt: p.paidAt?.toISOString() ?? null,
+    note: p.note,
     rejectionReason: p.rejectionReason,
     submittedAt: p.submittedAt,
     reviewedAt: p.reviewedAt,
@@ -1304,7 +1795,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   const PAYMENT_REQUEST_INCLUDE = {
-    paymentMethod: { select: { id: true, name: true, type: true, accountTitle: true, accountNumber: true, iban: true } },
+    paymentMethod: { select: { id: true, name: true, type: true, accountTitle: true, accountNumber: true, iban: true, qrImageUrl: true } },
     subscription: { select: { id: true, status: true } },
     business: {
       select: { id: true, name: true, slug: true, owner: { select: { id: true, email: true, firstName: true, lastName: true } } },
@@ -1315,12 +1806,33 @@ export async function buildApp(): Promise<FastifyInstance> {
     const query = z
       .object({
         status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']).optional(),
+        businessId: z.string().uuid().optional(),
+        q: z.string().trim().max(120).optional(),
+        planId: z.string().uuid().optional(),
+        paymentMethodId: z.string().uuid().optional(),
+        from: z.string().datetime({ offset: true }).optional(),
+        to: z.string().datetime({ offset: true }).optional(),
         limit: z.coerce.number().int().min(1).max(100).optional(),
         cursor: z.string().optional(),
       })
       .parse(q.query ?? {});
+    const where: Record<string, unknown> = {};
+    if (query.status) where.status = query.status;
+    if (query.businessId) where.businessId = query.businessId;
+    if (query.paymentMethodId) where.paymentMethodId = query.paymentMethodId;
+    if (query.planId) where.subscription = { planId: query.planId };
+    if (query.q)
+      where.OR = [
+        { transactionReference: { contains: query.q, mode: 'insensitive' } },
+        { business: { name: { contains: query.q, mode: 'insensitive' } } },
+      ];
+    if (query.from || query.to)
+      where.submittedAt = {
+        ...(query.from ? { gte: new Date(query.from) } : {}),
+        ...(query.to ? { lte: new Date(query.to) } : {}),
+      };
     const requests = await prisma.subscriptionPaymentRequest.findMany({
-      where: query.status ? { status: query.status } : undefined,
+      where,
       orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
       take: query.limit ?? 50,
       ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
@@ -1372,10 +1884,26 @@ export async function buildApp(): Promise<FastifyInstance> {
 
         const method = await tx.paymentMethod.findUnique({ where: { id: request.paymentMethodId } });
         if (!method || !method.isActive) throw Object.assign(new Error('method'), { code: 'INVALID_PAYMENT_METHOD' });
-        const plan = await tx.plan.findFirst({ where: { slug: 'nearbyorders-business' } });
+        // Plan resolution (server-authoritative): the plan on the request's
+        // linked subscription when one exists, else the business's latest
+        // subscription's plan, else the seeded commercial plan. The payable
+        // amount is the server-computed amount stored at submit time — the
+        // business paid the quoted price, so later admin plan edits never
+        // invalidate a pending request. The activated row freezes the plan's
+        // CURRENT name/price as a snapshot so history survives those edits.
+        const linkedPlan = request.subscriptionId
+          ? await tx.businessSubscription.findUnique({ where: { id: request.subscriptionId }, select: { planId: true } })
+          : null;
+        const latestSub = await tx.businessSubscription.findFirst({
+          where: { businessId: request.businessId },
+          orderBy: { createdAt: 'desc' },
+          select: { planId: true },
+        });
+        const planId = linkedPlan?.planId ?? latestSub?.planId;
+        const plan = planId
+          ? await tx.plan.findUnique({ where: { id: planId } })
+          : await tx.plan.findFirst({ where: { slug: 'nearbyorders-business' } });
         if (!plan) throw Object.assign(new Error('plan'), { code: 'PLAN_MISSING' });
-        if (request.amountMinor !== plan.monthlyPriceMinor)
-          throw Object.assign(new Error('amount'), { code: 'AMOUNT_MISMATCH' });
 
         // Approving the same transaction reference twice (two business rows
         // claiming one real payment) is rejected.
@@ -1410,12 +1938,24 @@ export async function buildApp(): Promise<FastifyInstance> {
         if (liveCurrent && liveCurrent.status === 'ACTIVE') {
           subscription = await tx.businessSubscription.update({
             where: { id: liveCurrent.id },
-            data: { status: 'ACTIVE', currentPeriodStartAt: liveCurrent.currentPeriodEndAt, currentPeriodEndAt: periodEnd },
+            data: {
+              status: 'ACTIVE',
+              currentPeriodStartAt: liveCurrent.currentPeriodEndAt,
+              currentPeriodEndAt: periodEnd,
+              planNameSnapshot: plan.name,
+              planPriceMinorSnapshot: plan.monthlyPriceMinor,
+            },
           });
         } else if (liveCurrent && liveCurrent.status === 'TRIAL') {
           subscription = await tx.businessSubscription.update({
             where: { id: liveCurrent.id },
-            data: { status: 'ACTIVE', currentPeriodStartAt: now, currentPeriodEndAt: periodEnd },
+            data: {
+              status: 'ACTIVE',
+              currentPeriodStartAt: now,
+              currentPeriodEndAt: periodEnd,
+              planNameSnapshot: plan.name,
+              planPriceMinorSnapshot: plan.monthlyPriceMinor,
+            },
           });
         } else {
           subscription = await tx.businessSubscription.create({
@@ -1425,39 +1965,52 @@ export async function buildApp(): Promise<FastifyInstance> {
               status: 'ACTIVE',
               currentPeriodStartAt: now,
               currentPeriodEndAt: periodEnd,
+              planNameSnapshot: plan.name,
+              planPriceMinorSnapshot: plan.monthlyPriceMinor,
             },
           });
         }
+
+        // Paid conversion: a business that trialled (ACTIVE/EXPIRED) is marked
+        // CONVERTED. A business that never trialled keeps its status.
+        const gate = await tx.business.findUnique({ where: { id: request.businessId }, select: { trialStatus: true } });
+        if (gate && (gate.trialStatus === 'ACTIVE' || gate.trialStatus === 'EXPIRED'))
+          await tx.business.update({ where: { id: request.businessId }, data: { trialStatus: 'CONVERTED' } });
 
         const approved = await tx.subscriptionPaymentRequest.update({
           where: { id: request.id },
           data: { status: 'APPROVED', reviewedAt: now, reviewedByUserId: admin.id, subscriptionId: subscription.id },
         });
 
-        await createNotifications(
-          tx,
-          [
-            {
-              userId: request.business.ownerId,
-              type: NOTIFICATION_TYPES.SUBSCRIPTION_PAYMENT_APPROVED,
-              title: 'Subscription payment approved',
-              message: `Your NearbyOrders Business subscription payment has been approved. Your subscription is now active until ${periodEnd.toLocaleDateString('en-PK')}.`,
-              entityType: 'SubscriptionPaymentRequest',
-              entityId: request.id,
-            },
-          ],
-          tx,
-        );
-
-        return { approved, subscription, ownerId: request.business.ownerId };
+        return { approved, subscription, ownerId: request.business.ownerId, planName: plan.name, activeUntil: periodEnd.toLocaleDateString('en-PK') };
       });
+      // Notifications are best-effort and post-commit: they must never fail
+      // the payment transaction.
+      void createNotifications(prisma, [
+        {
+          userId: result.ownerId,
+          type: NOTIFICATION_TYPES.SUBSCRIPTION_PAYMENT_APPROVED,
+          title: 'Subscription payment approved',
+          message: `Your ${result.planName} subscription payment has been approved. Your subscription is now active until ${result.activeUntil}.`,
+          entityType: 'SubscriptionPaymentRequest',
+          entityId: result.approved.id,
+        },
+        {
+          userId: result.ownerId,
+          type: NOTIFICATION_TYPES.SUBSCRIPTION_ACTIVATED,
+          title: 'Subscription activated',
+          message: `Your ${result.planName} subscription is now active.`,
+          entityType: 'BusinessSubscription',
+          entityId: result.subscription.id,
+        },
+      ]).catch(() => undefined);
       // Push is an additional channel, dispatched only after commit.
       void dispatchPushNotifications([
         {
           userId: result.ownerId,
           type: NOTIFICATION_TYPES.SUBSCRIPTION_PAYMENT_APPROVED,
           title: 'Subscription payment approved',
-          message: 'Your NearbyOrders Business subscription is now active.',
+          message: `Your ${result.planName} subscription is now active.`,
           entityType: 'SubscriptionPaymentRequest',
           entityId: result.approved.id,
         },
@@ -1473,7 +2026,6 @@ export async function buildApp(): Promise<FastifyInstance> {
       if (code === 'NOT_FOUND') return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Payment request not found' } });
       if (code === 'NOT_PENDING') return r.status(409).send({ error: { code: 'NOT_PENDING', message: 'This payment request has already been reviewed' } });
       if (code === 'INVALID_PAYMENT_METHOD') return r.status(409).send({ error: { code: 'INVALID_PAYMENT_METHOD', message: 'The payment method is no longer active' } });
-      if (code === 'AMOUNT_MISMATCH') return r.status(409).send({ error: { code: 'AMOUNT_MISMATCH', message: 'Payment amount no longer matches the plan price' } });
       if (code === 'REFERENCE_ALREADY_APPROVED') return r.status(409).send({ error: { code: 'REFERENCE_ALREADY_APPROVED', message: 'This transaction reference was already approved on another payment request' } });
       if (code === 'PLAN_MISSING') return r.status(500).send({ error: { code: 'INTERNAL_ERROR', message: 'Plan configuration missing' } });
       throw e;
@@ -1500,22 +2052,19 @@ export async function buildApp(): Promise<FastifyInstance> {
           where: { id: request.id },
           data: { status: 'REJECTED', rejectionReason: reason, reviewedAt: now, reviewedByUserId: admin.id },
         });
-        await createNotifications(
-          tx,
-          [
-            {
-              userId: request.business.ownerId,
-              type: NOTIFICATION_TYPES.SUBSCRIPTION_PAYMENT_REJECTED,
-              title: 'Subscription payment rejected',
-              message: `Your NearbyOrders subscription payment was rejected. Reason: ${reason}`,
-              entityType: 'SubscriptionPaymentRequest',
-              entityId: request.id,
-            },
-          ],
-          tx,
-        );
         return { rejected, ownerId: request.business.ownerId };
       });
+      // Best-effort and post-commit: never fails the rejection transaction.
+      void createNotifications(prisma, [
+        {
+          userId: result.ownerId,
+          type: NOTIFICATION_TYPES.SUBSCRIPTION_PAYMENT_REJECTED,
+          title: 'Subscription payment rejected',
+          message: `Your NearbyOrders subscription payment was rejected. Reason: ${reason}`,
+          entityType: 'SubscriptionPaymentRequest',
+          entityId: result.rejected.id,
+        },
+      ]).catch(() => undefined);
       void dispatchPushNotifications([
         {
           userId: result.ownerId,
@@ -1541,21 +2090,21 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   /* ------------------- Admin: payment methods CRUD (Phase 7B) --------- */
 
-  app.get('/api/v1/admin/payment-methods', { preHandler: roles('ADMIN') }, async () => {
+  const adminListPaymentMethods = async () => {
     const methods = await prisma.paymentMethod.findMany({ orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }] });
     return { data: methods };
-  });
+  };
 
-  app.post('/api/v1/admin/payment-methods', { preHandler: roles('ADMIN') }, async (q, r) => {
+  const adminCreatePaymentMethod = async (q: FastifyRequest, r: FastifyReply) => {
     const d = paymentMethodSchema.parse(q.body);
     const created = await prisma.paymentMethod.create({ data: d });
     await prisma.auditLog.create({
       data: { actorId: currentUser(q).id, action: 'PAYMENT_METHOD_CREATED', entityType: 'PaymentMethod', entityId: created.id, metadata: { type: created.type } },
     });
     return r.status(201).send({ data: created });
-  });
+  };
 
-  app.patch('/api/v1/admin/payment-methods/:id', { preHandler: roles('ADMIN') }, async (q, r) => {
+  const adminUpdatePaymentMethod = async (q: FastifyRequest, r: FastifyReply) => {
     const id = (q.params as { id: string }).id;
     const d = paymentMethodUpdateSchema.parse(q.body);
     const existing = await prisma.paymentMethod.findUnique({ where: { id } });
@@ -1565,14 +2114,14 @@ export async function buildApp(): Promise<FastifyInstance> {
       data: { actorId: currentUser(q).id, action: 'PAYMENT_METHOD_UPDATED', entityType: 'PaymentMethod', entityId: id, metadata: { keys: Object.keys(d) } },
     });
     return { data: updated };
-  });
+  };
 
   /**
    * Deleting a payment method is only allowed while it has no payment
    * requests (FK RESTRICT); otherwise admins deactivate it — history must
    * keep showing the channel a payment was paid to.
    */
-  app.delete('/api/v1/admin/payment-methods/:id', { preHandler: roles('ADMIN') }, async (q, r) => {
+  const adminDeletePaymentMethod = async (q: FastifyRequest, r: FastifyReply) => {
     const id = (q.params as { id: string }).id;
     const existing = await prisma.paymentMethod.findUnique({ where: { id }, include: { _count: { select: { paymentRequests: true } } } });
     if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Payment method not found' } });
@@ -1581,6 +2130,75 @@ export async function buildApp(): Promise<FastifyInstance> {
     await prisma.paymentMethod.delete({ where: { id } });
     await prisma.auditLog.create({
       data: { actorId: currentUser(q).id, action: 'PAYMENT_METHOD_DELETED', entityType: 'PaymentMethod', entityId: id },
+    });
+    return r.status(204).send();
+  };
+
+  // Legacy paths, kept for compatibility.
+  app.get('/api/v1/admin/payment-methods', { preHandler: roles('ADMIN') }, adminListPaymentMethods);
+  app.post('/api/v1/admin/payment-methods', { preHandler: roles('ADMIN') }, adminCreatePaymentMethod);
+  app.patch('/api/v1/admin/payment-methods/:id', { preHandler: roles('ADMIN') }, adminUpdatePaymentMethod);
+  app.delete('/api/v1/admin/payment-methods/:id', { preHandler: roles('ADMIN') }, adminDeletePaymentMethod);
+  // Canonical paths under the subscription namespace.
+  app.get('/api/v1/admin/subscription/payment-methods', { preHandler: roles('ADMIN') }, adminListPaymentMethods);
+  app.post('/api/v1/admin/subscription/payment-methods', { preHandler: roles('ADMIN') }, adminCreatePaymentMethod);
+  app.patch('/api/v1/admin/subscription/payment-methods/:id', { preHandler: roles('ADMIN') }, adminUpdatePaymentMethod);
+  app.delete('/api/v1/admin/subscription/payment-methods/:id', { preHandler: roles('ADMIN') }, adminDeletePaymentMethod);
+
+  /* ------------------- Admin: subscription plans (Phase 18) ---------- */
+
+  /** Plan row with a usage count so admins can see references at a glance. */
+  const publicAdminPlan = async (plan: {
+    id: string; slug: string; name: string; description: string | null; monthlyPriceMinor: number; currency: string;
+    trialDays: number; benefits: string[]; billingInterval: string; displayOrder: number; isHighlighted: boolean;
+    isActive: boolean; createdAt: Date; updatedAt: Date;
+  }) => ({
+    ...plan,
+    usageCount: await prisma.businessSubscription.count({ where: { planId: plan.id } }),
+  });
+
+  app.get('/api/v1/admin/subscription/plans', { preHandler: roles('ADMIN') }, async () => {
+    const plans = await prisma.plan.findMany({ orderBy: [{ displayOrder: 'asc' }, { monthlyPriceMinor: 'asc' }] });
+    return { data: await Promise.all(plans.map(publicAdminPlan)) };
+  });
+
+  app.post('/api/v1/admin/subscription/plans', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const d = planCreateSchema.parse(q.body);
+    const existing = await prisma.plan.findUnique({ where: { slug: d.slug } });
+    if (existing) return r.status(409).send({ error: { code: 'PLAN_SLUG_IN_USE', message: 'A plan with this slug already exists' } });
+    const created = await prisma.plan.create({ data: d });
+    await prisma.auditLog.create({
+      data: { actorId: currentUser(q).id, action: 'SUBSCRIPTION_PLAN_CREATED', entityType: 'Plan', entityId: created.id, metadata: { slug: created.slug } },
+    });
+    return r.status(201).send({ data: await publicAdminPlan(created) });
+  });
+
+  app.patch('/api/v1/admin/subscription/plans/:id', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const d = planUpdateSchema.parse(q.body);
+    const existing = await prisma.plan.findUnique({ where: { id } });
+    if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Plan not found' } });
+    const updated = await prisma.plan.update({ where: { id }, data: d });
+    await prisma.auditLog.create({
+      data: { actorId: currentUser(q).id, action: 'SUBSCRIPTION_PLAN_UPDATED', entityType: 'Plan', entityId: id, metadata: { keys: Object.keys(d) } },
+    });
+    return { data: await publicAdminPlan(updated) };
+  });
+
+  /**
+   * Deleting a plan is only allowed while no subscription references it —
+   * history rows freeze the plan's name/price as snapshots, and the FK is
+   * RESTRICT. Deactivation is the soft path for retiring a plan.
+   */
+  app.delete('/api/v1/admin/subscription/plans/:id', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const existing = await prisma.plan.findUnique({ where: { id }, include: { _count: { select: { subscriptions: true } } } });
+    if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Plan not found' } });
+    if (existing._count.subscriptions > 0)
+      return r.status(409).send({ error: { code: 'PLAN_IN_USE', message: 'This plan has subscriptions and can only be deactivated, not deleted' } });
+    await prisma.plan.delete({ where: { id } });
+    await prisma.auditLog.create({
+      data: { actorId: currentUser(q).id, action: 'SUBSCRIPTION_PLAN_DELETED', entityType: 'Plan', entityId: id, metadata: { slug: existing.slug } },
     });
     return r.status(204).send();
   });
@@ -2303,7 +2921,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     });
     if (!method) return r.status(400).send({ error: { code: 'INVALID_PAYMENT_METHOD', message: 'Choose a valid payment method' } });
     if (method.type === 'CASH')
-      return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Cash is collected by the business — submit a manual digital payment instead' } });
+      return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Cash is collected by the business. Submit a manual digital payment instead' } });
     if (!d.transactionReference || !d.receiptStorageKey)
       return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'A transaction reference and receipt image are required' } });
 
@@ -3118,7 +3736,7 @@ export async function buildApp(): Promise<FastifyInstance> {
         return r.status(400).send({ error: { code: 'INVALID_PAYMENT_METHOD', message: 'Choose a valid payment method' } });
       paymentMethodId = method.id;
     } else if (d.fulfillmentType === 'DELIVERY' && !businessSettings.codEnabled) {
-      return r.status(400).send({ error: { code: 'COD_UNAVAILABLE', message: 'Cash on delivery is not available for this business — choose a payment method' } });
+      return r.status(400).send({ error: { code: 'COD_UNAVAILABLE', message: 'Cash on delivery is not available for this business. Choose a payment method' } });
     }
     const totalMinor = subtotalMinor + deliveryFeeMinor;
     // DELIVERY (Phase 17): the client names the customer's own address-book
@@ -3945,7 +4563,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     const businesses = await prisma.business.findMany({
       where,
       select: {
-        id: true, name: true, slug: true, status: true, isVerified: true, city: true, address: true, createdAt: true,
+        id: true, name: true, slug: true, status: true, isVerified: true, verificationStatus: true, trialStatus: true,
+        city: true, address: true, createdAt: true,
         owner: { select: { id: true, email: true, firstName: true, lastName: true } },
         // Operational activity counts (Phase 16): real aggregates, no tokens,
         // no customer data — just how alive this business is on the platform.
@@ -3954,7 +4573,23 @@ export async function buildApp(): Promise<FastifyInstance> {
       orderBy: { createdAt: 'desc' },
       take: query.limit,
     });
-    return { data: businesses.map(({ _count, ...b }) => ({ ...b, counts: _count })) };
+    // Current live subscription status per business (evaluated, lazily-expired).
+    const subs = await prisma.businessSubscription.findMany({
+      where: { businessId: { in: businesses.map((b) => b.id) } },
+      select: { businessId: true, status: true, currentPeriodEndAt: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    const subscriptionStatusByBusiness = new Map<string, string>();
+    for (const s of subs) {
+      if (!subscriptionStatusByBusiness.has(s.businessId)) subscriptionStatusByBusiness.set(s.businessId, evaluateSubscription(s));
+    }
+    return {
+      data: businesses.map(({ _count, ...b }) => ({
+        ...b,
+        counts: _count,
+        subscriptionStatus: subscriptionStatusByBusiness.get(b.id) ?? null,
+      })),
+    };
   });
 
   /** Verify/unverify a business (trust badge), separate from approval status. */
@@ -3968,6 +4603,454 @@ export async function buildApp(): Promise<FastifyInstance> {
       data: { actorId: currentUser(q).id, action: verified ? 'BUSINESS_VERIFIED' : 'BUSINESS_UNVERIFIED', entityType: 'Business', entityId: id, metadata: { name: business.name } },
     });
     return { data: { id: business.id, isVerified: business.isVerified } };
+  });
+
+  /* ------------------- Admin: verification applications ------------- */
+
+  /** Admin DTO: adds reviewer identity and internal notes the owner DTO omits. */
+  const adminVerification = (v: {
+    id: string; status: string; legalName: string | null; publicName: string | null; ownerName: string | null;
+    phone: string | null; address: string | null; city: string | null; categoryId: string | null;
+    description: string | null; latitude: number | null; longitude: number | null;
+    registrationInfo: string | null; adminNotes: string | null; reviewerMessage: string | null;
+    reviewedByUserId: string | null; submittedAt: Date | null; reviewedAt: Date | null;
+    createdAt: Date; updatedAt: Date;
+    business: { id: string; name: string; slug: string; owner: { id: string; email: string; firstName: string | null; lastName: string | null } };
+    documents: { id: string; docType: string; storageKey: string; status: string; uploadedAt: Date }[];
+  }) => ({
+    id: v.id,
+    status: v.status,
+    legalName: v.legalName,
+    publicName: v.publicName,
+    ownerName: v.ownerName,
+    phone: v.phone,
+    address: v.address,
+    city: v.city,
+    categoryId: v.categoryId,
+    description: v.description,
+    latitude: v.latitude,
+    longitude: v.longitude,
+    registrationInfo: v.registrationInfo,
+    adminNotes: v.adminNotes,
+    reviewerMessage: v.reviewerMessage,
+    reviewedByUserId: v.reviewedByUserId,
+    submittedAt: v.submittedAt?.toISOString() ?? null,
+    reviewedAt: v.reviewedAt?.toISOString() ?? null,
+    createdAt: v.createdAt.toISOString(),
+    updatedAt: v.updatedAt.toISOString(),
+    business: v.business,
+    documents: v.documents,
+  });
+
+  const VERIFICATION_ADMIN_INCLUDE = {
+    business: {
+      select: { id: true, name: true, slug: true, owner: { select: { id: true, email: true, firstName: true, lastName: true } } },
+    },
+    documents: { select: { id: true, docType: true, storageKey: true, status: true, uploadedAt: true }, orderBy: { uploadedAt: 'asc' } },
+  } satisfies Prisma.VerificationApplicationInclude;
+
+  /** Review queue: filterable by status, newest first, paginated. */
+  app.get('/api/v1/admin/verifications', { preHandler: roles('ADMIN') }, async (q) => {
+    const query = z
+      .object({
+        status: z.enum(['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'CHANGES_REQUESTED']).optional(),
+        q: z.string().trim().max(120).optional(),
+        limit: z.coerce.number().int().min(1).max(100).default(50),
+        cursor: z.string().optional(),
+      })
+      .parse(q.query ?? {});
+    const where: Record<string, unknown> = {};
+    if (query.status) where.status = query.status;
+    if (query.q) where.business = { name: { contains: query.q, mode: 'insensitive' } };
+    const applications = await prisma.verificationApplication.findMany({
+      where,
+      include: VERIFICATION_ADMIN_INCLUDE,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: query.limit,
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+    });
+    return {
+      data: {
+        items: applications.map(adminVerification),
+        nextCursor: applications.length === query.limit ? applications[applications.length - 1].id : null,
+      },
+    };
+  });
+
+  app.get('/api/v1/admin/verifications/:id', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const application = await prisma.verificationApplication.findUnique({
+      where: { id: (q.params as { id: string }).id },
+      include: VERIFICATION_ADMIN_INCLUDE,
+    });
+    if (!application) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Verification application not found' } });
+    return { data: adminVerification(application) };
+  });
+
+  /**
+   * Approves an application: marks documents verified, grants the business
+   * its verified badge (isVerified + verificationStatus VERIFIED), and makes
+   * the business trial-eligible when it has never been eligible before. The
+   * review is a one-way transition from SUBMITTED — re-deciding an already
+   * decided application is rejected.
+   */
+  app.post('/api/v1/admin/verifications/:id/approve', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const admin = currentUser(q);
+    const { adminNotes, reviewerMessage } = verificationApproveSchema.parse(q.body ?? {});
+    const now = new Date();
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const application = await tx.verificationApplication.findUniqueOrThrow({ where: { id }, include: { business: { select: { id: true, ownerId: true, trialStatus: true } } } });
+        if (application.status !== 'SUBMITTED') throw Object.assign(new Error('dup'), { code: 'NOT_SUBMITTED' });
+        const updated = await tx.verificationApplication.update({
+          where: { id },
+          data: { status: 'APPROVED', adminNotes: adminNotes ?? null, reviewerMessage: reviewerMessage ?? null, reviewedByUserId: admin.id, reviewedAt: now },
+        });
+        await tx.verificationDocument.updateMany({ where: { applicationId: id }, data: { status: 'ACCEPTED' } });
+        await tx.business.update({
+          where: { id: application.businessId },
+          data: {
+            isVerified: true,
+            verificationStatus: 'VERIFIED',
+            verifiedAt: now,
+            // A verified business that never had trial access becomes
+            // trial-eligible: verification is the eligibility gate.
+            ...(application.business.trialStatus === 'NOT_ELIGIBLE' ? { trialStatus: 'ELIGIBLE' } : {}),
+          },
+        });
+        return { updated, business: application.business };
+      });
+      await prisma.auditLog.create({
+        data: { actorId: admin.id, action: 'VERIFICATION_APPROVED', entityType: 'VerificationApplication', entityId: id, metadata: { businessId: result.business.id } },
+      });
+      const notifications: NotificationInput[] = [
+        {
+          userId: result.business.ownerId,
+          type: NOTIFICATION_TYPES.VERIFICATION_APPROVED,
+          title: 'Business verified',
+          message: 'Your business has been verified and now carries the verified badge.',
+          entityType: 'VerificationApplication',
+          entityId: id,
+        },
+      ];
+      if (result.business.trialStatus === 'NOT_ELIGIBLE')
+        notifications.push({
+          userId: result.business.ownerId,
+          type: NOTIFICATION_TYPES.TRIAL_ELIGIBLE,
+          title: 'Free trial unlocked',
+          message: 'Your business is now eligible for a free trial subscription.',
+          entityType: 'VerificationApplication',
+          entityId: id,
+        });
+      void createNotifications(prisma, notifications).catch(() => undefined);
+      const full = await prisma.verificationApplication.findUniqueOrThrow({ where: { id }, include: VERIFICATION_ADMIN_INCLUDE });
+      return { data: adminVerification(full) };
+    } catch (e) {
+      if ((e as { code?: string }).code === 'NOT_SUBMITTED')
+        return r.status(409).send({ error: { code: 'NOT_SUBMITTED', message: 'This application has already been reviewed' } });
+      if ((e as { code?: string }).code === 'P2025')
+        return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Verification application not found' } });
+      throw e;
+    }
+  });
+
+  /**
+   * Rejects an application: marks documents rejected, clears the verified
+   * badge (verificationStatus REJECTED), and leaves trial eligibility
+   * untouched. The owner-visible reviewer message is required.
+   */
+  app.post('/api/v1/admin/verifications/:id/reject', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const admin = currentUser(q);
+    const { adminNotes, reviewerMessage } = verificationDecisionSchema.parse(q.body);
+    const now = new Date();
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const application = await tx.verificationApplication.findUniqueOrThrow({ where: { id }, include: { business: { select: { id: true, ownerId: true } } } });
+        if (application.status !== 'SUBMITTED') throw Object.assign(new Error('dup'), { code: 'NOT_SUBMITTED' });
+        const updated = await tx.verificationApplication.update({
+          where: { id },
+          data: { status: 'REJECTED', adminNotes: adminNotes ?? null, reviewerMessage, reviewedByUserId: admin.id, reviewedAt: now },
+        });
+        await tx.verificationDocument.updateMany({ where: { applicationId: id }, data: { status: 'REJECTED' } });
+        await tx.business.update({
+          where: { id: application.businessId },
+          data: { isVerified: false, verificationStatus: 'REJECTED' },
+        });
+        return { updated, business: application.business };
+      });
+      await prisma.auditLog.create({
+        data: { actorId: admin.id, action: 'VERIFICATION_REJECTED', entityType: 'VerificationApplication', entityId: id, metadata: { businessId: result.business.id } },
+      });
+      void createNotifications(prisma, [
+        {
+          userId: result.business.ownerId,
+          type: NOTIFICATION_TYPES.VERIFICATION_REJECTED,
+          title: 'Verification rejected',
+          message: `Your verification application was rejected. ${reviewerMessage}`,
+          entityType: 'VerificationApplication',
+          entityId: id,
+        },
+      ]).catch(() => undefined);
+      const full = await prisma.verificationApplication.findUniqueOrThrow({ where: { id }, include: VERIFICATION_ADMIN_INCLUDE });
+      return { data: adminVerification(full) };
+    } catch (e) {
+      if ((e as { code?: string }).code === 'NOT_SUBMITTED')
+        return r.status(409).send({ error: { code: 'NOT_SUBMITTED', message: 'This application has already been reviewed' } });
+      if ((e as { code?: string }).code === 'P2025')
+        return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Verification application not found' } });
+      throw e;
+    }
+  });
+
+  /**
+   * Sends an application back for changes: the owner can edit the draft again
+   * and re-submit. Documents return to PENDING. The owner-visible reviewer
+   * message is required.
+   */
+  app.post('/api/v1/admin/verifications/:id/request-changes', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const admin = currentUser(q);
+    const { adminNotes, reviewerMessage } = verificationDecisionSchema.parse(q.body);
+    const now = new Date();
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const application = await tx.verificationApplication.findUniqueOrThrow({ where: { id }, include: { business: { select: { id: true, ownerId: true } } } });
+        if (application.status !== 'SUBMITTED') throw Object.assign(new Error('dup'), { code: 'NOT_SUBMITTED' });
+        const updated = await tx.verificationApplication.update({
+          where: { id },
+          data: { status: 'CHANGES_REQUESTED', adminNotes: adminNotes ?? null, reviewerMessage, reviewedByUserId: admin.id, reviewedAt: now },
+        });
+        await tx.verificationDocument.updateMany({ where: { applicationId: id }, data: { status: 'PENDING' } });
+        return { updated, business: application.business };
+      });
+      await prisma.auditLog.create({
+        data: { actorId: admin.id, action: 'VERIFICATION_CHANGES_REQUESTED', entityType: 'VerificationApplication', entityId: id, metadata: { businessId: result.business.id } },
+      });
+      void createNotifications(prisma, [
+        {
+          userId: result.business.ownerId,
+          type: NOTIFICATION_TYPES.VERIFICATION_CHANGES_REQUESTED,
+          title: 'Verification needs changes',
+          message: `Your verification application needs changes before it can be approved. ${reviewerMessage}`,
+          entityType: 'VerificationApplication',
+          entityId: id,
+        },
+      ]).catch(() => undefined);
+      const full = await prisma.verificationApplication.findUniqueOrThrow({ where: { id }, include: VERIFICATION_ADMIN_INCLUDE });
+      return { data: adminVerification(full) };
+    } catch (e) {
+      if ((e as { code?: string }).code === 'NOT_SUBMITTED')
+        return r.status(409).send({ error: { code: 'NOT_SUBMITTED', message: 'This application has already been reviewed' } });
+      if ((e as { code?: string }).code === 'P2025')
+        return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Verification application not found' } });
+      throw e;
+    }
+  });
+
+  /**
+   * Admin edits the review fields on an application directly (internal notes,
+   * owner-visible message). Never accepts isVerified — verification is
+   * granted only through the approve transition above.
+   */
+  app.patch('/api/v1/admin/verifications/:id', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const { adminNotes, reviewerMessage } = verificationApproveSchema.parse(q.body ?? {});
+    if (adminNotes === undefined && reviewerMessage === undefined)
+      return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'No changes provided' } });
+    const existing = await prisma.verificationApplication.findUnique({ where: { id } });
+    if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Verification application not found' } });
+    const updated = await prisma.verificationApplication.update({
+      where: { id },
+      data: {
+        ...(adminNotes !== undefined ? { adminNotes } : {}),
+        ...(reviewerMessage !== undefined ? { reviewerMessage } : {}),
+      },
+      include: VERIFICATION_ADMIN_INCLUDE,
+    });
+    await prisma.auditLog.create({
+      data: { actorId: currentUser(q).id, action: 'VERIFICATION_UPDATED', entityType: 'VerificationApplication', entityId: id },
+    });
+    return { data: adminVerification(updated) };
+  });
+
+  /* ------------------- Admin: promotions (Phase 18) ------------------ */
+
+  const slugifyPromotion = (name: string) =>
+    name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || `promotion-${Date.now().toString(36)}`;
+
+  app.get('/api/v1/admin/promotions', { preHandler: roles('ADMIN') }, async () => {
+    const promotions = await prisma.promotion.findMany({ orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }] });
+    return { data: promotions };
+  });
+
+  app.post('/api/v1/admin/promotions', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const d = promotionCreateSchema.parse(q.body);
+    const slug = d.slug ?? slugifyPromotion(d.name);
+    const existing = await prisma.promotion.findUnique({ where: { slug } });
+    if (existing) return r.status(409).send({ error: { code: 'PROMOTION_SLUG_IN_USE', message: 'A promotion with this slug already exists' } });
+    const created = await prisma.promotion.create({ data: { ...d, slug } });
+    await prisma.auditLog.create({
+      data: { actorId: currentUser(q).id, action: 'PROMOTION_CREATED', entityType: 'Promotion', entityId: created.id, metadata: { slug } },
+    });
+    return r.status(201).send({ data: created });
+  });
+
+  app.patch('/api/v1/admin/promotions/:id', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const d = promotionUpdateSchema.parse(q.body);
+    const existing = await prisma.promotion.findUnique({ where: { id } });
+    if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Promotion not found' } });
+    const updated = await prisma.promotion.update({ where: { id }, data: d });
+    await prisma.auditLog.create({
+      data: { actorId: currentUser(q).id, action: 'PROMOTION_UPDATED', entityType: 'Promotion', entityId: id, metadata: { keys: Object.keys(d) } },
+    });
+    return { data: updated };
+  });
+
+  /**
+   * Deleting a promotion is only allowed while it has no requests (FK
+   * RESTRICT); otherwise admins deactivate it — history must keep showing
+   * what a business requested.
+   */
+  app.delete('/api/v1/admin/promotions/:id', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const existing = await prisma.promotion.findUnique({ where: { id }, include: { _count: { select: { requests: true } } } });
+    if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Promotion not found' } });
+    if (existing._count.requests > 0)
+      return r.status(409).send({ error: { code: 'IN_USE', message: 'This promotion has requests and can only be deactivated, not deleted' } });
+    await prisma.promotion.delete({ where: { id } });
+    await prisma.auditLog.create({
+      data: { actorId: currentUser(q).id, action: 'PROMOTION_DELETED', entityType: 'Promotion', entityId: id, metadata: { slug: existing.slug } },
+    });
+    return r.status(204).send();
+  });
+
+  /** Admin DTO for promotion requests: business identity + reviewer fields. */
+  const adminPromotionRequest = (p: {
+    id: string; status: string; note: string | null; reviewerMessage: string | null;
+    reviewedByUserId: string | null; createdAt: Date; reviewedAt: Date | null;
+    promotion: { id: string; name: string; slug: string };
+    business: { id: string; name: string; slug: string; owner: { id: string; email: string; firstName: string | null; lastName: string | null } };
+  }) => ({
+    id: p.id,
+    status: p.status,
+    note: p.note,
+    reviewerMessage: p.reviewerMessage,
+    reviewedByUserId: p.reviewedByUserId,
+    createdAt: p.createdAt.toISOString(),
+    reviewedAt: p.reviewedAt?.toISOString() ?? null,
+    promotion: p.promotion,
+    business: p.business,
+  });
+
+  const PROMOTION_REQUEST_INCLUDE = {
+    promotion: { select: { id: true, name: true, slug: true } },
+    business: {
+      select: { id: true, name: true, slug: true, owner: { select: { id: true, email: true, firstName: true, lastName: true } } },
+    },
+  } as const;
+
+  /** Promotion request queue: filterable by status/promotion, newest first. */
+  app.get('/api/v1/admin/promotion-requests', { preHandler: roles('ADMIN') }, async (q) => {
+    const query = z
+      .object({
+        status: z.enum(['PENDING', 'APPROVED', 'REJECTED']).optional(),
+        promotionId: z.string().uuid().optional(),
+        limit: z.coerce.number().int().min(1).max(100).default(50),
+      })
+      .parse(q.query ?? {});
+    const where: Record<string, unknown> = {};
+    if (query.status) where.status = query.status;
+    if (query.promotionId) where.promotionId = query.promotionId;
+    const requests = await prisma.promotionRequest.findMany({
+      where,
+      include: PROMOTION_REQUEST_INCLUDE,
+      orderBy: { createdAt: 'desc' },
+      take: query.limit,
+    });
+    return { data: requests.map(adminPromotionRequest) };
+  });
+
+  app.get('/api/v1/admin/promotion-requests/:id', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const request = await prisma.promotionRequest.findUnique({
+      where: { id: (q.params as { id: string }).id },
+      include: PROMOTION_REQUEST_INCLUDE,
+    });
+    if (!request) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Promotion request not found' } });
+    return { data: adminPromotionRequest(request) };
+  });
+
+  /**
+   * Approves a promotion request: the owner is told the request was approved
+   * and that the team will contact them about next steps. No checkout, no
+   * payment — joining a promotion is arranged offline.
+   */
+  app.post('/api/v1/admin/promotion-requests/:id/approve', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const admin = currentUser(q);
+    const { reviewerMessage } = promotionRequestReviewSchema.parse(q.body ?? {});
+    const now = new Date();
+    const existing = await prisma.promotionRequest.findUnique({
+      where: { id },
+      include: { business: { select: { ownerId: true } }, promotion: { select: { name: true } } },
+    });
+    if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Promotion request not found' } });
+    if (existing.status !== 'PENDING')
+      return r.status(409).send({ error: { code: 'NOT_PENDING', message: 'This promotion request has already been reviewed' } });
+    const approved = await prisma.promotionRequest.update({
+      where: { id },
+      data: { status: 'APPROVED', reviewerMessage: reviewerMessage ?? null, reviewedByUserId: admin.id, reviewedAt: now },
+      include: PROMOTION_REQUEST_INCLUDE,
+    });
+    await prisma.auditLog.create({
+      data: { actorId: admin.id, action: 'PROMOTION_REQUEST_APPROVED', entityType: 'PromotionRequest', entityId: id },
+    });
+    void createNotifications(prisma, [
+      {
+        userId: existing.business.ownerId,
+        type: NOTIFICATION_TYPES.PROMOTION_REQUEST_APPROVED,
+        title: 'Promotion request approved',
+        message: `Your request to join "${existing.promotion.name}" was approved. Our team will contact you about the next steps.`,
+        entityType: 'PromotionRequest',
+        entityId: id,
+      },
+    ]).catch(() => undefined);
+    return { data: adminPromotionRequest(approved) };
+  });
+
+  /** Rejects a promotion request with an owner-visible message (optional). */
+  app.post('/api/v1/admin/promotion-requests/:id/reject', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const admin = currentUser(q);
+    const { reviewerMessage } = promotionRequestReviewSchema.parse(q.body ?? {});
+    const now = new Date();
+    const existing = await prisma.promotionRequest.findUnique({
+      where: { id },
+      include: { business: { select: { ownerId: true } }, promotion: { select: { name: true } } },
+    });
+    if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Promotion request not found' } });
+    if (existing.status !== 'PENDING')
+      return r.status(409).send({ error: { code: 'NOT_PENDING', message: 'This promotion request has already been reviewed' } });
+    const rejected = await prisma.promotionRequest.update({
+      where: { id },
+      data: { status: 'REJECTED', reviewerMessage: reviewerMessage ?? null, reviewedByUserId: admin.id, reviewedAt: now },
+      include: PROMOTION_REQUEST_INCLUDE,
+    });
+    await prisma.auditLog.create({
+      data: { actorId: admin.id, action: 'PROMOTION_REQUEST_REJECTED', entityType: 'PromotionRequest', entityId: id },
+    });
+    void createNotifications(prisma, [
+      {
+        userId: existing.business.ownerId,
+        type: NOTIFICATION_TYPES.PROMOTION_REQUEST_REJECTED,
+        title: 'Promotion request rejected',
+        message: `Your request to join "${existing.promotion.name}" was not approved.${reviewerMessage ? ` ${reviewerMessage}` : ''}`,
+        entityType: 'PromotionRequest',
+        entityId: id,
+      },
+    ]).catch(() => undefined);
+    return { data: adminPromotionRequest(rejected) };
   });
 
   /** Orders across all businesses with business + customer identity. */

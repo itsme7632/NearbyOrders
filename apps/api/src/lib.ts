@@ -526,6 +526,8 @@ export const reviewCreateSchema = z
  * only a payment method, a transaction reference and the receipt's storage
  * key — never an amount, price or currency: the server computes the payable
  * amount from the plan catalog so no client can manipulate the price.
+ * `paidAt` records when the business says it actually paid (ISO date, never
+ * in the future — admin reference only); `note` is an optional owner remark.
  */
 export const paymentRequestCreateSchema = z.object({
   paymentMethodId: z.string().uuid(),
@@ -539,12 +541,43 @@ export const paymentRequestCreateSchema = z.object({
     .transform((v) => v.trim())
     .refine((v) => v.length >= 1, { message: 'A payment receipt image is required' })
     .refine((v) => v.length <= 512, { message: 'Receipt reference is too long' }),
+  paidAt: z
+    .string()
+    .datetime({ offset: true, message: 'paidAt must be an ISO date' })
+    .refine((v) => Date.parse(v) <= Date.now() + 60_000, { message: 'paidAt cannot be in the future' })
+    .optional(),
+  note: z
+    .string()
+    .trim()
+    .max(500, { message: 'Note must be at most 500 characters' })
+    .optional()
+    .transform((v) => (v === undefined || v === '' ? undefined : v)),
 });
+
+/** Admin plan fields for create/edit. Slug is immutable after creation. */
+export const planCreateSchema = z.object({
+  slug: z.string().min(2).max(60).regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'Slug must be lowercase kebab-case'),
+  name: z.string().trim().min(2).max(120),
+  description: optionalText(2000),
+  monthlyPriceMinor: z.number().int().min(0).max(99_999_999),
+  currency: z.string().trim().length(3).default('PKR'),
+  trialDays: z.number().int().min(0).max(365).default(0),
+  benefits: z.array(z.string().trim().min(1).max(200)).max(20).default([]),
+  billingInterval: z.string().trim().min(2).max(20).default('monthly'),
+  displayOrder: z.number().int().min(0).max(1000).default(0),
+  isHighlighted: z.boolean().default(false),
+  isActive: z.boolean().default(true),
+});
+
+export const planUpdateSchema = planCreateSchema.omit({ slug: true }).partial().refine(
+  (data) => Object.keys(data).length > 0,
+  { message: 'No changes provided' },
+);
 
 /** Admin payment-method fields for create/edit. Everything but the type is editable later. */
 export const paymentMethodSchema = z.object({
   name: z.string().trim().min(2).max(60),
-  type: z.enum(['EASYPAISA', 'JAZZCASH', 'BANK_TRANSFER']),
+  type: z.enum(['EASYPAISA', 'JAZZCASH', 'BANK_TRANSFER', 'OTHER']),
   accountTitle: z.string().trim().min(2).max(120),
   accountNumber: z.string().trim().min(4).max(40),
   iban: z
@@ -554,6 +587,7 @@ export const paymentMethodSchema = z.object({
     .optional()
     .transform((v) => (v === undefined || v === '' ? null : v)),
   instructions: optionalText(1000),
+  qrImageUrl: optionalUrl,
   isActive: z.boolean().optional(),
   displayOrder: z.number().int().min(0).max(1000).optional(),
 });
@@ -570,6 +604,109 @@ export const paymentRejectSchema = z.object({
     .transform((v) => v.trim())
     .refine((v) => v.length >= 4, { message: 'A rejection reason is required' })
     .refine((v) => v.length <= 500, { message: 'Reason must be at most 500 characters' }),
+});
+
+/* ------------------------------------------------------------------ */
+/* Business verification (Phase 18)                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Owner verification-application draft fields. Everything is optional while
+ * drafting; the submit endpoint enforces the required set. There is
+ * deliberately no isVerified field anywhere on owner input — verification
+ * is granted only by the admin review flow.
+ */
+export const verificationUpsertSchema = z
+  .object({
+    legalName: optionalText(120),
+    publicName: optionalText(120),
+    ownerName: optionalText(120),
+    phone: z
+      .union([phone, z.literal(''), z.null()])
+      .optional()
+      .transform((v) => (v === null || v === '' ? undefined : v)),
+    address: optionalText(300),
+    city: optionalText(100),
+    categoryId: z
+      .union([z.string().uuid(), z.literal(''), z.null()])
+      .optional()
+      .transform((v) => (v === null || v === '' ? undefined : v)),
+    description: optionalText(2000),
+    latitude: z.union([latitudeSchema, z.null()]).optional(),
+    longitude: z.union([longitudeSchema, z.null()]).optional(),
+    registrationInfo: optionalText(200),
+  })
+  .refine((data) => Object.keys(data).length > 0, { message: 'No changes provided' });
+
+/** Document kind label for an uploaded verification document (e.g. CNIC_FRONT). */
+export const verificationDocTypeSchema = z
+  .string()
+  .trim()
+  .min(2, { message: 'Document type is required' })
+  .max(40, { message: 'Document type must be at most 40 characters' });
+
+/** Admin approve: both fields optional. */
+export const verificationApproveSchema = z.object({
+  adminNotes: optionalText(2000),
+  reviewerMessage: optionalText(1000),
+});
+
+/** Admin reject / request-changes: the owner-visible message is required. */
+export const verificationDecisionSchema = z.object({
+  adminNotes: optionalText(2000),
+  reviewerMessage: z
+    .string()
+    .transform((v) => v.trim())
+    .refine((v) => v.length >= 4, { message: 'A reviewer message is required' })
+    .refine((v) => v.length <= 1000, { message: 'Reviewer message must be at most 1000 characters' }),
+});
+
+/* ------------------------------------------------------------------ */
+/* Promotions (Phase 18)                                               */
+/* ------------------------------------------------------------------ */
+
+/** Admin promotion fields for create/edit. Slug is immutable after creation. */
+export const promotionCreateSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  slug: z
+    .string()
+    .min(2)
+    .max(60)
+    .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'Slug must be lowercase kebab-case')
+    .optional(),
+  description: optionalText(2000),
+  benefits: z.array(z.string().trim().min(1).max(200)).max(20).default([]),
+  priceMinor: z.number().int().min(0).max(99_999_999).optional(),
+  currency: z.string().trim().length(3).default('PKR'),
+  durationDays: z.number().int().min(1).max(365).optional(),
+  requirements: optionalText(2000),
+  isActive: z.boolean().default(true),
+  displayOrder: z.number().int().min(0).max(1000).default(0),
+});
+
+export const promotionUpdateSchema = promotionCreateSchema.omit({ slug: true }).partial().refine(
+  (data) => Object.keys(data).length > 0,
+  { message: 'No changes provided' },
+);
+
+/**
+ * Body for a business requesting to join a promotion. Requesting is free —
+ * it creates a PENDING row an admin reviews; the team contacts the business
+ * about next steps. There is no paid checkout on promotions.
+ */
+export const promotionRequestCreateSchema = z.object({
+  promotionId: z.string().uuid(),
+  note: z
+    .string()
+    .trim()
+    .max(500, { message: 'Note must be at most 500 characters' })
+    .optional()
+    .transform((v) => (v === undefined || v === '' ? undefined : v)),
+});
+
+/** Admin approve/reject of a promotion request; message is owner-visible. */
+export const promotionRequestReviewSchema = z.object({
+  reviewerMessage: optionalText(1000),
 });
 
 /* ------------------------------------------------------------------ */
@@ -677,6 +814,16 @@ export const NOTIFICATION_TYPES = {
   ORDER_PAYMENT_SUBMITTED: 'ORDER_PAYMENT_SUBMITTED',
   ORDER_PAYMENT_VERIFIED: 'ORDER_PAYMENT_VERIFIED',
   ORDER_PAYMENT_REJECTED: 'ORDER_PAYMENT_REJECTED',
+  VERIFICATION_SUBMITTED: 'VERIFICATION_SUBMITTED',
+  VERIFICATION_APPROVED: 'VERIFICATION_APPROVED',
+  VERIFICATION_REJECTED: 'VERIFICATION_REJECTED',
+  VERIFICATION_CHANGES_REQUESTED: 'VERIFICATION_CHANGES_REQUESTED',
+  TRIAL_ELIGIBLE: 'TRIAL_ELIGIBLE',
+  TRIAL_STARTED: 'TRIAL_STARTED',
+  TRIAL_ENDING_SOON: 'TRIAL_ENDING_SOON',
+  SUBSCRIPTION_ACTIVATED: 'SUBSCRIPTION_ACTIVATED',
+  PROMOTION_REQUEST_APPROVED: 'PROMOTION_REQUEST_APPROVED',
+  PROMOTION_REQUEST_REJECTED: 'PROMOTION_REQUEST_REJECTED',
 } as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
@@ -687,7 +834,7 @@ export type NotificationInput = {
   type: NotificationType;
   title: string;
   message: string;
-  entityType: 'Booking' | 'Order' | 'SubscriptionPaymentRequest' | 'BookingPayment' | 'OrderPayment' | 'Review';
+  entityType: 'Booking' | 'Order' | 'SubscriptionPaymentRequest' | 'BookingPayment' | 'OrderPayment' | 'Review' | 'VerificationApplication' | 'BusinessSubscription' | 'PromotionRequest';
   entityId: string;
 };
 
@@ -867,16 +1014,73 @@ export const boundingBoxKm = (
  * plan-ensure helper upsert these rows idempotently; re-seeding never
  * clobbers admin-edited prices (the update is a no-op).
  */
-export const PLAN_CATALOG = [
+export type PlanSpec = {
+  slug: string;
+  name: string;
+  description: string;
+  monthlyPriceMinor: number;
+  currency: string;
+  trialDays: number;
+  benefits: string[];
+  billingInterval: string;
+  displayOrder: number;
+  isHighlighted: boolean;
+};
+
+export const PLAN_CATALOG: PlanSpec[] = [
+  {
+    slug: 'starter',
+    name: 'Starter',
+    description: 'Get discovered and take your first orders and bookings.',
+    monthlyPriceMinor: 149900,
+    currency: 'PKR',
+    trialDays: 14,
+    benefits: [
+      'Business profile page',
+      'Discovery listing in search and nearby',
+      'Accept orders, bookings and inquiries',
+      'Basic analytics',
+    ],
+    billingInterval: 'monthly',
+    displayOrder: 1,
+    isHighlighted: false,
+  },
   {
     slug: 'nearbyorders-business',
-    name: 'NearbyOrders Business',
+    name: 'Growth',
     description: 'Everything a local business needs: appear in search, take bookings and orders, and manage your storefront.',
     monthlyPriceMinor: 299900,
     currency: 'PKR',
     trialDays: 30,
+    benefits: [
+      'Everything in Starter',
+      'Enhanced discovery placement',
+      'Advanced analytics and insights',
+      'Extra business management tools',
+      'Priority support',
+    ],
+    billingInterval: 'monthly',
+    displayOrder: 2,
+    isHighlighted: true,
   },
-] as const;
+  {
+    slug: 'premium',
+    name: 'Premium',
+    description: 'Maximum visibility and the full toolkit for growing businesses.',
+    monthlyPriceMinor: 499900,
+    currency: 'PKR',
+    trialDays: 30,
+    benefits: [
+      'Everything in Growth',
+      'Premium discovery and promotional placement',
+      'Enhanced business tools',
+      'Priority support',
+    ],
+    billingInterval: 'monthly',
+    displayOrder: 3,
+    isHighlighted: false,
+  },
+];
 
 /** The subscription states that grant live platform access. */
 export const LIVE_SUBSCRIPTION_STATUSES: readonly SubscriptionStatus[] = ['TRIAL', 'ACTIVE'];

@@ -40,6 +40,18 @@ const REF = 'TX-100000-TEST';
 let refCounter = 0;
 const runRef = (label: string): string => `${label}-${Date.now()}-${++refCounter}`;
 
+/** Starts a trial through the authoritative apply route (grants eligibility first). */
+async function startTrial(token: string, businessId: string, planSlug = 'nearbyorders-business') {
+  await prisma.business.update({ where: { id: businessId }, data: { trialStatus: 'ELIGIBLE' } });
+  const res = await app.inject({
+    method: 'POST',
+    url: `/api/v1/businesses/${businessId}/subscription/trial/apply`,
+    headers: authed(token),
+    payload: { planSlug },
+  });
+  expect(res.statusCode).toBe(201);
+}
+
 describe('payment methods catalog', () => {
   it('requires authentication', async () => {
     const res = await app.inject({ method: 'GET', url: '/api/v1/subscription/payment-methods' });
@@ -182,7 +194,7 @@ describe('admin approval', () => {
   it('approves atomically: subscription ACTIVE, notification created, double-approve blocked', async () => {
     const { token: ownerToken, userId: ownerId } = await registerAndLogin(app, 'BUSINESS_OWNER');
     const { id } = await createBusiness(app, ownerToken);
-    await app.inject({ method: 'POST', url: `/api/v1/businesses/${id}/subscription/trial`, headers: authed(ownerToken) });
+    await startTrial(ownerToken, id);
     const method = await makeMethod();
     const approveRef = runRef('TX-APPROVE');
     const created = JSON.parse((await submit(ownerToken, id, { paymentMethodId: method.id, transactionReference: approveRef, receiptStorageKey: 'k' })).body).data;
@@ -206,14 +218,48 @@ describe('admin approval', () => {
     const liveCount = await prisma.businessSubscription.count({ where: { businessId: id, status: { in: ['TRIAL', 'ACTIVE'] } } });
     expect(liveCount).toBe(1);
 
-    // Owner notification exists.
-    const notif = await prisma.notification.findFirst({ where: { userId: ownerId, type: 'SUBSCRIPTION_PAYMENT_APPROVED', entityId: created.id } });
+    // Owner notification is dispatched post-commit (never blocks the
+    // response); retry briefly until the row lands.
+    let notif = null;
+    for (let i = 0; i < 20 && !notif; i++) {
+      notif = await prisma.notification.findFirst({ where: { userId: ownerId, type: 'SUBSCRIPTION_PAYMENT_APPROVED', entityId: created.id } });
+      if (!notif) await new Promise((r) => setTimeout(r, 100));
+    }
     expect(notif).toBeTruthy();
 
     // Double approval is blocked.
     const again = await app.inject({ method: 'POST', url: `/api/v1/admin/subscription/payment-requests/${created.id}/approve`, headers: authed(admin.token) });
     expect(again.statusCode).toBe(409);
     expect(JSON.parse(again.body).error.code).toBe('NOT_PENDING');
+  });
+
+  it('approves a pending request even after the admin changes the plan price', async () => {
+    const { token: ownerToken } = await registerAndLogin(app, 'BUSINESS_OWNER');
+    const { id } = await createBusiness(app, ownerToken);
+    const method = await makeMethod();
+    const ref = runRef('TX-PRICECHANGE');
+    const created = JSON.parse((await submit(ownerToken, id, { paymentMethodId: method.id, transactionReference: ref, receiptStorageKey: 'k' })).body).data;
+    const submittedAmount = created.amountMinor;
+    expect(submittedAmount).toBeGreaterThan(0);
+
+    // Admin changes the plan price between submit and approve.
+    const plan = await prisma.plan.findFirstOrThrow({ where: { slug: 'nearbyorders-business' } });
+    const originalPrice = plan.monthlyPriceMinor;
+    await prisma.plan.update({ where: { id: plan.id }, data: { monthlyPriceMinor: originalPrice + 50000 } });
+    try {
+      const admin = await registerAdminAndLogin(app);
+      const res = await app.inject({ method: 'POST', url: `/api/v1/admin/subscription/payment-requests/${created.id}/approve`, headers: authed(admin.token) });
+      expect(res.statusCode).toBe(200);
+      const approved = JSON.parse(res.body).data;
+      expect(approved.status).toBe('APPROVED');
+      // The request amount was server-computed at submit; it is unchanged.
+      expect(approved.amountMinor).toBe(submittedAmount);
+      // The activated subscription snapshots the plan's current (edited) terms.
+      const sub = await prisma.businessSubscription.findFirstOrThrow({ where: { businessId: id }, orderBy: { createdAt: 'desc' } });
+      expect(sub.planPriceMinorSnapshot).toBe(originalPrice + 50000);
+    } finally {
+      await prisma.plan.update({ where: { id: plan.id }, data: { monthlyPriceMinor: originalPrice } });
+    }
   });
 
   it('rejects a transaction reference that was already approved elsewhere', async () => {
@@ -292,7 +338,7 @@ describe('admin rejection', () => {
   it('rejects with reason; subscription unchanged; owner notified; resubmission allowed', async () => {
     const { token: ownerToken, userId: ownerId } = await registerAndLogin(app, 'BUSINESS_OWNER');
     const { id } = await createBusiness(app, ownerToken);
-    await app.inject({ method: 'POST', url: `/api/v1/businesses/${id}/subscription/trial`, headers: authed(ownerToken) });
+    await startTrial(ownerToken, id);
     const before = await prisma.businessSubscription.findFirst({ where: { businessId: id }, orderBy: { createdAt: 'desc' } });
 
     const method = await makeMethod();
@@ -315,7 +361,13 @@ describe('admin rejection', () => {
     expect(after.status).toBe(before!.status);
     expect(after.currentPeriodEndAt.getTime()).toBe(before!.currentPeriodEndAt.getTime());
 
-    const notif = await prisma.notification.findFirst({ where: { userId: ownerId, type: 'SUBSCRIPTION_PAYMENT_REJECTED', entityId: created.id } });
+    // Owner notifications are dispatched post-commit and never block the
+    // response, so the test retries briefly until the row lands.
+    let notif = null;
+    for (let i = 0; i < 20 && !notif; i++) {
+      notif = await prisma.notification.findFirst({ where: { userId: ownerId, type: 'SUBSCRIPTION_PAYMENT_REJECTED', entityId: created.id } });
+      if (!notif) await new Promise((r) => setTimeout(r, 100));
+    }
     expect(notif?.message).toContain('Receipt does not match transaction reference.');
 
     // A corrected request can be submitted after rejection.

@@ -206,9 +206,17 @@ async function createDemoData() {
 }
 
 /**
- * Ensures the commercial plan catalog exists (Phase 7A). Idempotent upsert by
- * slug; the update is a no-op so re-seeding never clobbers admin-edited
+ * Ensures the commercial plan catalog exists (Phase 7A/18). Idempotent upsert
+ * by slug; the update is a no-op so re-seeding never clobbers admin-edited
  * prices. PLAN_CATALOG (src/lib.ts) is the single source of truth.
+ *
+ * Backfill: rows that predate the Phase 18 display fields (benefits,
+ * displayOrder, isHighlighted, billingInterval) get the catalog values only
+ * where they still hold schema defaults (empty benefits, displayOrder 0,
+ * not highlighted, blank billing interval). Anything an admin already set
+ * is left untouched — as are prices, always. The canonical
+ * `nearbyorders-business` plan is also renamed to its Phase 18 name
+ * ("Growth") when it still carries the old name.
  */
 export async function upsertPlans() {
   for (const spec of PLAN_CATALOG) {
@@ -217,6 +225,17 @@ export async function upsertPlans() {
       update: {},
       create: { ...spec },
     });
+  }
+  for (const spec of PLAN_CATALOG) {
+    const row = await prisma.plan.findUnique({ where: { slug: spec.slug } });
+    if (!row) continue;
+    const data: Record<string, unknown> = {};
+    if (row.benefits.length === 0 && spec.benefits.length > 0) data.benefits = spec.benefits;
+    if (row.displayOrder === 0 && spec.displayOrder !== 0) data.displayOrder = spec.displayOrder;
+    if (!row.isHighlighted && spec.isHighlighted) data.isHighlighted = true;
+    if (!row.billingInterval) data.billingInterval = spec.billingInterval;
+    if (row.slug === 'nearbyorders-business' && row.name === 'NearbyOrders Business') data.name = spec.name;
+    if (Object.keys(data).length > 0) await prisma.plan.update({ where: { id: row.id }, data });
   }
   console.log(`Seeded ${PLAN_CATALOG.length} subscription plan(s).`);
 }

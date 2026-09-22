@@ -126,7 +126,7 @@ describe('public subscription plan catalog', () => {
     expect(plans.length).toBeGreaterThanOrEqual(1);
     const plan = plans.find((p) => p.slug === 'nearbyorders-business');
     expect(plan).toBeTruthy();
-    expect(plan!.name).toBe('NearbyOrders Business');
+    expect(plan!.name).toBe('Growth');
     expect(plan!.monthlyPriceMinor).toBe(299900);
     expect(plan!.currency).toBe('PKR');
     expect(plan!.trialDays).toBe(30);

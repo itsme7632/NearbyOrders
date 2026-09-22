@@ -47,6 +47,51 @@ enum SubscriptionStatus {
   SUSPENDED
 }
 
+/// Server-authoritative free-trial lifecycle for a business. A trial can only
+/// ever be claimed once: claiming requires ELIGIBLE, and claiming flips the
+/// status to ACTIVE (then EXPIRED, or CONVERTED when the trial turns into a
+/// paid subscription). PENDING_REVIEW means the business's verification
+/// application is under review — the trial becomes claimable only after the
+/// verification is approved.
+enum TrialStatus {
+  NOT_ELIGIBLE
+  ELIGIBLE
+  PENDING_REVIEW
+  ACTIVE
+  EXPIRED
+  CONVERTED
+}
+
+/// Lifecycle of a business verification application. The owner edits only in
+/// DRAFT / CHANGES_REQUESTED; SUBMITTED and UNDER_REVIEW are admin-side
+/// states; APPROVED flips Business.isVerified on.
+enum VerificationStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+}
+
+/// Business-level verification state (Phase 18): the trust outcome of the
+/// verification application flow, denormalized on the business for cheap
+/// reads. Transitions: NOT_SUBMITTED → PENDING (on submit) →
+/// VERIFIED / REJECTED (on admin decision). Request-changes keeps PENDING.
+enum BusinessVerificationState {
+  NOT_SUBMITTED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+/// Review state of one uploaded verification document.
+enum VerificationDocumentStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
 /// How a service requires money up front. NONE = pay at the business; FIXED =
 /// a set advance in minor units; PERCENTAGE = a share of the service price.
 /// The advance is owed to the BUSINESS — NearbyOrders never holds it.
@@ -79,92 +124,113 @@ enum CustomerPaymentStatus {
 }
 
 model User {
-  id               String                       @id @default(uuid())
-  email            String                       @unique
-  passwordHash     String
-  role             Role                         @default(CUSTOMER)
-  firstName        String?
-  lastName         String?
-  phone            String?
-  isSuspended      Boolean                      @default(false)
-  createdAt        DateTime                     @default(now())
-  updatedAt        DateTime                     @updatedAt
-  businesses       Business[]                   @relation("BusinessOwner")
-  bookings         Booking[]
-  orders           Order[]
-  sessions         RefreshToken[]
-  auditActions     AuditLog[]                   @relation("AuditActor")
-  notifications    Notification[]
-  pushDevices      PushDevice[]
-  notificationPrefs NotificationPreference?
-  reviews             Review[]                     @relation("ReviewCustomer")
-  reviewedPayments    SubscriptionPaymentRequest[] @relation("PaymentReviewer")
-  bookingPayments     BookingPayment[]             @relation("BookingPaymentCustomer")
-  orderPayments       OrderPayment[]               @relation("OrderPaymentCustomer")
-  verifiedBookingPays BookingPayment[]             @relation("BookingPaymentVerifier")
-  verifiedOrderPays   OrderPayment[]               @relation("OrderPaymentVerifier")
+  id                        String                       @id @default(uuid())
+  email                     String                       @unique
+  passwordHash              String
+  role                      Role                         @default(CUSTOMER)
+  firstName                 String?
+  lastName                  String?
+  phone                     String?
+  isSuspended               Boolean                      @default(false)
+  createdAt                 DateTime                     @default(now())
+  updatedAt                 DateTime                     @updatedAt
+  businesses                Business[]                   @relation("BusinessOwner")
+  bookings                  Booking[]
+  orders                    Order[]
+  sessions                  RefreshToken[]
+  auditActions              AuditLog[]                   @relation("AuditActor")
+  notifications             Notification[]
+  pushDevices               PushDevice[]
+  notificationPrefs         NotificationPreference?
+  reviews                   Review[]                     @relation("ReviewCustomer")
+  reviewedPayments          SubscriptionPaymentRequest[] @relation("PaymentReviewer")
+  reviewedVerifications     VerificationApplication[]    @relation("VerificationReviewer")
+  reviewedPromotionRequests PromotionRequest[]           @relation("PromotionReviewer")
+  bookingPayments           BookingPayment[]             @relation("BookingPaymentCustomer")
+  orderPayments             OrderPayment[]               @relation("OrderPaymentCustomer")
+  verifiedBookingPays       BookingPayment[]             @relation("BookingPaymentVerifier")
+  verifiedOrderPays         OrderPayment[]               @relation("OrderPaymentVerifier")
   /// Phase 17: customer-saved (favorite) businesses. Persisted server-side,
   /// unique per (customer, business) so double-tapping save is idempotent.
-  savedBy             FavoriteBusiness[]
+  savedBy                   FavoriteBusiness[]
   /// Phase 17: the customer's address book for DELIVERY orders.
-  addresses           CustomerAddress[]
+  addresses                 CustomerAddress[]
 
   @@index([role, isSuspended])
 }
 
 model Category {
-  id         String             @id @default(uuid())
-  name       String             @unique
-  slug       String             @unique
-  isActive   Boolean            @default(true)
-  createdAt  DateTime           @default(now())
-  updatedAt  DateTime           @updatedAt
-  businesses BusinessCategory[]
+  id                       String                    @id @default(uuid())
+  name                     String                    @unique
+  slug                     String                    @unique
+  isActive                 Boolean                   @default(true)
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  businesses               BusinessCategory[]
+  verificationApplications VerificationApplication[]
 }
 
 model Business {
-  id              String                       @id @default(uuid())
-  ownerId         String
-  name            String
-  slug            String                       @unique
-  description     String?
-  phone           String?
-  email           String?
-  imageUrl        String?
-  isVerified      Boolean                      @default(false)
-  status          BusinessStatus               @default(PENDING)
-  address         String
-  city            String
-  locality        String?
+  id                      String                       @id @default(uuid())
+  ownerId                 String
+  name                    String
+  slug                    String                       @unique
+  description             String?
+  phone                   String?
+  email                   String?
+  imageUrl                String?
+  isVerified              Boolean                      @default(false)
+  status                  BusinessStatus               @default(PENDING)
+  address                 String
+  city                    String
+  locality                String?
   // Coordinates stay nullable until the owner configures a real location.
   // There is deliberately no city-centre or other invented fallback (Phase 11).
-  latitude        Decimal?                     @db.Decimal(10, 7)
-  longitude       Decimal?                     @db.Decimal(10, 7)
-  currency        String                       @default("PKR")
-  createdAt       DateTime                     @default(now())
-  updatedAt       DateTime                     @updatedAt
-  archivedAt      DateTime?
-  owner           User                         @relation("BusinessOwner", fields: [ownerId], references: [id])
-  categories      BusinessCategory[]
-  hours           BusinessHour[]
-  services        Service[]
-  products        Product[]
-  bookings        Booking[]
-  orders          Order[]
-  reviews         Review[]
-  subscriptions   BusinessSubscription[]
-  paymentRequests SubscriptionPaymentRequest[]
-  payInMethods    BusinessPaymentMethod[]
-  bookingPayments BookingPayment[]
-  orderPayments   OrderPayment[]
+  latitude                Decimal?                     @db.Decimal(10, 7)
+  longitude               Decimal?                     @db.Decimal(10, 7)
+  currency                String                       @default("PKR")
+  createdAt               DateTime                     @default(now())
+  updatedAt               DateTime                     @updatedAt
+  archivedAt              DateTime?
+  owner                   User                         @relation("BusinessOwner", fields: [ownerId], references: [id])
+  categories              BusinessCategory[]
+  hours                   BusinessHour[]
+  services                Service[]
+  products                Product[]
+  bookings                Booking[]
+  orders                  Order[]
+  reviews                 Review[]
+  subscriptions           BusinessSubscription[]
+  paymentRequests         SubscriptionPaymentRequest[]
+  payInMethods            BusinessPaymentMethod[]
+  bookingPayments         BookingPayment[]
+  orderPayments           OrderPayment[]
   /// Phase 17: customers who saved this business to their favorites.
-  savedBy         FavoriteBusiness[]
+  savedBy                 FavoriteBusiness[]
+  /// One verification application per business (unique); null until the
+  /// owner starts one. The owner can never set isVerified directly —
+  /// only the admin review flow flips it.
+  verificationApplication VerificationApplication?
+  /// Promotional campaigns the business asked to join (admin-reviewed).
+  promotionRequests       PromotionRequest[]
+  /// Server-authoritative trial state. Set to NOT_ELIGIBLE / not eligible on
+  /// business creation; only the admin verification-approval flow grants
+  /// eligibility. Trial snapshots stay on the BusinessSubscription rows.
+  trialEligible           Boolean                      @default(false)
+  trialStatus             TrialStatus                  @default(NOT_ELIGIBLE)
+  trialAppliedAt          DateTime?
+  trialStartedAt          DateTime?
+  trialEndsAt             DateTime?
+  /// Business-level verification outcome (Phase 18), maintained by the
+  /// verification application review flow — never owner-editable.
+  verificationStatus      BusinessVerificationState    @default(NOT_SUBMITTED)
+  verifiedAt              DateTime?
 
   // Delivery / cash-on-delivery settings (Phase 7C). The fee belongs to the
   // business — NearbyOrders takes no cut and never holds the money.
-  deliveryEnabled Boolean @default(false)
-  codEnabled      Boolean @default(false)
-  deliveryFeeMinor Int    @default(0)
+  deliveryEnabled  Boolean @default(false)
+  codEnabled       Boolean @default(false)
+  deliveryFeeMinor Int     @default(0)
 
   @@index([ownerId])
   @@index([status, city])
@@ -194,24 +260,24 @@ model BusinessHour {
 }
 
 model Service {
-  id                String            @id @default(uuid())
-  businessId        String
-  name              String
-  description       String?
-  priceMinor        Int
-  currency          String            @default("PKR")
-  durationMinutes   Int?
-  isActive          Boolean           @default(true)
+  id                 String             @id @default(uuid())
+  businessId         String
+  name               String
+  description        String?
+  priceMinor         Int
+  currency           String             @default("PKR")
+  durationMinutes    Int?
+  isActive           Boolean            @default(true)
   // Optional advance requirement (Phase 7C). FIXED uses advanceAmountMinor;
   // PERCENTAGE uses advancePercent (0–100). The exact advance owed is always
   // recomputed server-side and snapshotted onto each booking at creation.
-  advanceType       ServiceAdvanceType @default(NONE)
+  advanceType        ServiceAdvanceType @default(NONE)
   advanceAmountMinor Int?
-  advancePercent    Int?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  business          Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  bookings          Booking[]
+  advancePercent     Int?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  business           Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  bookings           Booking[]
 
   @@index([businessId, isActive])
 }
@@ -234,32 +300,32 @@ model Product {
 }
 
 model Booking {
-  id          String        @id @default(uuid())
-  customerId  String
-  businessId  String
-  serviceId   String?
-  bookingDate DateTime      @db.Date
-  startAt     DateTime
-  endAt       DateTime
-  status      BookingStatus @default(PENDING)
-  notes       String?
+  id                   String           @id @default(uuid())
+  customerId           String
+  businessId           String
+  serviceId            String?
+  bookingDate          DateTime         @db.Date
+  startAt              DateTime
+  endAt                DateTime
+  status               BookingStatus    @default(PENDING)
+  notes                String?
   // Payment snapshot taken at booking creation (Phase 7C). Later service
   // edits never rewrite these — the agreed amounts stay historically correct.
   // `servicePriceMinor` is null for legacy rows / no-service bookings;
   // `amountPaidMinor` accumulates VERIFIED BookingPayment amounts.
-  servicePriceMinor    Int @default(0)
-  advanceRequiredMinor Int @default(0)
-  amountPaidMinor      Int @default(0)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  servicePriceMinor    Int              @default(0)
+  advanceRequiredMinor Int              @default(0)
+  amountPaidMinor      Int              @default(0)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
   // Set (once) when the booking reaches COMPLETED; null otherwise. Owner
   // analytics/earnings derive revenue windows from this instant (Phase 16).
-  completedAt DateTime?
-  customer    User          @relation(fields: [customerId], references: [id])
-  business    Business      @relation(fields: [businessId], references: [id])
-  service     Service?      @relation(fields: [serviceId], references: [id])
-  payments    BookingPayment[]
-  review      Review?
+  completedAt          DateTime?
+  customer             User             @relation(fields: [customerId], references: [id])
+  business             Business         @relation(fields: [businessId], references: [id])
+  service              Service?         @relation(fields: [serviceId], references: [id])
+  payments             BookingPayment[]
+  review               Review?
 
   @@index([businessId, status])
   @@index([customerId, status])
@@ -268,36 +334,36 @@ model Booking {
 }
 
 model Order {
-  id              String      @id @default(uuid())
-  customerId      String
-  businessId      String
-  status          OrderStatus @default(PENDING)
-  subtotalMinor   Int
+  id                  String                 @id @default(uuid())
+  customerId          String
+  businessId          String
+  status              OrderStatus            @default(PENDING)
+  subtotalMinor       Int
   // Delivery fee (DELIVERY only — 0 for pickup/dine-in) and the authoritative
   // order total, both computed server-side at creation. Never client-sent.
-  deliveryFeeMinor Int        @default(0)
-  totalMinor      Int         @default(0)
-  currency        String      @default("PKR")
-  fulfillmentType String      @default("PICKUP")
+  deliveryFeeMinor    Int                    @default(0)
+  totalMinor          Int                    @default(0)
+  currency            String                 @default("PKR")
+  fulfillmentType     String                 @default("PICKUP")
   // The manual digital pay-in channel the customer chose (null = cash on
   // delivery / cash on pickup). Payment STATE lives on OrderPayment rows.
-  paymentMethodId String?
-  notes           String?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  paymentMethodId     String?
+  notes               String?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
   // Set (once) when the order reaches COMPLETED; null otherwise. Owner
   // analytics/earnings derive revenue windows from this instant (Phase 16).
-  completedAt     DateTime?
+  completedAt         DateTime?
   // DELIVERY snapshot of the customer's chosen address at placement time
   // (Phase 17). Stored per-order — later address edits/corrections on the
   // customer's address book never rewrite history on placed orders.
   deliveryAddressText String?
-  customer        User        @relation(fields: [customerId], references: [id])
-  business        Business    @relation(fields: [businessId], references: [id])
-  paymentMethod   BusinessPaymentMethod? @relation(fields: [paymentMethodId], references: [id])
-  items           OrderItem[]
-  payments        OrderPayment[]
-  review          Review?
+  customer            User                   @relation(fields: [customerId], references: [id])
+  business            Business               @relation(fields: [businessId], references: [id])
+  paymentMethod       BusinessPaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  items               OrderItem[]
+  payments            OrderPayment[]
+  review              Review?
 
   @@index([businessId, status])
   @@index([customerId, status])
@@ -362,15 +428,15 @@ model PushDevice {
  * the absence of a record must never silently disable notifications.
  */
 model NotificationPreference {
-  userId            String   @id
-  bookings          Boolean  @default(true)
-  orders            Boolean  @default(true)
-  payments          Boolean  @default(true)
-  reviews           Boolean  @default(true)
-  businessActivity  Boolean  @default(true)
-  account           Boolean  @default(true)
-  updatedAt         DateTime @updatedAt
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId           String   @id
+  bookings         Boolean  @default(true)
+  orders           Boolean  @default(true)
+  payments         Boolean  @default(true)
+  reviews          Boolean  @default(true)
+  businessActivity Boolean  @default(true)
+  account          Boolean  @default(true)
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model RefreshToken {
@@ -409,12 +475,21 @@ model Plan {
   monthlyPriceMinor Int
   currency          String                 @default("PKR")
   trialDays         Int                    @default(0)
+  /// Marketing bullets shown on the plan picker (admin-editable).
+  benefits          String[]               @default([])
+  /// Order in the public plan list (ascending).
+  displayOrder      Int                    @default(0)
+  /// Highlighted as the recommended plan on the plan picker.
+  isHighlighted     Boolean                @default(false)
+  /// Billing cadence label (e.g. "monthly"); prices are per interval.
+  billingInterval   String                 @default("monthly")
   isActive          Boolean                @default(true)
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
   subscriptions     BusinessSubscription[]
 
   @@index([isActive])
+  @@index([isActive, displayOrder])
 }
 
 /// The commercial relationship between a business and a plan. A business has at
@@ -424,20 +499,28 @@ model Plan {
 /// history. No payment records exist in this phase: activation with real
 /// payments arrives later.
 model BusinessSubscription {
-  id                   String                       @id @default(uuid())
-  businessId           String
-  planId               String
-  status               SubscriptionStatus           @default(TRIAL)
-  trialStartAt         DateTime?
-  trialEndAt           DateTime?
-  currentPeriodStartAt DateTime
-  currentPeriodEndAt   DateTime
-  cancelledAt          DateTime?
-  createdAt            DateTime                     @default(now())
-  updatedAt            DateTime                     @updatedAt
-  business             Business                     @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  plan                 Plan                         @relation(fields: [planId], references: [id])
-  paymentRequests      SubscriptionPaymentRequest[]
+  id                     String                       @id @default(uuid())
+  businessId             String
+  planId                 String
+  status                 SubscriptionStatus           @default(TRIAL)
+  trialStartAt           DateTime?
+  trialEndAt             DateTime?
+  currentPeriodStartAt   DateTime
+  currentPeriodEndAt     DateTime
+  cancelledAt            DateTime?
+  /// Historical snapshot of the plan at subscription start: kept even if the
+  /// plan is later renamed, repriced or archived, so billing history stays
+  /// honest. Never backfilled from the live plan row.
+  planNameSnapshot       String?
+  planPriceMinorSnapshot Int?
+  /// When the one-time TRIAL_ENDING_SOON notification fired (null = not yet).
+  /// Guards the best-effort notification against double-send on repeated reads.
+  trialEndingNotifiedAt  DateTime?
+  createdAt              DateTime                     @default(now())
+  updatedAt              DateTime                     @updatedAt
+  business               Business                     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  plan                   Plan                         @relation(fields: [planId], references: [id])
+  paymentRequests        SubscriptionPaymentRequest[]
 
   @@index([businessId, status])
   @@index([planId])
@@ -461,13 +544,18 @@ model Review {
   /// Phase 15 moderation: when set, the review is hidden from every public
   /// surface (business reviews, rating summaries, search). Null = public.
   isHiddenAt DateTime?
-  business   Business @relation(fields: [businessId], references: [id])
-  customer   User     @relation("ReviewCustomer", fields: [customerId], references: [id])
-  booking    Booking? @relation(fields: [bookingId], references: [id])
-  order      Order?   @relation(fields: [orderId], references: [id])
+  business   Business  @relation(fields: [businessId], references: [id])
+  customer   User      @relation("ReviewCustomer", fields: [customerId], references: [id])
+  booking    Booking?  @relation(fields: [bookingId], references: [id])
+  order      Order?    @relation(fields: [orderId], references: [id])
 
   @@index([businessId, createdAt])
   @@index([customerId, createdAt])
+  // NOTE: migrations realize this as a PARTIAL index (WHERE isHiddenAt IS
+  // NULL) — the schema DSL cannot express that, so `prisma migrate dev`
+  // regenerates a redundant plain CREATE INDEX for it on every new
+  // migration. Strip that statement (as phase18's migration does) instead
+  // of applying it, or the apply fails with "relation already exists".
   @@index([businessId, isHiddenAt])
 }
 
@@ -488,18 +576,18 @@ model FavoriteBusiness {
 /// (partial unique index); coordinates, when present, are range-validated
 /// server-side before ever reaching this table.
 model CustomerAddress {
-  id          String   @id @default(uuid())
-  customerId  String
-  label       String
+  id            String   @id @default(uuid())
+  customerId    String
+  label         String
   recipientName String
-  phone       String?
-  addressText String
-  latitude    Float?
-  longitude   Float?
-  isDefault   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  customer    User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  phone         String?
+  addressText   String
+  latitude      Float?
+  longitude     Float?
+  isDefault     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  customer      User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   @@index([customerId, isDefault])
 }
@@ -522,6 +610,7 @@ enum PaymentMethodType {
   EASYPAISA
   JAZZCASH
   BANK_TRANSFER
+  OTHER
 }
 
 /// Lifecycle of a manual payment proof. There is no self-attestation: only an
@@ -543,6 +632,9 @@ model PaymentMethod {
   accountNumber   String
   iban            String?
   instructions    String?
+  /// Optional QR image (URL or storage reference) shown to businesses for
+  /// scan-to-pay channels. Display-only; never a credential.
+  qrImageUrl      String?
   isActive        Boolean                      @default(true)
   displayOrder    Int                          @default(0)
   createdAt       DateTime                     @default(now())
@@ -570,6 +662,11 @@ model SubscriptionPaymentRequest {
   receiptStorageKey    String
   status               PaymentRequestStatus  @default(PENDING)
   rejectionReason      String?
+  /// When the business says it actually paid (owner-supplied, not future).
+  /// For admin reference only — entitlement dates are server-computed.
+  paidAt               DateTime?
+  /// Optional owner note about the payment (max 500 chars).
+  note                 String?
   submittedAt          DateTime              @default(now())
   reviewedAt           DateTime?
   reviewedByUserId     String?
@@ -602,22 +699,22 @@ model SubscriptionPaymentRequest {
 /// 7B `PaymentMethod`, which models business→NearbyOrders subscription
 /// pay-ins. Inactive rows are hidden from customers but kept for history.
 model BusinessPaymentMethod {
-  id              String                     @id @default(uuid())
-  businessId      String
-  type            CustomerPaymentMethodType
-  displayName     String
-  accountTitle    String
-  accountNumber   String?
-  iban            String?
-  instructions    String?
-  isActive        Boolean                    @default(true)
-  displayOrder    Int                        @default(0)
-  createdAt       DateTime                   @default(now())
-  updatedAt       DateTime                   @updatedAt
-  business        Business                   @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  bookings        BookingPayment[]
-  orders          Order[]
-  orderPayments   OrderPayment[]             @relation("OrderPaymentMethod")
+  id            String                    @id @default(uuid())
+  businessId    String
+  type          CustomerPaymentMethodType
+  displayName   String
+  accountTitle  String
+  accountNumber String?
+  iban          String?
+  instructions  String?
+  isActive      Boolean                   @default(true)
+  displayOrder  Int                       @default(0)
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+  business      Business                  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  bookings      BookingPayment[]
+  orders        Order[]
+  orderPayments OrderPayment[]            @relation("OrderPaymentMethod")
 
   @@index([businessId, isActive, displayOrder])
 }
@@ -628,27 +725,27 @@ model BusinessPaymentMethod {
 /// records state but never holds the money. Verification follows the Phase
 /// 7B advisory-lock pattern so a payment can only ever be processed once.
 model BookingPayment {
-  id                   String                  @id @default(uuid())
+  id                   String                 @id @default(uuid())
   bookingId            String
   businessId           String
   customerId           String
   amountMinor          Int
-  currency             String                  @default("PKR")
+  currency             String                 @default("PKR")
   paymentMethodId      String?
-  status               CustomerPaymentStatus   @default(PENDING_VERIFICATION)
+  status               CustomerPaymentStatus  @default(PENDING_VERIFICATION)
   transactionReference String?
   receiptStorageKey    String?
   rejectionReason      String?
-  submittedAt          DateTime                @default(now())
+  submittedAt          DateTime               @default(now())
   verifiedAt           DateTime?
   verifiedByUserId     String?
-  createdAt            DateTime                @default(now())
-  updatedAt            DateTime                @updatedAt
-  booking              Booking                 @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  business             Business                @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  customer             User                    @relation("BookingPaymentCustomer", fields: [customerId], references: [id])
-  paymentMethod        BusinessPaymentMethod?  @relation(fields: [paymentMethodId], references: [id])
-  verifiedBy           User?                   @relation("BookingPaymentVerifier", fields: [verifiedByUserId], references: [id])
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  booking              Booking                @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  business             Business               @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer             User                   @relation("BookingPaymentCustomer", fields: [customerId], references: [id])
+  paymentMethod        BusinessPaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  verifiedBy           User?                  @relation("BookingPaymentVerifier", fields: [verifiedByUserId], references: [id])
 
   @@index([businessId, status, submittedAt])
   @@index([bookingId, submittedAt])
@@ -659,28 +756,28 @@ model BookingPayment {
 /// cash-collection record for COD). Order totals live on the Order row;
 /// summing this table's VERIFIED rows is always safe to recompute.
 model OrderPayment {
-  id                   String                @id @default(uuid())
+  id                   String                    @id @default(uuid())
   orderId              String
   businessId           String
   customerId           String
   amountMinor          Int
-  currency             String                @default("PKR")
+  currency             String                    @default("PKR")
   method               CustomerPaymentMethodType
   paymentMethodId      String?
-  status               CustomerPaymentStatus @default(PENDING_VERIFICATION)
+  status               CustomerPaymentStatus     @default(PENDING_VERIFICATION)
   transactionReference String?
   receiptStorageKey    String?
   rejectionReason      String?
-  submittedAt          DateTime              @default(now())
+  submittedAt          DateTime                  @default(now())
   verifiedAt           DateTime?
   verifiedByUserId     String?
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
-  order                Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  business             Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  customer             User                  @relation("OrderPaymentCustomer", fields: [customerId], references: [id])
-  paymentMethod        BusinessPaymentMethod? @relation("OrderPaymentMethod", fields: [paymentMethodId], references: [id])
-  verifiedBy           User?                 @relation("OrderPaymentVerifier", fields: [verifiedByUserId], references: [id])
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  order                Order                     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  business             Business                  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer             User                      @relation("OrderPaymentCustomer", fields: [customerId], references: [id])
+  paymentMethod        BusinessPaymentMethod?    @relation("OrderPaymentMethod", fields: [paymentMethodId], references: [id])
+  verifiedBy           User?                     @relation("OrderPaymentVerifier", fields: [verifiedByUserId], references: [id])
 
   @@index([businessId, status, submittedAt])
   @@index([orderId, submittedAt])
@@ -689,3 +786,131 @@ model OrderPayment {
 
 /// Opposite side of Order.paymentMethod — a convenience pointer to the
 /// business pay-in channel the customer selected at checkout.
+
+/**
+ * ------------------------------------------------------------------
+ */
+/**
+ * Business verification (Phase 18)
+ */
+/**
+ * ------------------------------------------------------------------
+ */
+
+/// One verification application per business. The owner fills a draft,
+/// uploads supporting documents, and submits; only an ADMIN review flips the
+/// status (and Business.isVerified). The owner can never set isVerified
+/// directly — no owner input schema carries that field.
+model VerificationApplication {
+  id               String                 @id @default(uuid())
+  businessId       String                 @unique
+  status           VerificationStatus     @default(DRAFT)
+  legalName        String?
+  publicName       String?
+  ownerName        String?
+  phone            String?
+  address          String?
+  city             String?
+  categoryId       String?
+  description      String?
+  latitude         Float?
+  longitude        Float?
+  /// e.g. NTN/registration number or trade-license reference (free text).
+  registrationInfo String?
+  submittedAt      DateTime?
+  reviewedAt       DateTime?
+  reviewedByUserId String?
+  /// Internal admin note — never shown to the business owner.
+  adminNotes       String?
+  /// Customer-visible reviewer message (required on reject/request-changes).
+  reviewerMessage  String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  business         Business               @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  reviewer         User?                  @relation("VerificationReviewer", fields: [reviewedByUserId], references: [id])
+  category         Category?              @relation(fields: [categoryId], references: [id])
+  documents        VerificationDocument[]
+
+  @@index([status, submittedAt])
+}
+
+/// One uploaded supporting document (CNIC, trade license, …). Bytes live in
+/// the receipt-storage abstraction under the same opaque
+/// `receipts/<uuid>.<ext>` key scheme; this row only records the key.
+model VerificationDocument {
+  id            String                     @id @default(uuid())
+  applicationId String
+  docType       String
+  storageKey    String
+  status        VerificationDocumentStatus @default(PENDING)
+  uploadedAt    DateTime                   @default(now())
+  reviewedAt    DateTime?
+  note          String?
+  application   VerificationApplication    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, status])
+}
+
+/**
+ * ------------------------------------------------------------------
+ */
+/**
+ * Promotions (Phase 18)
+ */
+/**
+ * ------------------------------------------------------------------
+ */
+
+/// Lifecycle of a business's request to join a promotion. Requesting is free
+/// and creates a PENDING row an admin reviews — there is no paid checkout;
+/// the team contacts the business about next steps.
+enum PromotionRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+/// An admin-defined promotional campaign businesses can ask to join
+/// (e.g. "Ramadan Featured", "New in Town"). Display-only marketing data —
+/// no payment is ever attached to a promotion.
+model Promotion {
+  id           String             @id @default(uuid())
+  name         String
+  slug         String             @unique
+  description  String?
+  benefits     String[]           @default([])
+  /// Optional advertised price in minor units (display only).
+  priceMinor   Int?
+  currency     String             @default("PKR")
+  durationDays Int?
+  requirements String?
+  isActive     Boolean            @default(true)
+  displayOrder Int                @default(0)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  requests     PromotionRequest[]
+
+  @@index([isActive, displayOrder])
+}
+
+model PromotionRequest {
+  id               String                 @id @default(uuid())
+  businessId       String
+  promotionId      String
+  status           PromotionRequestStatus @default(PENDING)
+  note             String?
+  reviewerMessage  String?
+  reviewedAt       DateTime?
+  reviewedByUserId String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  business         Business               @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  promotion        Promotion              @relation(fields: [promotionId], references: [id])
+  reviewer         User?                  @relation("PromotionReviewer", fields: [reviewedByUserId], references: [id])
+
+  @@index([businessId, createdAt])
+  @@index([status, createdAt])
+}

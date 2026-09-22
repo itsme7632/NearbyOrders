@@ -46,7 +46,9 @@ describe('manual payment → admin verification → activation journey', () => {
 
     /* 2. Subscription state: none yet — payment is required for access. */
     const subBefore = await app.inject({ method: 'GET', url: `/api/v1/businesses/${business.id}/subscription`, headers: authed(owner.token) });
-    expect(JSON.parse(subBefore.body).data).toBeNull();
+    const subBeforeData = JSON.parse(subBefore.body).data;
+    expect(subBeforeData.subscription).toBeNull();
+    expect(subBeforeData.status).toBeNull();
 
     /* 3. Owner fetches the pay-in channels (server-configured, not hardcoded). */
     const methodsRes = await app.inject({ method: 'GET', url: '/api/v1/subscription/payment-methods', headers: authed(owner.token) });
@@ -93,9 +95,9 @@ describe('manual payment → admin verification → activation journey', () => {
 
     const sub = JSON.parse(
       (await app.inject({ method: 'GET', url: `/api/v1/businesses/${business.id}/subscription`, headers: authed(owner.token) })).body,
-    ).data as { status: string; plan: { monthlyPriceMinor: number } };
+    ).data as { status: string; planPriceMinorSnapshot: number };
     expect(sub.status).toBe('ACTIVE');
-    expect(sub.plan.monthlyPriceMinor).toBe(299900);
+    expect(sub.planPriceMinorSnapshot).toBe(299900);
 
     /* 8. Owner receives the approval notification. */
     const notif = await prisma.notification.findFirst({ where: { userId: owner.userId, type: 'SUBSCRIPTION_PAYMENT_APPROVED', entityId: payment.id } });
@@ -142,11 +144,12 @@ describe('manual payment → admin verification → activation journey', () => {
     expect(reject.statusCode).toBe(200);
     expect(JSON.parse(reject.body).data.rejectionReason).toBe('Receipt does not match transaction reference.');
 
-    /* Subscription stays untouched (null — the owner never had one). */
+    /* Subscription stays untouched (no subscription row — the owner never had one). */
     const sub = JSON.parse(
       (await app.inject({ method: 'GET', url: `/api/v1/businesses/${business.id}/subscription`, headers: authed(owner.token) })).body,
     ).data;
-    expect(sub).toBeNull();
+    expect(sub.subscription).toBeNull();
+    expect(sub.status).toBeNull();
 
     /* Owner sees the rejection + reason in history and a notification. */
     const history = JSON.parse(
