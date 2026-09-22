@@ -13,6 +13,13 @@ import { formatMoney } from '@nearbyorders/shared';
 import { CheckIcon, StarIcon } from '../components/icons.js';
 import { OwnerPayments } from './OwnerSubscriptionPayments.js';
 
+/**
+ * The one real subscription product. The trial endpoint starts this plan by
+ * slug server-side (ensurePlan('nearbyorders-business')), so the client
+ * selects it the same way instead of picking an arbitrary catalog row.
+ */
+const CANONICAL_PLAN_SLUG = 'nearbyorders-business';
+
 const SUBSCRIPTION_STATUS_LABEL: Record<Subscription['status'], string> = {
   TRIAL: 'Free trial',
   ACTIVE: 'Active',
@@ -67,17 +74,19 @@ export function OwnerSubscription(props: { businessId: string; businessName?: st
   if (plans.error) return <ErrorState message={plans.error} onRetry={plans.reload} />;
 
   const sub = subscription.data;
-  // The plan shown comes from the live subscription when one exists, else
-  // from the public plan catalog — the price is never hard-coded here.
-  const plan = sub?.plan ?? plans.data?.[0] ?? null;
-  // No subscription and no plan in the catalog: say so honestly instead of
-  // inventing trial terms or a price for the hero below.
+  // The plan shown comes from the live subscription when one exists, else the
+  // canonical NearbyOrders Business plan from the public catalog — the price
+  // is never hard-coded here, and a non-canonical catalog row is never
+  // chosen arbitrarily.
+  const plan = sub?.plan ?? plans.data?.find((p) => p.slug === CANONICAL_PLAN_SLUG) ?? null;
+  // No subscription and no canonical plan in the catalog: say so honestly
+  // instead of inventing trial terms or a price for the hero below.
   if (!plan) {
     return (
       <EmptyState
         icon={<StarIcon size={22} />}
         title="No plans available right now"
-        body="Subscription plans couldn't be loaded. Pull to refresh or try again later — nothing has been invented here."
+        body="There are no subscription plans to show at the moment. Pull to refresh or try again later."
         action={<Button onClick={() => { subscription.reload(); plans.reload(); }}>Retry</Button>}
       />
     );
@@ -185,6 +194,12 @@ export function OwnerSubscription(props: { businessId: string; businessName?: st
                       : 'Ended. Start again any time.'}
                 </span>
               </p>
+              {/*
+                Restart semantics verified against the server: trial starts are
+                rejected with 409 ALREADY_SUBSCRIBED only for live (TRIAL /
+                ACTIVE) subscriptions, so offering a fresh trial for EXPIRED /
+                CANCELLED / SUSPENDED does exactly what the button says.
+              */}
               <Button full disabled={busy} onClick={() => act(() => startBusinessTrial(props.businessId))}>
                 {busy ? 'Starting…' : `Start ${plan.trialDays}-day free trial`}
               </Button>

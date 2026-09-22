@@ -147,3 +147,15 @@ describe('OwnerSubscription (terminal states)', () => {
     expect(screen.getByRole('button', { name: 'Start 30-day free trial' })).toBeTruthy();
   });
 });
+
+describe('OwnerSubscription (plan selection)', () => {
+  it('picks the canonical NearbyOrders Business plan, not an arbitrary first catalog row', async () => {
+    const other = { ...plan, slug: 'some-other-plan', name: 'Some Other Plan', monthlyPriceMinor: 99900, trialDays: 7 };
+    vi.spyOn(api, 'listSubscriptionPlans').mockResolvedValue([other, plan]);
+    render(<OwnerSubscription businessId="biz-1" />);
+    await screen.findByRole('button', { name: 'Start 30-day free trial' });
+    expect(screen.getAllByText('NearbyOrders Business').length).toBe(2);
+    expect(screen.queryByText('Some Other Plan')).toBeNull();
+    expect(screen.getByText('Rs 2,999')).toBeTruthy();
+  });
+});
