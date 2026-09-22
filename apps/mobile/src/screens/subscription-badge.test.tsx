@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
 import * as api from '../api.js';
 import type { Business, SubscriptionPlan, Subscription, SubscriptionRowPlan, BusinessSubscriptionState } from '../api.js';
 
@@ -170,9 +170,42 @@ describe('business overview uses real data and business wording', () => {
     expect(await screen.findByText('Butt Spices!')).toBeTruthy();
     // The redesigned Overview shows month-scoped tiles, not day cards.
     await screen.findByText('Total bookings');
-    const region = screen.getByRole('region', { name: 'Key metrics' });
+    const region = screen.getByRole('region', { name: 'Monthly snapshot' });
     // No fake metrics: with empty server data every count is a real zero.
     expect(within(region).getByText('0')).toBeTruthy();
     expect(region).toHaveTextContent('Rs 0');
+  });
+});
+
+describe('OwnerPlanCard', () => {
+  it('renders the server plan with price, trial status and both actions', async () => {
+    vi.mocked(api.getBusinessSubscription).mockResolvedValue(
+      stateOf({
+        id: 'sub-1',
+        status: 'TRIAL',
+        trialStartAt: new Date().toISOString(),
+        trialEndAt: new Date(Date.now() + 3 * 86_400_000).toISOString(),
+        currentPeriodStartAt: new Date().toISOString(),
+        currentPeriodEndAt: new Date(Date.now() + 3 * 86_400_000).toISOString(),
+        cancelledAt: null,
+        planNameSnapshot: 'NearbyOrders Business',
+        planPriceMinorSnapshot: 299900,
+        plan: testRowPlan,
+      }),
+    );
+    const { OwnerPlanCard } = await import('./subscription-badge.js');
+    const onManagePlan = vi.fn();
+    const onViewPayments = vi.fn();
+    render(<OwnerPlanCard businessId="biz-1" onManagePlan={onManagePlan} onViewPayments={onViewPayments} />);
+    // All plan facts come from the server snapshot, never hard-coded.
+    expect(await screen.findByText('NearbyOrders Business')).toBeTruthy();
+    expect(screen.getByText('Rs 2,999')).toBeTruthy();
+    expect(screen.getByText(/3 days remaining/)).toBeTruthy();
+    expect(screen.getByText('No payments yet')).toBeTruthy();
+    // Both entry points route to the subscription screen via the host.
+    fireEvent.click(screen.getByRole('button', { name: 'Manage plan' }));
+    expect(onManagePlan).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'View payment history' }));
+    expect(onViewPayments).toHaveBeenCalledTimes(1);
   });
 });

@@ -58,6 +58,7 @@ const renderPayments = (overrides?: {
   requests?: PaymentRequest[] | null;
   requestsLoading?: boolean;
   requestsError?: string | null;
+  openFormSignal?: number;
 }) => {
   const onRequestsReload = vi.fn();
   render(
@@ -70,6 +71,7 @@ const renderPayments = (overrides?: {
       requestsLoading={overrides?.requestsLoading ?? false}
       requestsError={overrides?.requestsError ?? null}
       onRequestsReload={onRequestsReload}
+      openFormSignal={overrides?.openFormSignal}
     />,
   );
   return { onRequestsReload };
@@ -88,8 +90,9 @@ describe('OwnerPayments (pay-in details)', () => {
   it('renders server-configured pay-in details, never hardcoded numbers', async () => {
     renderPayments();
     await openForm();
-    expect(await screen.findByText('NearbyOrders Test')).toBeTruthy();
-    expect(screen.getByText('03000000000')).toBeTruthy(); // from the mocked API
+    // Channels render in the always-visible methods block and in the form.
+    expect((await screen.findAllByText('NearbyOrders Test')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('03000000000').length).toBeGreaterThan(0); // from the mocked API
   });
 
   it('shows the server plan amount due, never a client-typed number', async () => {
@@ -102,12 +105,20 @@ describe('OwnerPayments (pay-in details)', () => {
   it('shows the IBAN for bank transfers and the number for wallets', async () => {
     renderPayments();
     await openForm();
-    await screen.findByText('NearbyOrders Test');
+    await screen.findAllByText('NearbyOrders Test');
     // Default selection is the first method (Easypaisa): shows the number.
-    expect(screen.getByText('03000000000')).toBeTruthy();
+    expect(screen.getAllByText('03000000000').length).toBeGreaterThan(0);
     // Switching to the bank shows its IBAN instead.
     fireEvent.click(screen.getByRole('button', { name: 'Bank Transfer (Test)' }));
-    expect(screen.getByText('PK00TEST0000000000000000')).toBeTruthy();
+    expect(screen.getAllByText('PK00TEST0000000000000000').length).toBeGreaterThan(0);
+  });
+
+  it('shows the pay-in channels without opening the form', async () => {
+    renderPayments();
+    // Methods are always visible now, not only inside the proof form.
+    expect(await screen.findByText('Payment methods')).toBeTruthy();
+    expect((await screen.findAllByText('NearbyOrders Test')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('03000000000').length).toBeGreaterThan(0);
   });
 
   it('explains when no payment methods are configured', async () => {
@@ -237,6 +248,28 @@ describe('OwnerPayments (history)', () => {
     expect(await screen.findByText(/Awaiting verification\./)).toBeTruthy();
     // The submit CTA is hidden while a request is pending.
     expect(screen.queryByRole('button', { name: "I've paid: submit proof" })).toBeNull();
+  });
+
+  it('opens the form when the parent requests it via openFormSignal', async () => {
+    renderPayments({ openFormSignal: 1 });
+    expect(await screen.findByPlaceholderText('e.g. TX-123456789')).toBeTruthy();
+  });
+
+  it('shows a useful empty state when no payments were submitted', async () => {
+    renderPayments({ requests: [] });
+    expect(await screen.findByText('You have not submitted any payments yet.')).toBeTruthy();
+  });
+
+  it('shows loading skeletons while the history loads', async () => {
+    renderPayments({ requests: [], requestsLoading: true });
+    expect(await screen.findByLabelText('Loading payment history')).toBeTruthy();
+    expect(screen.queryByText('You have not submitted any payments yet.')).toBeNull();
+  });
+
+  it('never throws when the requests value is not an array', async () => {
+    // A non-array wire shape must not blank the screen.
+    renderPayments({ requests: { items: [] } as unknown as PaymentRequest[] });
+    expect(await screen.findByText('You have not submitted any payments yet.')).toBeTruthy();
   });
 
   it('surfaces history load errors with a retry', async () => {

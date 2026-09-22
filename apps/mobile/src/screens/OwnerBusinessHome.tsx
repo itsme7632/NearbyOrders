@@ -7,15 +7,17 @@ import {
   type OwnerAnalytics,
   type OwnerOverview,
 } from '../api.js';
-import { useAsyncData } from '../hooks.js';
+import { useAsyncData, type AsyncState } from '../hooks.js';
 import { Button, EmptyState, ErrorState, ListSkeleton, Money } from '../components/ui.js';
 import {
   ActivityIcon,
   AlertIcon,
+  BellIcon,
   BookingsIcon,
   CheckIcon,
   ExploreIcon,
   HeartIcon,
+  ImageIcon,
   InfoIcon,
   OrdersIcon,
   PinIcon,
@@ -23,18 +25,18 @@ import {
   StoreIcon,
   HelpIcon,
 } from '../components/icons.js';
-import { OwnerHubRow, OwnerHubSection } from './owner-ui.js';
+import { OwnerHubRow } from './owner-ui.js';
+import { OwnerPlanCard } from './subscription-badge.js';
 import { OrderThumb } from './Orders.js';
 
 /**
  * Business-mode Overview: "How is my business doing?" at a glance.
  *
- * Hierarchy (per the Business Owner reference): greeting header → business
- * status → key metrics (all server-computed, never invented) → needs
- * attention → calmly grouped management rows. Every old dashboard
- * destination is still one tap away via the tab bar or a management row;
- * the Overview itself is now a calm summary — recent orders, upcoming
- * bookings, and earnings detail live on their dedicated tabs.
+ * Hierarchy: top bar (wordmark, Owner mode badge, notifications, avatar) →
+ * greeting → business status → plan → monthly snapshot → needs attention →
+ * quick actions → calmly grouped management sections (Manage, Grow,
+ * Account & settings). Every old dashboard destination is still one tap
+ * away; the Overview restructures presentation, never destinations.
  */
 export function OwnerBusinessHome(props: {
   onOpen: (path: string) => void;
@@ -62,10 +64,43 @@ export function OwnerBusinessHome(props: {
     );
   }
 
+  return (
+    <OverviewBody
+      businesses={businesses.data}
+      selectedId={selectedId}
+      onSelectBusiness={setSelectedId}
+      onOpen={props.onOpen}
+      onListBusiness={props.onListBusiness}
+      onOpenOrder={props.onOpenOrder}
+      onOpenBooking={props.onOpenBooking}
+      justCreatedName={props.justCreatedName}
+      justCreatedStatus={props.justCreatedStatus}
+    />
+  );
+}
+
+/** The overview body: one data layer per business, shared by the sections. */
+function OverviewBody(props: {
+  businesses: Business[];
+  selectedId: string | undefined;
+  onSelectBusiness: (id: string) => void;
+  onOpen: (path: string) => void;
+  onListBusiness?: () => void;
+  onOpenOrder: (id: string) => void;
+  onOpenBooking: (id: string) => void;
+  justCreatedName?: string | null;
+  justCreatedStatus?: string | null;
+}) {
+  const { businesses, selectedId, onSelectBusiness, onOpen } = props;
+
   // The selected business defaults to the first owned one; switching updates
   // every stat and management link below (server ownership still enforced).
-  const active = businesses.data.find((b) => b.id === selectedId) ?? businesses.data[0];
+  const active = businesses.find((b) => b.id === selectedId) ?? businesses[0];
   const base = `/owner/${active.id}`;
+
+  // One overview fetch, shared by the greeting's supporting line and the
+  // needs-attention band below.
+  const overview = useAsyncData<OwnerOverview>(() => getOwnerOverview(active.id), [active.id]);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -84,23 +119,28 @@ export function OwnerBusinessHome(props: {
         </div>
       ) : null}
 
-      {/* Greeting header: who is operating, and the business avatar. */}
+      {/* Top bar: wordmark, Owner mode badge, notifications, business avatar. */}
+      <OwnerTopBar
+        businessName={active.name}
+        imageUrl={active.imageUrl}
+        onNotifications={() => onOpen('notifications')}
+        onEditProfile={() => onOpen(`${base}/profile`)}
+      />
+
+      {/* Greeting: who is operating, with one useful data-driven line. */}
       <header className="owner-greet">
         <div className="owner-greet-text">
           <p className="owner-greet-hello">{greeting},</p>
           <h1 className="owner-greet-name">{active.name}!</h1>
-          <p className="owner-sub">Manage your business and grow with NearbyOrders.</p>
+          <p className="owner-sub">{supportLineFor(active, overview.data)}</p>
         </div>
-        <span className="owner-avatar" aria-hidden>
-          <OrderThumb name={active.name} imageUrl={active.imageUrl} />
-        </span>
       </header>
 
       {/* Business switcher (only when the owner runs several businesses). */}
-      {businesses.data.length > 1 ? (
-        <div className="filter-row" role="group" aria-label="Switch business" style={{ marginTop: 4 }}>
-          {businesses.data.map((b) => (
-            <button key={b.id} className={`chip${b.id === active.id ? ' chip-active' : ''}`} onClick={() => setSelectedId(b.id)}>
+      {businesses.length > 1 ? (
+        <div className="filter-row" role="group" aria-label="Switch business" style={{ marginTop: 8 }}>
+          {businesses.map((b) => (
+            <button key={b.id} className={`chip${b.id === active.id ? ' chip-active' : ''}`} onClick={() => onSelectBusiness(b.id)}>
               {b.name}
             </button>
           ))}
@@ -110,42 +150,55 @@ export function OwnerBusinessHome(props: {
       {/* Business status: the first answer to "how is my business doing?" */}
       <BusinessStatusCard business={active} />
 
-      {/* Key metrics — server-computed this-month figures plus the real
-          customer rating. Deltas are not shown: the backend does not track
-          them, and they are never invented. */}
-      <OverviewMetrics businessId={active.id} business={active} />
+      {/* Plan: the single subscription entry point on this screen. The real
+          plan, price, trial and payment state come from OwnerPlanCard. */}
+      <section aria-label="Your plan" className="ov-section">
+        <h2 className="ov-section-title">Your plan</h2>
+        <OwnerPlanCard
+          businessId={active.id}
+          onManagePlan={() => onOpen(`${base}/subscription`)}
+          onViewPayments={() => onOpen(`${base}/subscription`)}
+        />
+      </section>
 
-      {/* Everything actionable, then the calm management groups. */}
+      {/* Monthly snapshot: server-computed figures plus the real rating. */}
+      <MonthlySnapshot businessId={active.id} business={active} />
+
+      {/* Everything actionable: attention items, then profile gaps. */}
       <OverviewAttention
-        businessId={active.id}
-        onOpen={props.onOpen}
+        overview={overview}
+        onOpen={onOpen}
         base={base}
         onOpenBooking={props.onOpenBooking}
         onOpenOrder={props.onOpenOrder}
       />
 
-      <h2 className="hub-manage-title">Manage your business</h2>
-      <OwnerHubSection label="Business">
-        <OwnerHubRow icon={<StoreIcon size={18} />} title="Business information" subtitle="Name, address, contact, category" onClick={() => props.onOpen(`${base}/profile`)} />
-        <OwnerHubRow icon={<PinIcon size={18} />} title="Location" subtitle="Set your address and pin on map" onClick={() => props.onOpen(`${base}/location`)} />
-        <OwnerHubRow icon={<BookingsIcon size={18} />} title="Business hours" subtitle="Set your operating hours" onClick={() => props.onOpen(`${base}/hours`)} />
-      </OwnerHubSection>
-      <OwnerHubSection label="Catalog">
-        <OwnerHubRow icon={<ActivityIcon size={18} />} title="Services" subtitle="Add and manage your services" onClick={() => props.onOpen(`${base}/services`)} />
-        <OwnerHubRow icon={<OrdersIcon size={18} />} title="Products / Menu" subtitle="Add products or menu items" onClick={() => props.onOpen(`${base}/products`)} />
-      </OwnerHubSection>
-      <OwnerHubSection label="Growth & account">
-        <OwnerHubRow icon={<StarIcon size={18} />} title="Subscription" subtitle="Trial, plan and manual payments" onClick={() => props.onOpen(`${base}/subscription`)} />
-        <OwnerHubRow icon={<HeartIcon size={18} />} title="Reviews" subtitle="What customers say about you" onClick={() => props.onOpen(`${base}/reviews`)} />
-        <OwnerHubRow icon={<AlertIcon size={18} />} title="Customer payments" subtitle="Verify customer payment proofs" onClick={() => props.onOpen(`${base}/payments`)} />
-        <OwnerHubRow icon={<ExploreIcon size={18} />} title="Delivery & COD" subtitle="Own-rider delivery and cash on delivery" onClick={() => props.onOpen(`${base}/delivery`)} />
-        <OwnerHubRow icon={<CheckIcon size={18} />} title="Business payment methods" subtitle="Channels customers pay you through" onClick={() => props.onOpen(`${base}/payment-methods`)} />
-        <OwnerHubRow icon={<InfoIcon size={18} />} title="Service advance settings" subtitle="Per-service advance requirements" onClick={() => props.onOpen(`${base}/advances`)} />
-        <OwnerHubRow icon={<HelpIcon size={18} />} title="Business settings" subtitle="Delivery, COD and payment channels" onClick={() => props.onOpen(`${base}/settings`)} />
-      </OwnerHubSection>
+      <QuickActions base={base} onOpen={onOpen} />
+
+      <OvSection label="Manage your business">
+        <OwnerHubRow icon={<StoreIcon size={18} />} title="Business profile" subtitle="Name, address, contact, category" onClick={() => onOpen(`${base}/profile`)} />
+        <OwnerHubRow icon={<PinIcon size={18} />} title="Location" subtitle="Set your address and pin on map" onClick={() => onOpen(`${base}/location`)} />
+        <OwnerHubRow icon={<BookingsIcon size={18} />} title="Business hours" subtitle="Set your operating hours" onClick={() => onOpen(`${base}/hours`)} />
+        <OwnerHubRow icon={<ActivityIcon size={18} />} title="Services" subtitle="Add and manage your services" onClick={() => onOpen(`${base}/services`)} />
+        <OwnerHubRow icon={<OrdersIcon size={18} />} title="Products / Menu" subtitle="Add products or menu items" onClick={() => onOpen(`${base}/products`)} />
+      </OvSection>
+
+      <OvSection label="Grow your business">
+        <OwnerHubRow icon={<CheckIcon size={18} />} title="Verification" subtitle="Get the verified badge on your listing" onClick={() => onOpen(`${base}/verification`)} />
+        <OwnerHubRow icon={<StarIcon size={18} />} title="Promotions" subtitle="Deals and offers to attract customers" onClick={() => onOpen(`${base}/promotions`)} />
+      </OvSection>
+
+      <OvSection label="Account & settings">
+        <OwnerHubRow icon={<HeartIcon size={18} />} title="Reviews" subtitle="What customers say about you" onClick={() => onOpen(`${base}/reviews`)} />
+        <OwnerHubRow icon={<AlertIcon size={18} />} title="Customer payments" subtitle="Verify customer payment proofs" onClick={() => onOpen(`${base}/payments`)} />
+        <OwnerHubRow icon={<CheckIcon size={18} />} title="Business payment methods" subtitle="Channels customers pay you through" onClick={() => onOpen(`${base}/payment-methods`)} />
+        <OwnerHubRow icon={<ExploreIcon size={18} />} title="Delivery & COD" subtitle="Own-rider delivery and cash on delivery" onClick={() => onOpen(`${base}/delivery`)} />
+        <OwnerHubRow icon={<InfoIcon size={18} />} title="Service advance settings" subtitle="Per-service advance requirements" onClick={() => onOpen(`${base}/advances`)} />
+        <OwnerHubRow icon={<HelpIcon size={18} />} title="Business settings" subtitle="Delivery, COD and payment channels" onClick={() => onOpen(`${base}/settings`)} />
+      </OvSection>
 
       {props.onListBusiness ? (
-        <div className="card" style={{ marginTop: 12 }}>
+        <div className="card" style={{ marginTop: 16 }}>
           <Button full variant="ghost" onClick={props.onListBusiness}>
             List another business
           </Button>
@@ -153,6 +206,54 @@ export function OwnerBusinessHome(props: {
       ) : null}
     </div>
   );
+}
+
+/**
+ * Top bar: NearbyOrders wordmark, the Owner mode badge, the notifications
+ * bell, and the business avatar (opens business profile).
+ */
+function OwnerTopBar(props: {
+  businessName: string;
+  imageUrl: string | null | undefined;
+  onNotifications: () => void;
+  onEditProfile: () => void;
+}) {
+  return (
+    <div className="owner-topbar">
+      <span className="brand-mark" aria-hidden>
+        <PinIcon size={16} />
+      </span>
+      <span className="owner-wordmark">
+        Nearby<b>Orders</b>
+      </span>
+      <span className="owner-mode-badge">Owner</span>
+      <span className="owner-topbar-spacer" aria-hidden />
+      <button type="button" className="bell-btn owner-topbar-bell" aria-label="Notifications" onClick={props.onNotifications}>
+        <BellIcon size={20} />
+      </button>
+      <button
+        type="button"
+        className="owner-avatar owner-avatar-btn"
+        aria-label={`Edit ${props.businessName} profile`}
+        onClick={props.onEditProfile}
+      >
+        <OrderThumb name={props.businessName} imageUrl={props.imageUrl} />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The single supporting line under the greeting: pending attention from the
+ * live overview, otherwise the honest visibility state. Never invented.
+ */
+function supportLineFor(active: Business, o: OwnerOverview | null): string {
+  const n = o?.needsAttention;
+  const total = (n?.pendingOrders ?? 0) + (n?.pendingBookings ?? 0) + (n?.pendingPayments ?? 0);
+  if (total > 0) return `${total} item${total === 1 ? '' : 's'} need${total === 1 ? 's' : ''} your attention today.`;
+  if (active.status === 'APPROVED') return 'Your business is live and visible to customers.';
+  if (active.status === 'PENDING') return 'Your listing goes live in customer search once approved.';
+  return 'Check your business status with support.';
 }
 
 /** Live/pending status of the operating business — honest, from the server. */
@@ -179,17 +280,19 @@ function BusinessStatusCard({ business }: { business: Business }) {
 }
 
 /**
- * The three headline metrics: this month's bookings, the real average
- * customer rating, and this month's collected revenue. All server-computed.
+ * Monthly snapshot: this month's bookings, the real average customer
+ * rating, and this month's collected revenue. All server-computed; an
+ * honest zero/empty state when there is no data yet.
  */
-function OverviewMetrics({ businessId, business }: { businessId: string; business: Business }) {
+function MonthlySnapshot({ businessId, business }: { businessId: string; business: Business }) {
   const analytics = useAsyncData<OwnerAnalytics>(() => getOwnerAnalytics(businessId, 'month'), [businessId]);
 
   const rating = business.averageRating;
   const reviewCount = business.reviewCount ?? 0;
 
   return (
-    <section aria-label="Key metrics" style={{ marginTop: 12 }}>
+    <section aria-label="Monthly snapshot" className="ov-section">
+      <h2 className="ov-section-title">Monthly snapshot</h2>
       {analytics.loading ? (
         <ListSkeleton count={1} />
       ) : analytics.error ? (
@@ -202,7 +305,7 @@ function OverviewMetrics({ businessId, business }: { businessId: string; busines
             <span className="metric-tile-sub">This month</span>
           </div>
           <div className="metric-tile">
-            <span className="metric-tile-num">{rating != null ? rating.toFixed(1) : '—'}</span>
+            <span className="metric-tile-num">{rating != null ? rating.toFixed(1) : '-'}</span>
             <span className="metric-tile-label">Avg. rating</span>
             <span className="metric-tile-sub">{reviewCount > 0 ? `(${reviewCount} review${reviewCount === 1 ? '' : 's'})` : 'No reviews yet'}</span>
           </div>
@@ -225,13 +328,13 @@ function OverviewMetrics({ businessId, business }: { businessId: string; busines
  * the dashboard stays quiet.
  */
 function OverviewAttention(props: {
-  businessId: string;
+  overview: AsyncState<OwnerOverview>;
   onOpen: (path: string) => void;
   base: string;
   onOpenBooking: (id: string) => void;
   onOpenOrder: (id: string) => void;
 }) {
-  const overview = useAsyncData<OwnerOverview>(() => getOwnerOverview(props.businessId), [props.businessId]);
+  const { overview, onOpen, base } = props;
 
   if (overview.loading) return <ListSkeleton count={1} />;
   if (overview.error) return <ErrorState message={overview.error} onRetry={overview.reload} />;
@@ -245,7 +348,7 @@ function OverviewAttention(props: {
           count: o.needsAttention.pendingOrders,
           label: o.needsAttention.pendingOrders === 1 ? 'order' : 'orders',
           detail: 'waiting for your accept or reject',
-          onClick: () => props.onOpen(`${props.base}/orders`),
+          onClick: () => onOpen(`${base}/orders`),
         }
       : null,
     o.needsAttention.pendingBookings > 0
@@ -254,7 +357,7 @@ function OverviewAttention(props: {
           count: o.needsAttention.pendingBookings,
           label: o.needsAttention.pendingBookings === 1 ? 'booking' : 'bookings',
           detail: 'waiting for your confirm or decline',
-          onClick: () => props.onOpen(`${props.base}/bookings`),
+          onClick: () => onOpen(`${base}/bookings`),
         }
       : null,
     o.needsAttention.pendingPayments > 0
@@ -263,14 +366,15 @@ function OverviewAttention(props: {
           count: o.needsAttention.pendingPayments,
           label: o.needsAttention.pendingPayments === 1 ? 'payment proof' : 'payment proofs',
           detail: 'awaiting verification',
-          onClick: () => props.onOpen(`${props.base}/payments`),
+          onClick: () => onOpen(`${base}/payments`),
         }
       : null,
   ].filter((a): a is NonNullable<typeof a> => a !== null);
 
   return (
     <>
-      <section aria-label="Needs attention" style={{ marginTop: 12 }}>
+      <section aria-label="Needs attention" className="ov-section">
+        <h2 className="ov-section-title">Needs attention</h2>
         {attention.length ? (
           <div className="activity-card">
             {attention.map((a) => (
@@ -292,11 +396,11 @@ function OverviewAttention(props: {
           </div>
         ) : (
           <p className="calm-note" role="status">
-            <CheckIcon size={16} /> All caught up. Nothing needs your action right now.
+            <CheckIcon size={16} /> All caught up. Nothing needs your attention right now.
           </p>
         )}
       </section>
-      {renderProfileGaps(o.profileMissing, props.base, props.onOpen)}
+      {renderProfileGaps(o.profileMissing, base, onOpen)}
     </>
   );
 }
@@ -314,10 +418,8 @@ const GAP_LABELS: Record<string, { title: string; suffix: string }> = {
 function renderProfileGaps(missing: string[], base: string, onOpen: (path: string) => void) {
   if (!missing.length) return null;
   return (
-    <section aria-label="Complete your profile" style={{ marginTop: 14 }}>
-      <div className="section-head-v3">
-        <h2>Complete your profile</h2>
-      </div>
+    <section aria-label="Complete your profile" className="ov-section">
+      <h2 className="ov-section-title">Complete your profile</h2>
       <div className="activity-card">
         {missing.map((key) => {
           const gap = GAP_LABELS[key];
@@ -338,6 +440,46 @@ function renderProfileGaps(missing: string[], base: string, onOpen: (path: strin
           );
         })}
       </div>
+    </section>
+  );
+}
+
+/**
+ * Quick actions: the four most-used destinations, as one compact grid.
+ * Every destination also appears in the sections below; these are the
+ * shortcuts for daily operation.
+ */
+function QuickActions(props: { base: string; onOpen: (path: string) => void }) {
+  const { base, onOpen } = props;
+  const actions = [
+    { key: 'profile', icon: <StoreIcon size={20} />, label: 'Edit profile', path: `${base}/profile` },
+    { key: 'services', icon: <ActivityIcon size={20} />, label: 'Services', path: `${base}/services` },
+    { key: 'products', icon: <ImageIcon size={20} />, label: 'Products', path: `${base}/products` },
+    { key: 'orders', icon: <OrdersIcon size={20} />, label: 'Orders', path: `${base}/orders` },
+  ];
+  return (
+    <section aria-label="Quick actions" className="ov-section">
+      <h2 className="ov-section-title">Quick actions</h2>
+      <div className="ov-quick-grid">
+        {actions.map((a) => (
+          <button key={a.key} type="button" className="ov-quick-btn" onClick={() => onOpen(a.path)}>
+            <span className="ov-quick-icon" aria-hidden>
+              {a.icon}
+            </span>
+            <span className="ov-quick-label">{a.label}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** A labelled section of hub rows: the card treatment, but a readable h2. */
+function OvSection(props: { label: string; children: React.ReactNode }) {
+  return (
+    <section className="ov-section" aria-label={props.label}>
+      <h2 className="ov-section-title">{props.label}</h2>
+      <div className="hub-card">{props.children}</div>
     </section>
   );
 }

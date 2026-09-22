@@ -31,7 +31,7 @@ export function OwnerBusinessProfile(props: {
   if (businesses.error) return <ErrorState message={businesses.error} onRetry={businesses.reload} />;
   if (!businesses.data?.length) {
     return (
-      <div className="screen">
+      <div className="screen owner-business-profile">
         <EmptyState
           icon={<StoreIcon size={30} />}
           title="Your business"
@@ -49,7 +49,7 @@ export function OwnerBusinessProfile(props: {
     props.onOpenBusinessScreen(active.id, screen);
 
   return (
-    <div className="screen">
+    <div className="screen owner-business-profile">
       <header className="owner-head">
         <h1>Business Profile</h1>
       </header>

@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { OwnerSubscription } from './OwnerSubscriptionScreen.js';
 import * as api from '../api.js';
-import type { Subscription, SubscriptionPlan, SubscriptionRowPlan, BusinessSubscriptionState } from '../api.js';
+import type { Subscription, SubscriptionPlan, SubscriptionRowPlan, BusinessSubscriptionState, PaymentMethod } from '../api.js';
 
 afterEach(cleanup);
 
@@ -113,7 +113,8 @@ describe('OwnerSubscription (no subscription yet)', () => {
     render(<OwnerSubscription businessId="biz-1" />);
     await screen.findByRole('button', { name: 'Start 30-day free trial' });
     // 299900 minor = Rs 2,999 — integer paisa rendering, no float artifacts.
-    expect(screen.getByText('Rs 2,999')).toBeTruthy();
+    // It renders on the subscription summary and on the live plan card.
+    expect(screen.getAllByText('Rs 2,999').length).toBeGreaterThan(0);
     expect(screen.getByText('No subscription')).toBeTruthy();
     expect(screen.getByText(/No payment required now/)).toBeTruthy();
   });
@@ -149,7 +150,7 @@ describe('OwnerSubscription (no subscription yet)', () => {
     expect(screen.queryByRole('button', { name: /free trial/i })).toBeNull();
   });
 
-  it('picks the highlighted catalog plan, not an arbitrary first row', async () => {
+  it('renders every active plan, marks the highlighted one Recommended, and trials the highlighted plan by default', async () => {
     const other: SubscriptionPlan = {
       ...plan,
       id: 'plan-9',
@@ -159,12 +160,36 @@ describe('OwnerSubscription (no subscription yet)', () => {
       trialDays: 7,
       isHighlighted: false,
     };
+    const applySpy = vi.spyOn(api, 'applyTrial').mockResolvedValue({ ...trialRow });
     vi.spyOn(api, 'listSubscriptionPlans').mockResolvedValue([other, plan]);
     render(<OwnerSubscription businessId="biz-1" />);
-    await screen.findByRole('button', { name: 'Start 30-day free trial' });
-    expect(screen.getByText('NearbyOrders Business')).toBeTruthy();
-    expect(screen.queryByText('Some Other Plan')).toBeNull();
-    expect(screen.getByText('Rs 2,999')).toBeTruthy();
+    // Both live catalog plans render — nothing is hidden or hard-coded.
+    expect(await screen.findByText('Some Other Plan')).toBeTruthy();
+    expect(screen.getAllByText('NearbyOrders Business').length).toBeGreaterThan(0);
+    // Only the server-highlighted plan reads as recommended.
+    const recommended = screen.getByText('Recommended');
+    expect(recommended.closest('article')?.textContent).toContain('NearbyOrders Business');
+    // The trial CTA defaults to the highlighted plan, not the first row.
+    fireEvent.click(await screen.findByRole('button', { name: 'Start 30-day free trial' }));
+    await waitFor(() => expect(applySpy).toHaveBeenCalledWith('biz-1', 'nearbyorders-business'));
+  });
+
+  it('choosing another plan retargets the trial CTA to that plan', async () => {
+    const other: SubscriptionPlan = {
+      ...plan,
+      id: 'plan-9',
+      slug: 'some-other-plan',
+      name: 'Some Other Plan',
+      monthlyPriceMinor: 99900,
+      trialDays: 7,
+      isHighlighted: false,
+    };
+    const applySpy = vi.spyOn(api, 'applyTrial').mockResolvedValue({ ...trialRow });
+    vi.spyOn(api, 'listSubscriptionPlans').mockResolvedValue([other, plan]);
+    render(<OwnerSubscription businessId="biz-1" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Choose Some Other Plan' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start 7-day free trial' }));
+    await waitFor(() => expect(applySpy).toHaveBeenCalledWith('biz-1', 'some-other-plan'));
   });
 
   it('shows an honest empty state when no plans are active', async () => {
@@ -182,6 +207,58 @@ describe('OwnerSubscription (live trial)', () => {
     expect(screen.getByText(/30 days remaining/i)).toBeTruthy();
     // The trial section hides once the trial is live.
     expect(screen.queryByRole('button', { name: /free trial/i })).toBeNull();
+  });
+});
+
+describe('OwnerSubscription (plan management rows)', () => {
+  const rowBy = (title: string) =>
+    screen.findByRole('button', { name: (n: string) => n.startsWith(title) });
+
+  it('shows the management rows and the plain-language payment explainer', async () => {
+    render(<OwnerSubscription businessId="biz-1" />);
+    for (const name of ['Plan details', 'Change plan', 'Payment methods', 'Make a payment', 'Payment history']) {
+      expect(await rowBy(name)).toBeTruthy();
+    }
+    expect(screen.getByText(/How manual payment works/)).toBeTruthy();
+    expect(screen.getByText(/activates only after approval/)).toBeTruthy();
+  });
+
+  it('Plan details expands the working plan facts from the server', async () => {
+    render(<OwnerSubscription businessId="biz-1" />);
+    fireEvent.click(await rowBy('Plan details'));
+    expect(await screen.findByText('Billing')).toBeTruthy();
+    expect(screen.getByText('Monthly')).toBeTruthy();
+    expect(screen.getByText('30 days')).toBeTruthy();
+    // The benefit renders on the plan card and again inside the details panel.
+    expect(screen.getAllByText('Accept bookings and orders').length).toBeGreaterThan(0);
+  });
+
+  it('Change plan opens the inline chooser and applies the selection', async () => {
+    render(<OwnerSubscription businessId="biz-1" />);
+    fireEvent.click(await rowBy('Change plan'));
+    expect(await screen.findByRole('radiogroup', { name: 'Subscription plans' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: (n: string) => n.startsWith('NearbyOrders Business') }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with NearbyOrders Business' }));
+    await waitFor(() => expect(screen.queryByRole('radiogroup')).toBeNull());
+  });
+
+  it('Make a payment opens the payment form', async () => {
+    const method: PaymentMethod = {
+      id: 'm1',
+      name: 'Easypaisa',
+      type: 'EASYPAISA',
+      accountTitle: 'NearbyOrders',
+      accountNumber: '03001234567',
+      iban: null,
+      instructions: null,
+      qrImageUrl: null,
+      displayOrder: 0,
+    };
+    vi.spyOn(api, 'listPaymentMethods').mockResolvedValue([method]);
+    render(<OwnerSubscription businessId="biz-1" />);
+    fireEvent.click(await rowBy('Make a payment'));
+    expect(await screen.findByPlaceholderText('e.g. TX-123456789')).toBeTruthy();
+    expect(screen.getByText('03001234567')).toBeTruthy();
   });
 });
 

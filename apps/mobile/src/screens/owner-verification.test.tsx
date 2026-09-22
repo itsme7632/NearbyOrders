@@ -164,6 +164,19 @@ describe('OwnerVerification (draft and documents)', () => {
     expect(docsRegion.textContent).toContain('Identity proof');
     expect(docsRegion.textContent).toContain('UPLOADED');
   });
+
+  it('states honestly that documents are stored on the server, not preview-only', async () => {
+    verificationSpy.mockResolvedValue(verificationState(draftApp, []));
+    render(<OwnerVerification businessId="biz-1" />);
+    const docsRegion = await screen.findByRole('region', { name: 'Verification documents' });
+    // The real multipart endpoint persists documents server-side, so the
+    // generic "image storage is not connected" notice must not appear here.
+    expect(docsRegion.textContent).toContain('upload to the NearbyOrders server and stay attached');
+    expect(docsRegion.textContent).not.toContain('not connected');
+    // A pending pick is still preview-only until the upload call succeeds.
+    pickDocument();
+    expect(docsRegion.textContent).toContain('Preview only. Not saved yet.');
+  });
 });
 
 describe('OwnerVerification (submit)', () => {
@@ -186,7 +199,7 @@ describe('OwnerVerification (submit)', () => {
     expect(submitSpy).not.toHaveBeenCalled();
   });
 
-  // The draft hydrates from the server in an effect — wait for the values
+  // The draft hydrates from the server in an effect, so wait for the values
   // before submitting so the test exercises the real hydrated flow.
   const waitForHydration = () =>
     waitFor(() =>

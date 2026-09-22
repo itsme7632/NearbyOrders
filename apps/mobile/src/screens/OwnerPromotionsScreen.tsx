@@ -20,7 +20,7 @@ const REQUEST_STATUS_LABEL: Record<PromotionRequest['status'], string> = {
 /**
  * Promotions: the platform's active promotion catalog with pricing, duration,
  * requirements and benefits. Requesting creates a PENDING request for the
- * NearbyOrders team to review — they contact the owner directly. There is no
+ * NearbyOrders team to review; they contact the owner directly. There is no
  * checkout and no payment step in the app.
  */
 export function OwnerPromotions(props: { businessId: string }) {
@@ -68,7 +68,7 @@ export function OwnerPromotions(props: { businessId: string }) {
   };
 
   return (
-    <div>
+    <div className="owner-promotions">
       {error ? <ErrorState message={error} /> : null}
       {notice ? (
         <p className="save-ok" role="status">
@@ -80,8 +80,8 @@ export function OwnerPromotions(props: { businessId: string }) {
       {list.length === 0 ? (
         <EmptyState
           icon={<StarIcon size={22} />}
-          title="No promotions right now"
-          body="There are no active promotions at the moment. Check back later."
+          title="Grow your visibility"
+          body="Promotion opportunities will appear here when NearbyOrders launches them. Check back soon."
           action={<Button onClick={promotions.reload}>Retry</Button>}
         />
       ) : (
@@ -100,13 +100,15 @@ export function OwnerPromotions(props: { businessId: string }) {
                   ) : null}
                 </span>
                 {p.description ? <span className="plan-option-desc">{p.description}</span> : null}
-                <span className="plan-option-price">
-                  <Money minor={p.priceMinor} currency={p.currency} />
-                  <span className="muted"> / {p.durationDays} days</span>
-                </span>
-                {p.benefits.length > 0 ? (
+                {p.priceMinor != null ? (
+                  <span className="plan-option-price">
+                    <Money minor={p.priceMinor} currency={p.currency} />
+                    {p.durationDays != null ? <span className="muted"> / {p.durationDays} days</span> : null}
+                  </span>
+                ) : null}
+                {(p.benefits ?? []).length > 0 ? (
                   <ul className="sub-benefits">
-                    {p.benefits.map((b) => (
+                    {(p.benefits ?? []).map((b) => (
                       <li key={b}>
                         <CheckIcon size={14} />
                         <span>{b}</span>

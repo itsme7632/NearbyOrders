@@ -196,7 +196,7 @@ export function OwnerVerification(props: { businessId: string }) {
           : 'badge-neutral';
 
   return (
-    <div>
+    <div className="owner-verification">
       {error ? <ErrorState message={error} /> : null}
       {notice ? (
         <p className="save-ok" role="status">
@@ -230,18 +230,18 @@ export function OwnerVerification(props: { businessId: string }) {
 
       {/* Why / what / what-next explainer. */}
       <section className="card" aria-label="About verification" style={{ marginTop: 12 }}>
-        <h3 style={{ fontSize: 15, margin: '0 0 6px' }}>Why verification is required</h3>
+        <h3 className="owner-section-title" style={{ margin: '0 0 6px' }}>Why verification is required</h3>
         <p className="muted" style={{ margin: '0 0 8px' }}>
           Verified businesses earn a badge on their profile and rank higher in customer trust. It confirms your
           business is real and legally yours, which protects customers and keeps the marketplace honest.
         </p>
-        <h3 style={{ fontSize: 15, margin: '10px 0 6px' }}>What you need</h3>
+        <h3 className="owner-section-title" style={{ margin: '10px 0 6px' }}>What you need</h3>
         <p className="muted" style={{ margin: '0 0 8px' }}>
           Your legal business details (as registered), the owner name and phone, and at least one document:
           an identity proof and a business proof. Your business map location (set on the Location screen) is
           attached automatically.
         </p>
-        <h3 style={{ fontSize: 15, margin: '10px 0 6px' }}>What happens after you submit</h3>
+        <h3 className="owner-section-title" style={{ margin: '10px 0 6px' }}>What happens after you submit</h3>
         <p className="muted" style={{ margin: 0 }}>
           The NearbyOrders team reviews your details and documents, usually within a few working days. You will
           be contacted with the decision. Approved businesses show the verified badge immediately.
@@ -252,7 +252,7 @@ export function OwnerVerification(props: { businessId: string }) {
         <>
           {/* Draft form. */}
           <section className="card" aria-label="Verification details" style={{ marginTop: 12 }}>
-            <h3 style={{ fontSize: 15, margin: '0 0 8px' }}>Business details</h3>
+            <h3 className="owner-section-title" style={{ margin: '0 0 8px' }}>Business details</h3>
             <Field label="Legal (registered) name">
               <input value={form.legalName} onChange={set('legalName')} maxLength={120} />
             </Field>
@@ -306,7 +306,11 @@ export function OwnerVerification(props: { businessId: string }) {
 
           {/* Documents. */}
           <section className="card" aria-label="Verification documents" style={{ marginTop: 12 }}>
-            <h3 style={{ fontSize: 15, margin: '0 0 8px' }}>Documents</h3>
+            <h3 className="owner-section-title" style={{ margin: '0 0 8px' }}>Documents</h3>
+            <p className="hint" style={{ margin: '0 0 8px' }}>
+              Documents upload to the NearbyOrders server and stay attached to this application.
+              Upload them before you submit.
+            </p>
             {documents.length > 0 ? (
               <ul className="manage-list">
                 {documents.map((d) => (
@@ -343,6 +347,7 @@ export function OwnerVerification(props: { businessId: string }) {
               <ImageUploader
                 currentUrl={null}
                 label="Document photo"
+                hideStorageNotice
                 onChange={(state) => setPendingDoc(state.pending)}
               />
             </Field>

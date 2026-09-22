@@ -488,7 +488,11 @@ export type PaymentMethod = {
   instructions: string | null;
   /** Optional QR image for the pay-in channel (server-provided URL or null). */
   qrImageUrl: string | null;
-  displayOrder: number;
+  /**
+   * The server sorts channels by displayOrder but does not include it in the
+   * public DTO — present only on admin-managed rows.
+   */
+  displayOrder?: number;
 };
 
 /** Mirrors the server's PaymentRequestStatus enum. */
@@ -498,13 +502,13 @@ export type PaymentRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCEL
 export type PaymentRequest = {
   id: string;
   status: PaymentRequestStatus;
-  /** Plan the payment was made for (server-resolved display name). */
-  planName: string | null;
+  /** Plan the payment was made for (server-resolved display name). Not sent by the current owner DTO. */
+  planName?: string | null;
   /** Server-computed plan price — the client never sends an amount. */
   amountMinor: number;
   currency: string;
-  /** Pay-in channel display name (server-resolved). */
-  paymentMethodName: string | null;
+  /** Pay-in channel display name (server-resolved). Not sent by the current owner DTO. */
+  paymentMethodName?: string | null;
   transactionReference: string;
   receiptStorageKey: string;
   /** Optional note the owner attached to the submission. */
@@ -521,9 +525,19 @@ export type PaymentRequest = {
 /** Active pay-in channels in display order (shown to any authenticated user). */
 export const listPaymentMethods = () => request<PaymentMethod[]>('/subscription/payment-methods', { auth: true });
 
-/** Payment history for an owned business, newest first: GET returns { data: [...] }. */
-export const listPaymentRequests = (businessId: string) =>
-  request<PaymentRequest[]>(`/businesses/${businessId}/subscription/payment-requests`, { auth: true });
+/** Payment history for an owned business, newest first. The server paginates
+ * this endpoint: GET returns { data: { items: [...], nextCursor } }. The
+ * client unwraps the envelope so callers always receive a PaymentRequest[]
+ * (an unwrapped envelope is truthy, so passing it through would make
+ * `history.find` throw during render and blank the whole screen).
+ */
+export const listPaymentRequests = async (businessId: string): Promise<PaymentRequest[]> => {
+  const page = await request<{ items: PaymentRequest[]; nextCursor: string | null }>(
+    `/businesses/${businessId}/subscription/payment-requests`,
+    { auth: true },
+  );
+  return page?.items ?? [];
+};
 
 /**
  * Submits payment proof for admin verification. The body carries only the
@@ -599,11 +613,13 @@ export async function downloadReceipt(storageKey: string): Promise<Blob> {
 /** Mirrors the server's verification application status enum. */
 export type VerificationStatus = 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'CHANGES_REQUESTED';
 
-/** One uploaded verification document (identity or business proof). */
+/** One uploaded verification document (identity or business proof). The
+ * server never exposes the storage key on owner DTOs — only the id, type,
+ * status and upload time. */
 export type VerificationDocument = {
   id: string;
   docType: string;
-  storageKey: string;
+  storageKey?: string;
   status: string;
   uploadedAt: string;
 };
@@ -649,9 +665,26 @@ export type VerificationDraft = {
   registrationInfo?: string | null;
 };
 
-/** Reads the verification application + documents for an owned business. */
-export const getVerification = (businessId: string) =>
-  request<VerificationState>(`/businesses/${businessId}/verification`, { auth: true });
+/** Reads the verification application + documents for an owned business.
+ * The server returns the application object itself (documents nested) or
+ * null — never { application, documents }. The client normalizes it to the
+ * VerificationState shape the screens consume.
+ */
+export const getVerification = async (businessId: string): Promise<VerificationState> => {
+  type ServerVerificationApplication = VerificationApplication & {
+    documents?: { id: string; docType: string; status: string; uploadedAt: string }[] | null;
+  };
+  const raw = await request<ServerVerificationApplication | null>(`/businesses/${businessId}/verification`, {
+    auth: true,
+  });
+  // The server sends { data: null } when there is no application; request()
+  // unwraps a null data to the bare payload object, so anything without an
+  // application id counts as "no application".
+  const application = raw && typeof raw === 'object' && 'id' in raw ? raw : null;
+  if (!application) return { application: null, documents: [] };
+  const { documents, ...rest } = application;
+  return { application: rest, documents: documents ?? [] };
+};
 
 /** Saves draft verification fields (no validation until submit). */
 export const updateVerificationDraft = (businessId: string, draft: VerificationDraft) =>
@@ -706,16 +739,17 @@ export async function uploadVerificationDocument(
 
 /* ---------------------------- promotions --------------------------- */
 
-/** One active promotion from the platform catalog. */
+/** One active promotion from the platform catalog. priceMinor and durationDays
+ * are optional on the server (Int?) and may come back null. */
 export type Promotion = {
   id: string;
   slug: string;
   name: string;
   description: string | null;
   benefits: string[];
-  priceMinor: number;
+  priceMinor: number | null;
   currency: string;
-  durationDays: number;
+  durationDays: number | null;
   requirements: string | null;
   displayOrder: number;
 };
@@ -741,9 +775,35 @@ export const listPromotions = () => request<Promotion[]>('/promotions');
 /** One promotion by slug. */
 export const getPromotion = (slug: string) => request<Promotion>(`/promotions/${encodeURIComponent(slug)}`);
 
-/** Promotion request history for an owned business. */
-export const listPromotionRequests = (businessId: string) =>
-  request<PromotionRequest[]>(`/businesses/${businessId}/promotion-requests`, { auth: true });
+/**
+ * Promotion request history for an owned business. The server returns the
+ * owner DTO — { id, status, note, reviewerMessage, createdAt, reviewedAt,
+ * promotion: { id, name, slug } } — which the client normalizes to the
+ * PromotionRequest shape (promotionId/promotionName/submittedAt/
+ * rejectionReason) the screens consume.
+ */
+export const listPromotionRequests = async (businessId: string): Promise<PromotionRequest[]> => {
+  type ServerPromotionRequest = {
+    id: string;
+    status: PromotionRequestStatus;
+    note: string | null;
+    reviewerMessage: string | null;
+    createdAt: string;
+    reviewedAt: string | null;
+    promotion: { id: string; name: string; slug: string };
+  };
+  const rows = await request<ServerPromotionRequest[]>(`/businesses/${businessId}/promotion-requests`, { auth: true });
+  return (rows ?? []).map((r) => ({
+    id: r.id,
+    promotionId: r.promotion.id,
+    promotionName: r.promotion.name,
+    note: r.note,
+    status: r.status,
+    submittedAt: r.createdAt,
+    reviewedAt: r.reviewedAt,
+    rejectionReason: r.reviewerMessage,
+  }));
+};
 
 /**
  * Requests a promotion for an owned business. The request stays PENDING for

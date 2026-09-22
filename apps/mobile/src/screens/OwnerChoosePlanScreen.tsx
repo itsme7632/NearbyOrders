@@ -6,12 +6,15 @@ import { CheckIcon, StarIcon } from '../components/icons.js';
 
 /**
  * Choose Plan: every active plan from GET /subscription/plans — name, price,
- * billing interval, trial days, benefits, highlighted badge. Selecting a plan
- * hands it back to the caller (trial apply or the payment flow); the amount
- * always comes from the server plan, never from client state.
+ * billing interval, trial days, benefits, highlighted badge. The highlighted
+ * catalog plan (server flag) gets the Recommended badge and the stronger
+ * card treatment so it reads as the suggested choice. Selecting a plan hands
+ * it back to the caller (trial apply or the payment flow); the amount always
+ * comes from the server plan, never from client state.
  *
- * Rendered inside the OwnerScreen chrome by its route case; props carry the
- * back handler and the optional selection callback.
+ * Rendered inside the OwnerScreen chrome by its route case, or inline in
+ * the subscription screen's "Change plan" row; props carry the back handler
+ * and the optional selection callback.
  */
 export function OwnerChoosePlan(props: { businessId: string; onBack?: () => void; onSelect?: (plan: SubscriptionPlan) => void }) {
   const plans = useAsyncData<SubscriptionPlan[]>(() => listSubscriptionPlans(), []);
@@ -35,7 +38,8 @@ export function OwnerChoosePlan(props: { businessId: string; onBack?: () => void
   }
 
   return (
-    <div>
+    <div className="choose-plan">
+      <p className="sub-lede">Select the plan your free trial and payments will use.</p>
       <div className="plan-option-list" role="radiogroup" aria-label="Subscription plans">
         {list.map((plan) => {
           const isSelected = plan.slug === selectedSlug;
@@ -50,7 +54,7 @@ export function OwnerChoosePlan(props: { businessId: string; onBack?: () => void
             >
               <span className="plan-option-top">
                 <span className="plan-option-name">{plan.name}</span>
-                {plan.isHighlighted ? <span className="badge badge-open">Recommended</span> : null}
+                {plan.isHighlighted ? <span className="badge-rec">Recommended</span> : null}
               </span>
               {plan.description ? <span className="plan-option-desc">{plan.description}</span> : null}
               <span className="plan-option-price">
@@ -60,9 +64,9 @@ export function OwnerChoosePlan(props: { businessId: string; onBack?: () => void
               {plan.trialDays > 0 ? (
                 <span className="plan-option-trial">{plan.trialDays}-day free trial included</span>
               ) : null}
-              {plan.benefits.length > 0 ? (
+              {(plan.benefits ?? []).length > 0 ? (
                 <ul className="sub-benefits">
-                  {plan.benefits.map((b) => (
+                  {(plan.benefits ?? []).map((b) => (
                     <li key={b}>
                       <CheckIcon size={14} />
                       <span>{b}</span>

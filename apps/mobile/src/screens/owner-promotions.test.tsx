@@ -71,8 +71,8 @@ describe('OwnerPromotions (catalog)', () => {
   it('shows an honest empty state when there are no active promotions', async () => {
     promotionsSpy.mockResolvedValue([]);
     render(<OwnerPromotions businessId="biz-1" />);
-    expect(await screen.findByText('No promotions right now')).toBeTruthy();
-    expect(screen.getByText(/There are no active promotions at the moment/)).toBeTruthy();
+    expect(await screen.findByText('Grow your visibility')).toBeTruthy();
+    expect(screen.getByText(/Promotion opportunities will appear here when NearbyOrders launches them/)).toBeTruthy();
   });
 
   it('surfaces catalog load errors with a retry', async () => {

@@ -48,6 +48,13 @@ export function ImageUploader(props: {
   label: string;
   /** Reports the full uploader state after any pick/replace/remove. */
   onChange: (state: ImageUploaderState) => void;
+  /**
+   * Hides the "image storage is not connected" notice. Use only for uploaders
+   * backed by a real server endpoint (e.g. the verification-document
+   * multipart endpoint), where picked files are genuinely persisted and the
+   * generic notice would be false. Defaults to false.
+   */
+  hideStorageNotice?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<PendingImage | null>(null);
@@ -156,7 +163,7 @@ export function ImageUploader(props: {
         </p>
       ) : null}
 
-      {!provider ? (
+      {!provider && !props.hideStorageNotice ? (
         <p className="hint" role="note">
           {STORAGE_NOT_CONNECTED_NOTICE}
         </p>

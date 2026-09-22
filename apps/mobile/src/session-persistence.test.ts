@@ -89,6 +89,19 @@ describe('persistent login (refresh token in secure storage)', () => {
     expect(calls.some((c) => c.endsWith('/auth/me'))).toBe(true);
   });
 
+  it('a failing /auth/me after refresh leaves no half-restored session', async () => {
+    storage.map.set('nearbyorders.refreshToken', 'refresh-old');
+    stubFetch((url) => {
+      if (url.endsWith('/auth/refresh'))
+        return okJson({ accessToken: 'access-2', refreshToken: 'refresh-new', user });
+      if (url.endsWith('/auth/me')) return errJson(401, 'UNAUTHORIZED', 'revoked');
+      throw new Error(`unexpected ${url}`);
+    });
+    expect(await bootstrapSession()).toBe(false);
+    expect(getSession()).toBeNull();
+    expect(storage.map.get('nearbyorders.refreshToken')).toBeUndefined();
+  });
+
   it('bootstrapSession with no stored token does nothing and returns false', async () => {
     const fetchSpy = vi.fn(async () => okJson({}));
     vi.stubGlobal('fetch', fetchSpy);

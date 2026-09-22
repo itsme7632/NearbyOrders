@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 import * as api from '../api.js';
-import type { Business, OwnerAnalytics, OwnerOverview } from '../api.js';
+import type { Business, BusinessSubscriptionState, OwnerAnalytics, OwnerOverview, Subscription } from '../api.js';
 
 afterEach(cleanup);
 
@@ -11,6 +11,8 @@ vi.mock('../api.js', async (importOriginal) => ({
   getMyBusinesses: vi.fn(),
   getOwnerOverview: vi.fn(),
   getOwnerAnalytics: vi.fn(),
+  getBusinessSubscription: vi.fn(),
+  listPaymentRequests: vi.fn(),
 }));
 
 const biz = (patch: Partial<Business> = {}): Business => ({
@@ -54,6 +56,43 @@ const analytics = (period: string): OwnerAnalytics => ({
   catalog: { activeServices: 3, activeProducts: 5 },
 });
 
+const subscription = (patch: Partial<Subscription> = {}): Subscription => ({
+  id: 'sub-1',
+  status: 'ACTIVE',
+  trialStartAt: null,
+  trialEndAt: null,
+  currentPeriodStartAt: '2026-09-01T00:00:00.000Z',
+  currentPeriodEndAt: '2026-10-01T00:00:00.000Z',
+  cancelledAt: null,
+  planNameSnapshot: 'Growth',
+  planPriceMinorSnapshot: 299900,
+  plan: {
+    slug: 'nearbyorders-business',
+    name: 'Growth',
+    description: null,
+    monthlyPriceMinor: 299900,
+    currency: 'PKR',
+    trialDays: 30,
+    benefits: [],
+    billingInterval: 'MONTHLY',
+    displayOrder: 2,
+    isHighlighted: true,
+  },
+  ...patch,
+});
+
+const subscriptionState = (patch: Partial<BusinessSubscriptionState> = {}): BusinessSubscriptionState => ({
+  businessId: 'biz-1',
+  subscription: subscription(),
+  status: 'ACTIVE',
+  trial: null,
+  planNameSnapshot: 'Growth',
+  planPriceMinorSnapshot: 299900,
+  verificationStatus: null,
+  trialStatus: null,
+  ...patch,
+});
+
 const renderHome = async (props: Record<string, unknown> = {}) => {
   const { OwnerBusinessHome } = await import('./OwnerBusinessHome.js');
   return render(<OwnerBusinessHome onOpen={() => {}} onOpenOrder={() => {}} onOpenBooking={() => {}} {...props} />);
@@ -65,13 +104,35 @@ describe('business overview (redesigned hub)', () => {
     vi.mocked(api.getOwnerAnalytics).mockImplementation(async (_id: string, period: 'today' | 'week' | 'month') => analytics(period));
     vi.mocked(api.getMyBusinesses).mockResolvedValue([biz()]);
     vi.mocked(api.getOwnerOverview).mockResolvedValue(overview());
+    vi.mocked(api.getBusinessSubscription).mockResolvedValue(subscriptionState());
+    vi.mocked(api.listPaymentRequests).mockResolvedValue([]);
+  });
+
+  it('shows the top bar: wordmark, Owner badge, notifications bell, avatar', async () => {
+    const onOpen = vi.fn();
+    await renderHome({ onOpen });
+    await screen.findByText('Total bookings'); // page loaded
+    expect(screen.getByText('Owner')).toBeTruthy(); // business-mode indicator
+    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }));
+    expect(onOpen).toHaveBeenCalledWith('notifications');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Butt Spices profile' }));
+    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/profile');
   });
 
   it('greets the owner and names the operating business', async () => {
     await renderHome();
     expect(await screen.findByText(/Good (morning|afternoon|evening),/)).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Butt Spices!' })).toBeTruthy();
-    expect(screen.getByText('Manage your business and grow with NearbyOrders.')).toBeTruthy();
+    // Supporting line reflects the live attention counts (1+1+2 = 4), after the overview loads.
+    expect(await screen.findByText('4 items need your attention today.')).toBeTruthy();
+  });
+
+  it('shows a visibility line under the greeting when nothing needs attention', async () => {
+    vi.mocked(api.getOwnerOverview).mockResolvedValue(
+      overview({ needsAttention: { pendingOrders: 0, pendingBookings: 0, pendingPayments: 0 } }),
+    );
+    await renderHome();
+    expect(await screen.findByText('Your business is live and visible to customers.')).toBeTruthy();
   });
 
   it('shows the live approval status of the business', async () => {
@@ -89,10 +150,24 @@ describe('business overview (redesigned hub)', () => {
     expect(region).toHaveTextContent('once approved');
   });
 
+  it('shows the plan section with the real plan from the server, once', async () => {
+    const onOpen = vi.fn();
+    await renderHome({ onOpen });
+    await screen.findByText('Growth'); // plan card loaded, not the skeleton
+    const region = screen.getByRole('region', { name: 'Your plan' });
+    expect(region).toHaveTextContent('Growth');
+    expect(region).toHaveTextContent('Active');
+    // Single entry point: one Manage plan button, no separate Subscription row.
+    expect(screen.getAllByRole('button', { name: 'Manage plan' })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /^Subscription/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Manage plan' }));
+    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/subscription');
+  });
+
   it('renders this-month metrics verbatim from the server, never invented', async () => {
     await renderHome();
     await screen.findByText('Total bookings'); // loaded tiles, not the skeleton
-    const region = screen.getByRole('region', { name: 'Key metrics' });
+    const region = screen.getByRole('region', { name: 'Monthly snapshot' });
     // Bookings tile: server month total.
     expect(region).toHaveTextContent('Total bookings');
     expect(region).toHaveTextContent('This month');
@@ -106,13 +181,14 @@ describe('business overview (redesigned hub)', () => {
     await waitFor(() => expect(api.getOwnerAnalytics).toHaveBeenCalledWith('biz-1', 'month'));
   });
 
-  it('shows a dash when the business has no rating yet', async () => {
+  it('shows an honest empty state when the business has no rating yet', async () => {
     vi.mocked(api.getMyBusinesses).mockResolvedValue([biz({ averageRating: null, reviewCount: 0 })]);
     await renderHome();
     // Wait for the loaded tiles, not the loading skeleton's empty region.
     await screen.findByText('Avg. rating');
-    const region = screen.getByRole('region', { name: 'Key metrics' });
+    const region = screen.getByRole('region', { name: 'Monthly snapshot' });
     expect(region).toHaveTextContent('No reviews yet');
+    expect(region).not.toHaveTextContent('4.5');
   });
 
   it('leads with needs-attention and each item opens its queue', async () => {
@@ -134,6 +210,7 @@ describe('business overview (redesigned hub)', () => {
     );
     await renderHome();
     expect(await screen.findByText(/all caught up/i)).toBeTruthy();
+    expect(screen.getByText(/Nothing needs your attention right now/)).toBeTruthy();
   });
 
   it('lists honest profile gaps linked to the right management screens', async () => {
@@ -152,28 +229,51 @@ describe('business overview (redesigned hub)', () => {
     expect(screen.queryByText('Complete your profile')).toBeNull();
   });
 
-  it('groups management into Business, Catalog, and Growth & account', async () => {
+  it('offers four quick actions, each opening its destination', async () => {
     const onOpen = vi.fn();
     await renderHome({ onOpen });
-    expect(await screen.findByText('Manage your business')).toBeTruthy();
-    expect(screen.getByRole('region', { name: 'Business' })).toBeTruthy();
-    expect(screen.getByRole('region', { name: 'Catalog' })).toBeTruthy();
-    expect(screen.getByRole('region', { name: 'Growth & account' })).toBeTruthy();
+    await screen.findByText('Total bookings'); // page loaded
+    const region = screen.getByRole('region', { name: 'Quick actions' });
+    const click = (name: string | RegExp, path: string) => {
+      const btn = within(region).getByRole('button', { name });
+      fireEvent.click(btn);
+      expect(onOpen).toHaveBeenCalledWith(path);
+    };
+    click('Edit profile', '/owner/biz-1/profile');
+    click('Services', '/owner/biz-1/services');
+    click('Products', '/owner/biz-1/products');
+    click('Orders', '/owner/biz-1/orders');
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: /Business information/ }));
-    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/profile');
-    fireEvent.click(screen.getByRole('button', { name: /Location/ }));
-    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/location');
-    fireEvent.click(screen.getByRole('button', { name: /Business hours/ }));
-    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/hours');
-    fireEvent.click(screen.getByRole('button', { name: /Services/ }));
-    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/services');
-    fireEvent.click(screen.getByRole('button', { name: /Products \/ Menu/ }));
-    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/products');
-    fireEvent.click(screen.getByRole('button', { name: /^Subscription/ }));
-    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/subscription');
-    fireEvent.click(screen.getByRole('button', { name: /Reviews/ }));
-    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/reviews');
+  it('groups management into Manage, Grow, and Account & settings', async () => {
+    const onOpen = vi.fn();
+    await renderHome({ onOpen });
+    await screen.findByText('Total bookings'); // page loaded
+
+    const manage = screen.getByRole('region', { name: 'Manage your business' });
+    const grow = screen.getByRole('region', { name: 'Grow your business' });
+    const account = screen.getByRole('region', { name: 'Account & settings' });
+
+    const clickIn = (region: HTMLElement, name: string | RegExp, path: string) => {
+      fireEvent.click(within(region).getByRole('button', { name }));
+      expect(onOpen).toHaveBeenCalledWith(path);
+    };
+
+    clickIn(manage, /Business profile/, '/owner/biz-1/profile');
+    clickIn(manage, /Location/, '/owner/biz-1/location');
+    clickIn(manage, /Business hours/, '/owner/biz-1/hours');
+    clickIn(manage, /Services/, '/owner/biz-1/services');
+    clickIn(manage, /Products \/ Menu/, '/owner/biz-1/products');
+
+    clickIn(grow, /Verification/, '/owner/biz-1/verification');
+    clickIn(grow, /Promotions/, '/owner/biz-1/promotions');
+
+    clickIn(account, /Reviews/, '/owner/biz-1/reviews');
+    clickIn(account, /Customer payments/, '/owner/biz-1/payments');
+    clickIn(account, /Business payment methods/, '/owner/biz-1/payment-methods');
+    clickIn(account, /Delivery & COD/, '/owner/biz-1/delivery');
+    clickIn(account, /Service advance settings/, '/owner/biz-1/advances');
+    clickIn(account, /Business settings/, '/owner/biz-1/settings');
   });
 
   it('shows the business switcher only when the owner has several businesses', async () => {
@@ -197,3 +297,4 @@ describe('business overview (redesigned hub)', () => {
     expect(card).toHaveTextContent('once approved');
   });
 });
+

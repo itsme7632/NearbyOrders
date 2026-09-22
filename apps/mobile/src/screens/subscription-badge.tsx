@@ -97,7 +97,10 @@ export function OwnerPlanCard(props: {
     (s?.status === 'TRIAL' && s.trialEndAt
       ? Math.max(0, Math.ceil((new Date(s.trialEndAt).getTime() - Date.now()) / 86_400_000))
       : null);
-  const latestRequest = (requests.data ?? [])[0] ?? null;
+  // Defensive: the history must be an array before indexing — a non-array
+  // wire shape must never throw during render.
+  const requestList = Array.isArray(requests.data) ? requests.data : [];
+  const latestRequest = requestList[0] ?? null;
   const paymentStatus = latestRequest
     ? latestRequest.status === 'PENDING'
       ? 'Payment under review'
@@ -129,30 +132,34 @@ export function OwnerPlanCard(props: {
             : 'Expired';
 
   return (
-    <section className="sub-plan-card" aria-label="NearbyOrders plan">
-      <div className="sub-plan-head">
-        <span className="sub-plan-name">{plan?.name ?? 'NearbyOrders Plan'}</span>
-        {plan ? (
-          <span className="sub-plan-price">
-            <Money minor={plan.monthlyPriceMinor} currency={plan.currency} />
-            <span className="muted"> /month</span>
-          </span>
-        ) : null}
-      </div>
-      <p className="sub-state-line" role="status">
+    <section className="opc-card" aria-label="NearbyOrders plan">
+      <div className="opc-head">
+        <div className="opc-main">
+          <span className="opc-eyebrow">Subscription</span>
+          <span className="opc-name">{plan?.name ?? 'NearbyOrders Plan'}</span>
+          {plan ? (
+            <span className="opc-price">
+              <Money minor={plan.monthlyPriceMinor} currency={plan.currency} />
+              <span className="muted"> /month</span>
+            </span>
+          ) : null}
+        </div>
         <span className={`badge ${statusBadge}`}>{statusText}</span>
+      </div>
+      <p className="opc-sub" role="status">
         {s?.status === 'ACTIVE' ? <span>Renews {new Date(s.currentPeriodEndAt).toLocaleDateString()}</span> : null}
         {s?.status === 'TRIAL' && trialWindow?.endsAt ? (
           <span>Trial ends {new Date(trialWindow.endsAt).toLocaleDateString()}</span>
         ) : null}
+        {!s ? <span>Pick a plan to unlock bookings, orders and visibility.</span> : null}
       </p>
-      <div className="pay-details" style={{ marginTop: 8 }}>
+      <div className="pay-details opc-pay">
         <div className="pay-detail-row">
           <span className="pay-detail-label">Payment status</span>
           <span className="pay-detail-value">{paymentStatus}</span>
         </div>
       </div>
-      <div className="btn-row" style={{ marginTop: 10 }}>
+      <div className="btn-row opc-actions">
         <Button sm onClick={props.onManagePlan}>
           Manage plan
         </Button>
