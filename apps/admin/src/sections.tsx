@@ -11,7 +11,6 @@ import type {
   PromotionInput,
   SubscriptionPlanInput,
   VerificationApplication,
-  VerificationDetail,
   VerificationDocument,
 } from './api.js';
 
@@ -103,8 +102,13 @@ function verificationDecisionLabel(status: string): string {
   return status.replace(/_/g, ' ');
 }
 
+/** Humanizes a document type label (e.g. CNIC_FRONT -> CNIC FRONT). */
+function docTypeLabel(docType: string): string {
+  return docType.replace(/_/g, ' ').trim() || 'Document';
+}
+
 function VerificationDetailModal(props: { applicationId: string; onClose: () => void; onChanged: () => void }) {
-  const [detail, setDetail] = useState<VerificationDetail | null>(null);
+  const [detail, setDetail] = useState<VerificationApplication | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reviewerMessage, setReviewerMessage] = useState('');
@@ -152,8 +156,7 @@ function VerificationDetailModal(props: { applicationId: string; onClose: () => 
     }
   };
 
-  const app = detail?.application;
-  const business = detail?.business;
+  const app = detail;
 
   return (
     <>
@@ -171,17 +174,19 @@ function VerificationDetailModal(props: { applicationId: string; onClose: () => 
                   <tr>
                     <th style={{ width: 200 }}>Business</th>
                     <td>
-                      <strong>{app.businessName}</strong>
-                      {business ? (
-                        <div className="muted mono">
-                          {business.slug} · {business.city}
-                        </div>
-                      ) : null}
+                      <strong>{app.publicName ?? app.business.name}</strong>
+                      <div className="muted mono">
+                        {app.business.slug}
+                        {app.city ? ` · ${app.city}` : null}
+                      </div>
                     </td>
                   </tr>
                   <tr>
                     <th>Owner</th>
-                    <td className="mono">{app.ownerEmail}</td>
+                    <td>
+                      <span className="mono">{app.business.owner.email}</span>
+                      {app.ownerName ? <div className="muted">{app.ownerName}</div> : null}
+                    </td>
                   </tr>
                   <tr>
                     <th>Status</th>
@@ -193,6 +198,36 @@ function VerificationDetailModal(props: { applicationId: string; onClose: () => 
                     <th>Submitted</th>
                     <td>{app.submittedAt ? fmtDate(app.submittedAt) : <span className="muted">Not submitted yet</span>}</td>
                   </tr>
+                  {app.legalName ? (
+                    <tr>
+                      <th>Legal name</th>
+                      <td>{app.legalName}</td>
+                    </tr>
+                  ) : null}
+                  {app.phone ? (
+                    <tr>
+                      <th>Phone</th>
+                      <td className="mono">{app.phone}</td>
+                    </tr>
+                  ) : null}
+                  {app.address ? (
+                    <tr>
+                      <th>Address</th>
+                      <td>{app.address}</td>
+                    </tr>
+                  ) : null}
+                  {app.description ? (
+                    <tr>
+                      <th>Description</th>
+                      <td>{app.description}</td>
+                    </tr>
+                  ) : null}
+                  {app.registrationInfo ? (
+                    <tr>
+                      <th>Registration info</th>
+                      <td>{app.registrationInfo}</td>
+                    </tr>
+                  ) : null}
                   {app.reviewerMessage ? (
                     <tr>
                       <th>Last reviewer message</th>
@@ -210,26 +245,28 @@ function VerificationDetailModal(props: { applicationId: string; onClose: () => 
             </div>
 
             <div className="panel" style={{ marginBottom: 12 }}>
-              <h2>Documents ({detail!.documents.length})</h2>
-              {detail!.documents.length === 0 ? (
+              <h2>Documents ({app.documents.length})</h2>
+              {app.documents.length === 0 ? (
                 <div className="empty">No documents were attached to this application.</div>
               ) : (
                 <table className="admin-table">
                   <thead>
                     <tr>
                       <th>Document</th>
-                      <th>Type</th>
+                      <th>Status</th>
                       <th>Uploaded</th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {detail!.documents.map((d: VerificationDocument) => (
+                    {app.documents.map((d: VerificationDocument) => (
                       <tr key={d.id}>
                         <td>
-                          <strong>{d.label}</strong>
+                          <strong>{docTypeLabel(d.docType)}</strong>
                         </td>
-                        <td className="mono muted">{d.mimeType ?? 'file'}</td>
+                        <td>
+                          <StatusBadge value={d.status} />
+                        </td>
                         <td>{fmtDate(d.uploadedAt)}</td>
                         <td>
                           <button className="btn btn-ghost btn-sm" disabled={blob.loading} onClick={() => void blob.open(d.storageKey)}>
@@ -353,9 +390,9 @@ export function VerificationReview() {
                 {apps!.map((a) => (
                   <tr key={a.id}>
                     <td>
-                      <strong>{a.businessName}</strong>
+                      <strong>{a.publicName ?? a.business.name}</strong>
                     </td>
-                    <td className="mono">{a.ownerEmail}</td>
+                    <td className="mono">{a.business.owner.email}</td>
                     <td>{a.submittedAt ? fmtDate(a.submittedAt) : <span className="muted">Not submitted</span>}</td>
                     <td>
                       <StatusBadge value={a.status} />

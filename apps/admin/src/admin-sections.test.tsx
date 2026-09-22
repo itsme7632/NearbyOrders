@@ -203,40 +203,49 @@ describe('admin payment methods', () => {
 });
 
 describe('admin verification review', () => {
+  // Mirrors the server's adminVerification() output: the detail endpoint
+  // returns { data: <this row> } with business and documents nested.
   const application = {
     id: 'v1',
-    businessId: 'b1',
-    businessName: 'Cafe Aroma',
-    ownerEmail: 'owner@example.com',
     status: 'SUBMITTED' as const,
-    submittedAt: '2026-09-20T10:00:00.000Z',
+    legalName: 'Cafe Aroma LLC',
+    publicName: 'Cafe Aroma',
+    ownerName: 'Ali Khan',
+    phone: '03001234567',
+    address: 'Main Blvd',
+    city: 'Lahore',
+    categoryId: null,
+    description: 'Cozy cafe',
+    latitude: null,
+    longitude: null,
+    registrationInfo: null,
     reviewerMessage: null,
     adminNotes: null,
+    reviewedByUserId: null,
+    submittedAt: '2026-09-20T10:00:00.000Z',
+    reviewedAt: null,
+    createdAt: '2026-09-19T10:00:00.000Z',
+    updatedAt: '2026-09-20T10:00:00.000Z',
+    business: {
+      id: 'b1',
+      name: 'Cafe Aroma',
+      slug: 'cafe-aroma',
+      owner: { id: 'u1', email: 'owner@example.com', firstName: 'Ali', lastName: 'Khan' },
+    },
+    documents: [
+      { id: 'd1', docType: 'TRADE_LICENSE', storageKey: 'docs/k1', status: 'PENDING', uploadedAt: '2026-09-20T10:00:00.000Z' },
+    ],
   };
 
   it('lists applications and approves from the detail modal', async () => {
     const api = await import('./api.js');
     vi.mocked(api.listVerifications).mockResolvedValue([application]);
-    vi.mocked(api.getVerification).mockResolvedValue({
-      application: { ...application, description: 'Cozy cafe' },
-      documents: [{ id: 'd1', label: 'Trade license', storageKey: 'docs/k1', mimeType: 'image/png', uploadedAt: '2026-09-20T10:00:00.000Z' }],
-      business: {
-        id: 'b1',
-        name: 'Cafe Aroma',
-        slug: 'cafe-aroma',
-        status: 'PENDING',
-        isVerified: false,
-        city: 'Lahore',
-        address: 'Main Blvd',
-        createdAt: '2026-09-19T10:00:00.000Z',
-        owner: { id: 'u1', email: 'owner@example.com', firstName: 'Ali', lastName: 'Khan' },
-        counts: { orders: 0, bookings: 0, services: 0, products: 0, reviews: 0 },
-      },
-    });
+    vi.mocked(api.getVerification).mockResolvedValue(application);
     vi.mocked(api.approveVerification).mockResolvedValue({ ...application, status: 'APPROVED' });
     const { VerificationReview } = await import('./sections.js');
     const c = await renderInto(<VerificationReview />);
     expect(c.textContent).toContain('Cafe Aroma');
+    expect(c.textContent).toContain('owner@example.com');
     expect(c.textContent).toContain('SUBMITTED');
 
     const reviewBtn = Array.from(c.querySelectorAll('button')).find((b) => b.textContent === 'Review')!;
@@ -244,7 +253,8 @@ describe('admin verification review', () => {
       reviewBtn.click();
     });
     await flush();
-    expect(c.textContent).toContain('Trade license');
+    expect(c.textContent).toContain('TRADE LICENSE');
+    expect(c.textContent).toContain('Cozy cafe');
     expect(c.textContent).toContain('verified badge');
 
     const approveBtn = Array.from(c.querySelectorAll('button')).find((b) => b.textContent === 'Approve')!;
@@ -258,7 +268,7 @@ describe('admin verification review', () => {
   it('requires a reviewer message for rejection', async () => {
     const api = await import('./api.js');
     vi.mocked(api.listVerifications).mockResolvedValue([application]);
-    vi.mocked(api.getVerification).mockResolvedValue({ application, documents: [], business: null as never });
+    vi.mocked(api.getVerification).mockResolvedValue({ ...application, documents: [] });
     const { VerificationReview } = await import('./sections.js');
     const c = await renderInto(<VerificationReview />);
     const reviewBtn = Array.from(c.querySelectorAll('button')).find((b) => b.textContent === 'Review')!;

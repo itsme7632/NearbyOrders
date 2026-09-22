@@ -205,6 +205,21 @@ describe('admin verification review', () => {
     expect(one.json().data.documents).toHaveLength(1);
   });
 
+  it('the admin queue filter accepts every verification status, including UNDER_REVIEW', async () => {
+    // The admin filter dropdown offers all six statuses; the API used to
+    // reject UNDER_REVIEW with a 400 because it was missing from the query
+    // schema even though it is a real VerificationStatus enum value.
+    const { application, admin } = await submittedApplication();
+    await prisma.verificationApplication.update({ where: { id: application.id }, data: { status: 'UNDER_REVIEW' } });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/admin/verifications?status=UNDER_REVIEW',
+      headers: authed(admin.token),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.items.map((a: { id: string }) => a.id)).toContain(application.id);
+  });
+
   it('approve marks VERIFIED, sets the badge, and unlocks the trial', async () => {
     const { owner, application, admin } = await submittedApplication();
     const res = await app.inject({

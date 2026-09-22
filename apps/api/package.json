@@ -14,6 +14,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed.ts",
     "prisma:seed:categories": "tsx prisma/seed-categories.ts",
+    "prisma:seed:plans": "tsx prisma/seed-plans.ts",
     "create-admin": "tsx scripts/create-admin.ts"
   },
   "dependencies": {

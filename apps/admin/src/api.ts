@@ -384,40 +384,68 @@ export const deletePaymentMethod = (id: string) =>
 
 /* ------------------------- verification review ------------------------- */
 
-export type VerificationApplication = {
-  id: string;
-  businessId: string;
-  businessName: string;
-  ownerEmail: string;
-  status: 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'CHANGES_REQUESTED';
-  submittedAt: string | null;
-  reviewerMessage: string | null;
-  adminNotes: string | null;
-};
-
+/**
+ * One row of the admin verification queue, exactly as the server renders it.
+ *
+ * Production incident (2026-09-23): the Verification page went blank because
+ * the client assumed the list endpoint returned `{ data: [...] }` and the
+ * detail endpoint returned `{ data: { application, documents, business } }`,
+ * while the server actually returns `{ data: { items, nextCursor } }` for the
+ * list and `{ data: <this row> }` for the detail (the row already nests
+ * `business` and `documents`). The mismatch made `apps.map` throw during
+ * render. These types pin the real contract so the two cannot drift again.
+ */
 export type VerificationDocument = {
   id: string;
-  label: string;
+  docType: string;
   storageKey: string;
-  mimeType: string | null;
+  status: string;
   uploadedAt: string;
 };
 
-export type VerificationDetail = {
-  application: VerificationApplication & Record<string, unknown>;
+export type VerificationApplication = {
+  id: string;
+  status: 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'CHANGES_REQUESTED';
+  legalName: string | null;
+  publicName: string | null;
+  ownerName: string | null;
+  phone: string | null;
+  address: string | null;
+  city: string | null;
+  categoryId: string | null;
+  description: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  registrationInfo: string | null;
+  adminNotes: string | null;
+  reviewerMessage: string | null;
+  reviewedByUserId: string | null;
+  submittedAt: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  business: {
+    id: string;
+    name: string;
+    slug: string;
+    owner: { id: string; email: string; firstName: string | null; lastName: string | null };
+  };
   documents: VerificationDocument[];
-  business: AdminBusiness;
 };
 
 export const listVerifications = (params: { status?: string; q?: string }) => {
   const search = new URLSearchParams();
   if (params.status) search.set('status', params.status);
   if (params.q) search.set('q', params.q);
-  return request<{ data: VerificationApplication[] }>(`/admin/verifications?${search}`).then((r) => r.data);
+  // The admin queue is paginated server-side ({ data: { items, nextCursor } }).
+  // The review page shows the first page of the filtered queue.
+  return request<{ data: { items: VerificationApplication[]; nextCursor: string | null } }>(
+    `/admin/verifications?${search}`,
+  ).then((r) => r.data.items);
 };
 
 export const getVerification = (id: string) =>
-  request<{ data: VerificationDetail }>(`/admin/verifications/${id}`).then((r) => r.data);
+  request<{ data: VerificationApplication }>(`/admin/verifications/${id}`).then((r) => r.data);
 
 export const approveVerification = (id: string, body: { adminNotes?: string; reviewerMessage?: string }) =>
   request<{ data: VerificationApplication }>(`/admin/verifications/${id}/approve`, { method: 'POST', body }).then((r) => r.data);

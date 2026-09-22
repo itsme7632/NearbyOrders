@@ -4653,7 +4653,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.get('/api/v1/admin/verifications', { preHandler: roles('ADMIN') }, async (q) => {
     const query = z
       .object({
-        status: z.enum(['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'CHANGES_REQUESTED']).optional(),
+        status: z.enum(['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'CHANGES_REQUESTED']).optional(),
         q: z.string().trim().max(120).optional(),
         limit: z.coerce.number().int().min(1).max(100).default(50),
         cursor: z.string().optional(),
