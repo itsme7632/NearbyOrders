@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-android:
@@ -120,10 +120,14 @@ jobs:
         working-directory: apps/mobile/android
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: nearbyorders-debug-apk
-          path: apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 14
+      - name: Publish APK as GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="android-debug-${{ github.run_number }}-${{ github.run_attempt }}"
+
+          gh release create "$TAG" \
+            "apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk" \
+            --title "NearbyOrders Android Debug #${{ github.run_number }}.${{ github.run_attempt }}" \
+            --notes "Debug APK built from commit ${{ github.sha }}" \
+            --prerelease
