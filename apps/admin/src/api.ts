@@ -123,14 +123,24 @@ export type AdminBusiness = {
   address: string;
   createdAt: string;
   owner: { id: string; email: string; firstName: string | null; lastName: string | null };
-  /** Phase 16 operational activity — real aggregates from the server. */
+  category?: { id: string; name: string } | null;
+  /** Verification application lifecycle; null when the owner never applied. */
+  verificationStatus?: 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'CHANGES_REQUESTED' | null;
+  /** Id of the latest verification application, when one exists. */
+  verificationApplicationId?: string | null;
+  trialStatus?: string;
+  subscriptionStatus?: string | null;
+  /** Phase 16 operational activity: real aggregates from the server. */
   counts: { orders: number; bookings: number; services: number; products: number; reviews: number };
 };
 
-export const listBusinesses = (params: { q?: string; status?: string }) => {
+export type BusinessListParams = { q?: string; status?: string; verificationStatus?: string };
+
+export const listBusinesses = (params: BusinessListParams) => {
   const search = new URLSearchParams();
   if (params.q) search.set('q', params.q);
   if (params.status) search.set('status', params.status);
+  if (params.verificationStatus) search.set('verificationStatus', params.verificationStatus);
   return request<{ data: AdminBusiness[] }>(`/admin/businesses?${search}`).then((r) => r.data);
 };
 
@@ -236,31 +246,37 @@ export type AdminPaymentRequest = {
   reviewedAt: string | null;
   rejectionReason: string | null;
   business: { id: string; name: string };
+  plan?: { id: string; name: string } | null;
+  paymentMethod?: { id: string; name: string; type: string } | null;
+  paidAt?: string | null;
+  note?: string | null;
+  reviewer?: { id: string; email: string } | null;
 };
 
-export const listPaymentRequests = (status: string) =>
-  request<{ data: { items: AdminPaymentRequest[] } }>(`/admin/subscription/payment-requests${status ? `?status=${status}` : ''}`).then((r) => r.data.items);
+export type PaymentRequestListParams = {
+  status?: string;
+  businessId?: string;
+  q?: string;
+  planId?: string;
+  paymentMethodId?: string;
+  from?: string;
+  to?: string;
+};
+
+export const listPaymentRequests = (params: PaymentRequestListParams) => {
+  const search = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v) search.set(k, v);
+  const qs = search.toString();
+  return request<{ data: { items: AdminPaymentRequest[] } }>(`/admin/subscription/payment-requests${qs ? `?${qs}` : ''}`).then(
+    (r) => r.data.items,
+  );
+};
 
 export const approvePaymentRequest = (id: string) =>
   request<{ data: AdminPaymentRequest }>(`/admin/subscription/payment-requests/${id}/approve`, { method: 'POST', body: {} }).then((r) => r.data);
 
 export const rejectPaymentRequest = (id: string, reason: string) =>
   request<{ data: AdminPaymentRequest }>(`/admin/subscription/payment-requests/${id}/reject`, { method: 'POST', body: { reason } }).then((r) => r.data);
-
-/**
- * Receipt image bytes; only the owning business and admins can read it. The
- * endpoint requires the caller's Bearer token, so the panel fetches it with
- * the session header and hands the image to the browser as a blob URL (never
- * a raw link that would 401 without credentials).
- */
-export const fetchReceiptObjectUrl = async (storageKey: string): Promise<string> => {
-  const session = getSession();
-  const res = await fetch(`${API_BASE}/subscription/payment-receipts/${storageKey}`, {
-    headers: session ? { authorization: `Bearer ${session.accessToken}` } : {},
-  });
-  if (!res.ok) throw new ApiError(res.status, 'RECEIPT_READ_FAILED', 'Could not load the receipt image.');
-  return URL.createObjectURL(await res.blob());
-};
 
 /* ------------------------------ audit log ----------------------------- */
 
@@ -276,3 +292,218 @@ export type AuditEntry = {
 
 export const listAuditLog = (action: string) =>
   request<{ data: AuditEntry[] }>(`/admin/audit-log${action ? `?action=${encodeURIComponent(action)}` : ''}`).then((r) => r.data);
+
+/* ----------------------- subscription plans (live) --------------------- */
+/* The mobile app reads these values live: creating, editing or deactivating
+   a plan here changes what business owners see immediately. */
+
+export type AdminSubscriptionPlan = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  monthlyPriceMinor: number;
+  currency: string;
+  trialDays: number;
+  billingInterval: string;
+  benefits: string[];
+  displayOrder: number;
+  isHighlighted: boolean;
+  isActive: boolean;
+  usageCount: number;
+};
+
+export type SubscriptionPlanInput = {
+  name: string;
+  slug?: string;
+  description?: string | null;
+  monthlyPriceMinor: number;
+  currency?: string;
+  trialDays: number;
+  billingInterval: string;
+  benefits: string[];
+  displayOrder: number;
+  isHighlighted: boolean;
+  isActive: boolean;
+};
+
+export const listSubscriptionPlans = () => request<{ data: AdminSubscriptionPlan[] }>('/admin/subscription/plans').then((r) => r.data);
+
+export const createSubscriptionPlan = (input: SubscriptionPlanInput) =>
+  request<{ data: AdminSubscriptionPlan }>('/admin/subscription/plans', { method: 'POST', body: input }).then((r) => r.data);
+
+export const updateSubscriptionPlan = (id: string, input: Partial<SubscriptionPlanInput>) =>
+  request<{ data: AdminSubscriptionPlan }>(`/admin/subscription/plans/${id}`, { method: 'PATCH', body: input }).then((r) => r.data);
+
+/** 409 PLAN_IN_USE when businesses subscribe on this plan. Deactivate instead. */
+export const deleteSubscriptionPlan = (id: string) =>
+  request<void>(`/admin/subscription/plans/${id}`, { method: 'DELETE' });
+
+/* --------------------------- payment methods --------------------------- */
+/* Account details shown in the business app: editing the Easypaisa number
+   here updates the business app immediately, no developer needed. */
+
+export type AdminPaymentMethod = {
+  id: string;
+  name: string;
+  type: 'EASYPAISA' | 'JAZZCASH' | 'BANK_TRANSFER' | 'OTHER';
+  accountTitle: string | null;
+  accountNumber: string | null;
+  iban: string | null;
+  instructions: string | null;
+  qrImageUrl: string | null;
+  isActive: boolean;
+  displayOrder: number;
+  usageCount?: number;
+};
+
+export type PaymentMethodInput = {
+  name: string;
+  type: string;
+  accountTitle?: string | null;
+  accountNumber?: string | null;
+  iban?: string | null;
+  instructions?: string | null;
+  qrImageUrl?: string | null;
+  isActive: boolean;
+  displayOrder: number;
+};
+
+export const listPaymentMethods = () =>
+  request<{ data: AdminPaymentMethod[] }>('/admin/subscription/payment-methods').then((r) => r.data);
+
+export const createPaymentMethod = (input: PaymentMethodInput) =>
+  request<{ data: AdminPaymentMethod }>('/admin/subscription/payment-methods', { method: 'POST', body: input }).then((r) => r.data);
+
+export const updatePaymentMethod = (id: string, input: Partial<PaymentMethodInput>) =>
+  request<{ data: AdminPaymentMethod }>(`/admin/subscription/payment-methods/${id}`, { method: 'PATCH', body: input }).then((r) => r.data);
+
+/** 409 when payment requests reference this method. Deactivate instead. */
+export const deletePaymentMethod = (id: string) =>
+  request<void>(`/admin/subscription/payment-methods/${id}`, { method: 'DELETE' });
+
+/* ------------------------- verification review ------------------------- */
+
+export type VerificationApplication = {
+  id: string;
+  businessId: string;
+  businessName: string;
+  ownerEmail: string;
+  status: 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'CHANGES_REQUESTED';
+  submittedAt: string | null;
+  reviewerMessage: string | null;
+  adminNotes: string | null;
+};
+
+export type VerificationDocument = {
+  id: string;
+  label: string;
+  storageKey: string;
+  mimeType: string | null;
+  uploadedAt: string;
+};
+
+export type VerificationDetail = {
+  application: VerificationApplication & Record<string, unknown>;
+  documents: VerificationDocument[];
+  business: AdminBusiness;
+};
+
+export const listVerifications = (params: { status?: string; q?: string }) => {
+  const search = new URLSearchParams();
+  if (params.status) search.set('status', params.status);
+  if (params.q) search.set('q', params.q);
+  return request<{ data: VerificationApplication[] }>(`/admin/verifications?${search}`).then((r) => r.data);
+};
+
+export const getVerification = (id: string) =>
+  request<{ data: VerificationDetail }>(`/admin/verifications/${id}`).then((r) => r.data);
+
+export const approveVerification = (id: string, body: { adminNotes?: string; reviewerMessage?: string }) =>
+  request<{ data: VerificationApplication }>(`/admin/verifications/${id}/approve`, { method: 'POST', body }).then((r) => r.data);
+
+export const rejectVerification = (id: string, body: { reviewerMessage: string; adminNotes?: string }) =>
+  request<{ data: VerificationApplication }>(`/admin/verifications/${id}/reject`, { method: 'POST', body }).then((r) => r.data);
+
+export const requestVerificationChanges = (id: string, body: { reviewerMessage: string; adminNotes?: string }) =>
+  request<{ data: VerificationApplication }>(`/admin/verifications/${id}/request-changes`, { method: 'POST', body }).then((r) => r.data);
+
+/* ------------------------------ promotions ----------------------------- */
+
+export type AdminPromotion = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  benefits: string[];
+  priceMinor: number;
+  currency: string;
+  durationDays: number;
+  requirements: string | null;
+  isActive: boolean;
+  displayOrder: number;
+  requestCount?: number;
+};
+
+export type PromotionInput = {
+  name: string;
+  slug?: string;
+  description?: string | null;
+  benefits: string[];
+  priceMinor: number;
+  currency?: string;
+  durationDays: number;
+  requirements?: string | null;
+  isActive: boolean;
+  displayOrder: number;
+};
+
+export const listPromotions = () => request<{ data: AdminPromotion[] }>('/admin/promotions').then((r) => r.data);
+
+export const createPromotion = (input: PromotionInput) =>
+  request<{ data: AdminPromotion }>('/admin/promotions', { method: 'POST', body: input }).then((r) => r.data);
+
+export const updatePromotion = (id: string, input: Partial<PromotionInput>) =>
+  request<{ data: AdminPromotion }>(`/admin/promotions/${id}`, { method: 'PATCH', body: input }).then((r) => r.data);
+
+export const deletePromotion = (id: string) => request<void>(`/admin/promotions/${id}`, { method: 'DELETE' });
+
+export type AdminPromotionRequest = {
+  id: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewerMessage: string | null;
+  business: { id: string; name: string };
+  promotion: { id: string; name: string } | null;
+};
+
+export const listPromotionRequests = (status?: string) =>
+  request<{ data: AdminPromotionRequest[] }>(`/admin/promotion-requests${status ? `?status=${status}` : ''}`).then((r) => r.data);
+
+export const approvePromotionRequest = (id: string, reviewerMessage?: string) =>
+  request<{ data: AdminPromotionRequest }>(`/admin/promotion-requests/${id}/approve`, { method: 'POST', body: { reviewerMessage } }).then((r) => r.data);
+
+export const rejectPromotionRequest = (id: string, reviewerMessage?: string) =>
+  request<{ data: AdminPromotionRequest }>(`/admin/promotion-requests/${id}/reject`, { method: 'POST', body: { reviewerMessage } }).then((r) => r.data);
+
+/* ------------------------- authorized blob viewing ---------------------- */
+/* Verification documents are viewed through the same authorized receipt
+   endpoint contract: the caller fetches with the admin Bearer token and
+   hands the browser a blob URL (never a raw link that would 401). */
+
+export const fetchAuthorizedBlobUrl = async (path: string): Promise<string> => {
+  const session = getSession();
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: session ? { authorization: `Bearer ${session.accessToken}` } : {},
+  });
+  if (!res.ok) throw new ApiError(res.status, 'BLOB_READ_FAILED', 'Could not load the file.');
+  return URL.createObjectURL(await res.blob());
+};
+
+export const fetchReceiptObjectUrl = (storageKey: string): Promise<string> =>
+  fetchAuthorizedBlobUrl(`/subscription/payment-receipts/${encodeURIComponent(storageKey)}`);
+
+/** Verification application documents are served from their own authorized endpoint. */
+export const fetchVerificationDocumentUrl = (storageKey: string): Promise<string> =>
+  fetchAuthorizedBlobUrl(`/verification/documents/${encodeURIComponent(storageKey)}`);

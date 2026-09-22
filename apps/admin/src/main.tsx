@@ -3,6 +3,14 @@ import { createRoot } from 'react-dom/client';
 import './styles.css';
 import * as api from './api.js';
 import type { AdminBusiness, AdminUser } from './api.js';
+import {
+  BusinessDetailModal,
+  PaymentMethods,
+  PaymentRequests,
+  PromotionCenter,
+  SubscriptionPlans,
+  VerificationReview,
+} from './sections.js';
 
 /** Same map-pin brand glyph the mobile app uses (single inline copy). */
 function PinIcon({ size = 16 }: { size?: number }) {
@@ -18,24 +26,32 @@ type Section =
   | 'dashboard'
   | 'users'
   | 'businesses'
+  | 'verifications'
   | 'orders'
   | 'bookings'
   | 'reviews'
   | 'categories'
   | 'subscriptions'
+  | 'plans'
   | 'payments'
+  | 'paymentMethods'
+  | 'promotions'
   | 'audit';
 
 const SECTION_ICONS: Record<Section, string> = {
   dashboard: '▦',
   users: '◉',
   businesses: '⌂',
+  verifications: '☑',
   orders: '▣',
   bookings: '▤',
   reviews: '★',
   categories: '⌗',
   subscriptions: '⟳',
+  plans: '◆',
   payments: '₨',
+  paymentMethods: '◈',
+  promotions: '✦',
   audit: '☰',
 };
 
@@ -43,12 +59,16 @@ const SECTIONS: { key: Section; label: string }[] = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'users', label: 'Users' },
   { key: 'businesses', label: 'Businesses' },
+  { key: 'verifications', label: 'Verification' },
   { key: 'orders', label: 'Orders' },
   { key: 'bookings', label: 'Bookings' },
   { key: 'reviews', label: 'Reviews' },
   { key: 'categories', label: 'Categories' },
   { key: 'subscriptions', label: 'Subscriptions' },
+  { key: 'plans', label: 'Plans' },
   { key: 'payments', label: 'Payment requests' },
+  { key: 'paymentMethods', label: 'Payment methods' },
+  { key: 'promotions', label: 'Promotions' },
   { key: 'audit', label: 'Audit log' },
 ];
 
@@ -113,6 +133,7 @@ function LoginScreen() {
       <form className="auth-card" onSubmit={submit}>
         <h1>NearbyOrders Admin</h1>
         <p className="sub">Platform administration. Administrator accounts only.</p>
+        <p className="sub">Admin accounts are created with the secure provisioning script. See apps/api/ADMIN_ACCESS.md.</p>
         {error ? <div className="form-error" role="alert">{error}</div> : null}
         <label className="field">
           <span className="label">Email</span>
@@ -138,7 +159,7 @@ export function Dashboard(props: { onTriage: (section: Section, status?: string)
   if (stats.loading) return <div className="loading">Loading platform metrics…</div>;
   if (stats.error) return <div className="form-error">{stats.error}</div>;
   const d = stats.data!;
-  // Phase 3G: attention cards are triage shortcuts — one click opens the
+  // Phase 3G: attention cards are triage shortcuts. One click opens the
   // matching section pre-filtered to the queue that needs work.
   const cards: { label: string; value: number | string; triage?: { section: Section; status?: string } }[] = [
     { label: 'Users', value: d.users },
@@ -177,7 +198,7 @@ export function Dashboard(props: { onTriage: (section: Section, status?: string)
               type="button"
               className={`stat-card stat-triage${attention ? ' stat-attention' : ''}`}
               onClick={() => props.onTriage(c.triage!.section, c.triage!.status)}
-              aria-label={`${c.label}: ${c.value} — open queue`}
+              aria-label={`${c.label}: ${c.value} - open queue`}
             >
               {inner}
             </button>
@@ -266,7 +287,7 @@ function Users() {
                 {users.data!.map((u) => (
                   <tr key={u.id}>
                     <td>{u.email}</td>
-                    <td>{[u.firstName, u.lastName].filter(Boolean).join(' ') || <span className="muted">—</span>}</td>
+                    <td>{[u.firstName, u.lastName].filter(Boolean).join(' ') || <span className="muted">N/A</span>}</td>
                     <td>{u.role.replace(/_/g, ' ')}</td>
                     <td>{u.isSuspended ? <span className="badge badge-closed">Suspended</span> : <span className="badge badge-open">Active</span>}</td>
                     <td>{fmtDate(u.createdAt)}</td>
@@ -328,27 +349,45 @@ function Users() {
 
 /* ------------------------------ businesses ------------------------------ */
 
-function Businesses(props: { initialStatus?: string }) {
+/** Exported for the business-review test; the shell renders it internally. */
+export function Businesses(props: { initialStatus?: string; onOpenPayments: (businessId: string) => void }) {
   const [status, setStatus] = useState(props.initialStatus ?? '');
+  const [verificationStatus, setVerificationStatus] = useState('');
   const [q, setQ] = useState('');
   const [query, setQuery] = useState('');
-  const businesses = useAsync(() => api.listBusinesses({ status: status || undefined, q: query || undefined }), [status, query]);
+  const [selected, setSelected] = useState<AdminBusiness | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const businesses = useAsync(
+    () => api.listBusinesses({ status: status || undefined, q: query || undefined, verificationStatus: verificationStatus || undefined }),
+    [status, query, verificationStatus],
+  );
 
-  const change = async (b: AdminBusiness, next: AdminBusiness['status']) => {
-    await api.setBusinessStatus(b.id, next);
-    businesses.reload();
+  const mutate = async (id: string, fn: () => Promise<unknown>) => {
+    setBusyId(id);
+    setActionError(null);
+    try {
+      await fn();
+      businesses.reload();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Action failed.');
+    } finally {
+      setBusyId(null);
+    }
   };
-  const toggleVerify = async (b: AdminBusiness) => {
-    await api.setBusinessVerified(b.id, !b.isVerified);
-    businesses.reload();
+
+  const change = (b: AdminBusiness, next: AdminBusiness['status']) => {
+    if ((next === 'SUSPENDED' || next === 'REJECTED') && !window.confirm(`Set "${b.name}" to ${next}? It will leave customer discovery.`)) return;
+    void mutate(b.id, () => api.setBusinessStatus(b.id, next));
   };
+  const toggleVerify = (b: AdminBusiness) => void mutate(b.id, () => api.setBusinessVerified(b.id, !b.isVerified));
 
   return (
     <>
       <div className="toolbar">
         <input
           className="admin-input"
-          placeholder="Search name or city"
+          placeholder="Search name, city or owner email"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           aria-label="Search businesses"
@@ -356,11 +395,24 @@ function Businesses(props: { initialStatus?: string }) {
             if (e.key === 'Enter') setQuery(q.trim());
           }}
         />
-        <select className="admin-select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filter by status">
-          <option value="">All statuses</option>
+        <select className="admin-select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filter by approval status">
+          <option value="">All approval statuses</option>
           {['PENDING', 'APPROVED', 'REJECTED', 'SUSPENDED', 'ARCHIVED'].map((s) => (
             <option key={s} value={s}>
               {s}
+            </option>
+          ))}
+        </select>
+        <select
+          className="admin-select"
+          value={verificationStatus}
+          onChange={(e) => setVerificationStatus(e.target.value)}
+          aria-label="Filter by verification status"
+        >
+          <option value="">All verification statuses</option>
+          {['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'CHANGES_REQUESTED', 'DRAFT'].map((s) => (
+            <option key={s} value={s}>
+              {s.replace(/_/g, ' ')}
             </option>
           ))}
         </select>
@@ -368,6 +420,7 @@ function Businesses(props: { initialStatus?: string }) {
           Search
         </button>
       </div>
+      {actionError ? <div className="form-error" role="alert">{actionError}</div> : null}
       {businesses.loading ? (
         <div className="loading">Loading businesses…</div>
       ) : businesses.error ? (
@@ -383,10 +436,12 @@ function Businesses(props: { initialStatus?: string }) {
                 <tr>
                   <th>Business</th>
                   <th>Owner</th>
-                  <th>City</th>
-                  <th>Status</th>
-                  <th>Verified</th>
-                  <th>Activity</th>
+                  <th>Category</th>
+                  <th>Location</th>
+                  <th>Submitted</th>
+                  <th>Approval</th>
+                  <th>Verification</th>
+                  <th>Subscription / trial</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -394,38 +449,62 @@ function Businesses(props: { initialStatus?: string }) {
                 {businesses.data!.map((b) => (
                   <tr key={b.id}>
                     <td>
-                      <strong>{b.name}</strong>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ padding: '2px 6px', fontSize: 13 }}
+                        onClick={() => setSelected(b)}
+                        title="Open business review"
+                      >
+                        <strong>{b.name}</strong>
+                      </button>
                       <div className="muted mono">{b.slug}</div>
                     </td>
                     <td>
-                      {b.owner.email}
-                      <div className="muted">{[b.owner.firstName, b.owner.lastName].filter(Boolean).join(' ')}</div>
+                      <span className="mono">{b.owner.email}</span>
+                      <div className="muted">{[b.owner.firstName, b.owner.lastName].filter(Boolean).join(' ') || 'No name'}</div>
                     </td>
-                    <td>{b.city}</td>
+                    <td>{b.category?.name ?? <span className="muted">N/A</span>}</td>
+                    <td>
+                      {b.city}
+                      {b.address ? <div className="muted">{b.address}</div> : null}
+                    </td>
+                    <td>{fmtDate(b.createdAt)}</td>
                     <td>
                       <StatusBadge value={b.status} />
                     </td>
-                    <td>{b.isVerified ? <span className="badge badge-info">✓ Verified</span> : <span className="muted">—</span>}</td>
-                    <td className="mono muted" title="orders · bookings · services · products · reviews">
-                      {b.counts ? `${b.counts.orders}o · ${b.counts.bookings}b · ${b.counts.services}s · ${b.counts.products}p · ${b.counts.reviews}r` : '—'}
+                    <td>
+                      {b.verificationStatus ? (
+                        <StatusBadge value={b.verificationStatus} />
+                      ) : b.isVerified ? (
+                        <span className="badge badge-info">Verified</span>
+                      ) : (
+                        <span className="muted">None</span>
+                      )}
+                    </td>
+                    <td>
+                      {b.subscriptionStatus ? (
+                        <StatusBadge value={b.subscriptionStatus} />
+                      ) : b.trialStatus ? (
+                        <StatusBadge value={b.trialStatus} />
+                      ) : (
+                        <span className="muted">None</span>
+                      )}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
+                      <button className="btn btn-ghost btn-sm" disabled={busyId === b.id} onClick={() => setSelected(b)}>
+                        Review
+                      </button>{' '}
                       {b.status !== 'APPROVED' ? (
-                        <button className="btn btn-sm" onClick={() => void change(b, 'APPROVED')}>
+                        <button className="btn btn-sm" disabled={busyId === b.id} onClick={() => change(b, 'APPROVED')}>
                           Approve
                         </button>
                       ) : null}{' '}
                       {b.status !== 'SUSPENDED' && b.status !== 'ARCHIVED' ? (
-                        <button className="btn btn-danger btn-sm" onClick={() => void change(b, 'SUSPENDED')}>
+                        <button className="btn btn-danger btn-sm" disabled={busyId === b.id} onClick={() => change(b, 'SUSPENDED')}>
                           Suspend
                         </button>
                       ) : null}{' '}
-                      {b.status !== 'REJECTED' ? (
-                        <button className="btn btn-ghost btn-sm" onClick={() => void change(b, 'REJECTED')}>
-                          Reject
-                        </button>
-                      ) : null}{' '}
-                      <button className="btn btn-ghost btn-sm" onClick={() => void toggleVerify(b)}>
+                      <button className="btn btn-ghost btn-sm" disabled={busyId === b.id} onClick={() => toggleVerify(b)}>
                         {b.isVerified ? 'Unverify' : 'Verify'}
                       </button>
                     </td>
@@ -436,6 +515,17 @@ function Businesses(props: { initialStatus?: string }) {
           )}
         </div>
       )}
+      {selected ? (
+        <BusinessDetailModal
+          business={selected}
+          onClose={() => setSelected(null)}
+          onChanged={() => businesses.reload()}
+          onOpenPayments={(businessId) => {
+            setSelected(null);
+            props.onOpenPayments(businessId);
+          }}
+        />
+      ) : null}
     </>
   );
 }
@@ -540,10 +630,10 @@ function Bookings(props: { initialStatus?: string }) {
                   <tr key={b.id}>
                     <td>{fmtDate(b.createdAt)}</td>
                     <td>{b.business.name}</td>
-                    <td>{b.service?.name ?? <span className="muted">—</span>}</td>
+                    <td>{b.service?.name ?? <span className="muted">N/A</span>}</td>
                     <td>{b.customer?.email}</td>
                     <td>{fmtDate(b.startAt)}</td>
-                    <td>{b.amountDueMinor === null ? '—' : fmtMoney(b.amountDueMinor, b.currency)}</td>
+                    <td>{b.amountDueMinor === null ? 'N/A' : fmtMoney(b.amountDueMinor, b.currency)}</td>
                     <td>
                       <StatusBadge value={b.status} />
                     </td>
@@ -785,8 +875,8 @@ function Subscriptions() {
                 {subs.data!.map((s) => (
                   <tr key={s.id}>
                     <td>{s.business.name}</td>
-                    <td>{s.plan?.name ?? <span className="muted">—</span>}</td>
-                    <td>{s.plan ? fmtMoney(s.plan.monthlyPriceMinor, s.plan.currency) : '—'}</td>
+                    <td>{s.plan?.name ?? <span className="muted">N/A</span>}</td>
+                    <td>{s.plan ? fmtMoney(s.plan.monthlyPriceMinor, s.plan.currency) : 'N/A'}</td>
                     <td>{fmtDate(s.currentPeriodEndAt)}</td>
                     <td>
                       <StatusBadge value={s.status} />
@@ -799,160 +889,6 @@ function Subscriptions() {
         </div>
       )}
     </>
-  );
-}
-
-/* --------------------------- payment requests --------------------------- */
-
-function PaymentRequests(props: { initialStatus?: string }) {
-  const [status, setStatus] = useState(props.initialStatus ?? 'PENDING');
-  const reqs = useAsync(() => api.listPaymentRequests(status), [status]);
-  const [reasonFor, setReasonFor] = useState<string | null>(null);
-  const [reason, setReason] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [receipt, setReceipt] = useState<{ url: string; error: string | null } | null>(null);
-  const [receiptLoading, setReceiptLoading] = useState(false);
-
-  const openReceipt = async (storageKey: string) => {
-    setReceiptLoading(true);
-    setReceipt(null);
-    try {
-      const url = await api.fetchReceiptObjectUrl(storageKey);
-      setReceipt({ url, error: null });
-    } catch (e) {
-      setReceipt({ url: '', error: e instanceof Error ? e.message : 'Could not load the receipt.' });
-    } finally {
-      setReceiptLoading(false);
-    }
-  };
-
-  const closeReceipt = () => {
-    if (receipt?.url) URL.revokeObjectURL(receipt.url);
-    setReceipt(null);
-  };
-
-  const act = async (fn: () => Promise<unknown>) => {
-    setBusy(true);
-    try {
-      await fn();
-      setReasonFor(null);
-      setReason('');
-      reqs.reload();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <>
-      <div className="toolbar">
-        <select className="admin-select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filter payment requests by status">
-          {['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'].map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </div>
-      {reqs.loading ? (
-        <div className="loading">Loading payment requests…</div>
-      ) : reqs.error ? (
-        <div className="form-error">{reqs.error}</div>
-      ) : (
-        <div className="panel">
-          <h2>Manual subscription payments ({reqs.data!.length})</h2>
-          {reqs.data!.length === 0 ? (
-            <div className="empty">No payment requests with this status.</div>
-          ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Submitted</th>
-                  <th>Business</th>
-                  <th>Amount</th>
-                  <th>Reference</th>
-                  <th>Receipt</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reqs.data!.map((p) => (
-                  <tr key={p.id}>
-                    <td>{fmtDate(p.createdAt)}</td>
-                    <td>{p.business.name}</td>
-                    <td>{fmtMoney(p.amountMinor, p.currency)}</td>
-                    <td className="mono">{p.transactionReference ?? '—'}</td>
-                    <td>
-                      {p.receiptStorageKey ? (
-                        <button className="btn btn-ghost btn-sm" disabled={receiptLoading} onClick={() => void openReceipt(p.receiptStorageKey!)}>
-                          View
-                        </button>
-                      ) : (
-                        <span className="muted">—</span>
-                      )}
-                    </td>
-                    <td>
-                      {p.status === 'PENDING' ? (
-                        reasonFor === p.id ? (
-                          <div style={{ minWidth: 220 }}>
-                            <input
-                              className="admin-input"
-                              style={{ minWidth: 0, width: '100%', marginBottom: 6 }}
-                              placeholder="Reason (required)"
-                              value={reason}
-                              onChange={(e) => setReason(e.target.value)}
-                            />
-                            <button className="btn btn-danger btn-sm" disabled={busy || reason.trim().length < 4} onClick={() => void act(() => api.rejectPaymentRequest(p.id, reason.trim()))}>
-                              Confirm rejection
-                            </button>{' '}
-                            <button className="btn btn-ghost btn-sm" onClick={() => setReasonFor(null)}>
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <>
-                            <button className="btn btn-sm" disabled={busy} onClick={() => void act(() => api.approvePaymentRequest(p.id))}>
-                              Approve
-                            </button>{' '}
-                            <button className="btn btn-ghost btn-sm" onClick={() => setReasonFor(p.id)}>
-                              Reject
-                            </button>
-                          </>
-                        )
-                      ) : (
-                        <StatusBadge value={p.status} />
-                      )}
-                      {p.status === 'REJECTED' && p.rejectionReason ? <div className="reason-box">{p.rejectionReason}</div> : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-      <ReceiptModal open={receipt !== null} url={receipt?.url ?? ''} error={receipt?.error ?? null} onClose={closeReceipt} />
-    </>
-  );
-}
-
-/* ------------------------------ receipt viewer --------------------------- */
-
-function ReceiptModal(props: { open: boolean; url: string; error: string | null; onClose: () => void }) {
-  if (!props.open) return null;
-  return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Payment receipt" onClick={props.onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <h2>Payment receipt</h2>
-          <button className="btn btn-ghost btn-sm" onClick={props.onClose}>
-            Close
-          </button>
-        </div>
-        {props.error ? <div className="form-error">{props.error}</div> : null}
-        {props.url ? <img className="receipt-img" src={props.url} alt="Uploaded payment receipt" /> : null}
-      </div>
-    </div>
   );
 }
 
@@ -1004,19 +940,24 @@ function AdminApp() {
   const [section, setSection] = useState<Section>('dashboard');
   // Phase 3G: dashboard triage carries a pre-applied filter into the target
   // section. Manual nav clears it so filters never leak between visits.
-  const [triage, setTriage] = useState<{ section: Section; status?: string } | null>(null);
+  // Payment triage can also carry a businessId (from the business review
+  // drawer) to pre-filter the payment request queue.
+  const [triage, setTriage] = useState<{ section: Section; status?: string; businessId?: string } | null>(null);
   const goSection = (s: Section) => {
     setTriage(null);
     setSection(s);
   };
-  const triageTo = (s: Section, status?: string) => {
-    setTriage({ section: s, status });
+  const triageTo = (s: Section, status?: string, businessId?: string) => {
+    setTriage({ section: s, status, businessId });
     setSection(s);
   };
-  // Remounts a section when a triage shortcut targets it — including when it
-  // is already open — so the pre-applied filter takes effect. Manual nav
+  // Remounts a section when a triage shortcut targets it (including when it
+  // is already open) so the pre-applied filter takes effect. Manual nav
   // clears triage, which also remounts and resets any triage filter.
-  const triageKey = (s: Section) => `${s}:${triage?.section === s ? triage.status ?? '' : ''}`;
+  const triageKey = (s: Section) => {
+    const t = triage?.section === s ? triage : null;
+    return `${s}:${t?.status ?? ''}:${t?.businessId ?? ''}`;
+  };
 
   useEffect(() => {
     // Keep in sync with logout triggered by a 401 inside the API client.
@@ -1068,15 +1009,31 @@ function AdminApp() {
         {/* Phase 3G: keying on the triage target forces a remount when a
             dashboard shortcut jumps into an already-open section, so the
             pre-applied filter actually takes effect. */}
-        {section === 'dashboard' ? <Dashboard onTriage={triageTo} /> : null}
+        {section === 'dashboard' ? <Dashboard onTriage={(s, status) => triageTo(s, status)} /> : null}
         {section === 'users' ? <Users /> : null}
-        {section === 'businesses' ? <Businesses key={triageKey('businesses')} initialStatus={triage?.section === 'businesses' ? triage.status : undefined} /> : null}
+        {section === 'businesses' ? (
+          <Businesses
+            key={triageKey('businesses')}
+            initialStatus={triage?.section === 'businesses' ? triage.status : undefined}
+            onOpenPayments={(businessId) => triageTo('payments', undefined, businessId)}
+          />
+        ) : null}
+        {section === 'verifications' ? <VerificationReview /> : null}
         {section === 'orders' ? <Orders key={triageKey('orders')} initialStatus={triage?.section === 'orders' ? triage.status : undefined} /> : null}
         {section === 'bookings' ? <Bookings key={triageKey('bookings')} initialStatus={triage?.section === 'bookings' ? triage.status : undefined} /> : null}
         {section === 'reviews' ? <Reviews key={triageKey('reviews')} initialStatus={triage?.section === 'reviews' ? (triage.status as '' | 'visible' | 'hidden' | undefined) : undefined} /> : null}
         {section === 'categories' ? <Categories /> : null}
         {section === 'subscriptions' ? <Subscriptions /> : null}
-        {section === 'payments' ? <PaymentRequests key={triageKey('payments')} initialStatus={triage?.section === 'payments' ? triage.status : undefined} /> : null}
+        {section === 'plans' ? <SubscriptionPlans /> : null}
+        {section === 'payments' ? (
+          <PaymentRequests
+            key={triageKey('payments')}
+            initialStatus={triage?.section === 'payments' ? triage.status : undefined}
+            initialBusinessId={triage?.section === 'payments' ? triage.businessId : undefined}
+          />
+        ) : null}
+        {section === 'paymentMethods' ? <PaymentMethods /> : null}
+        {section === 'promotions' ? <PromotionCenter /> : null}
         {section === 'audit' ? <AuditLog /> : null}
       </main>
     </div>
