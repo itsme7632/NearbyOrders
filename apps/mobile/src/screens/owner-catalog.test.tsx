@@ -11,7 +11,12 @@ vi.mock('../api.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api.js')>()),
   listOwnerServices: vi.fn(),
   listOwnerProducts: vi.fn(),
+  createService: vi.fn(),
+  updateService: vi.fn(),
+  deleteService: vi.fn(),
+  createProduct: vi.fn(),
   updateProduct: vi.fn(),
+  deleteProduct: vi.fn(),
 }));
 
 const service = (patch: Partial<Service> = {}): Service => ({
@@ -70,6 +75,48 @@ describe('OwnerServices catalog UX (Phase 3F)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Inactive' }));
     expect(screen.getByText('No inactive services')).toBeTruthy();
     expect(screen.queryByText('Haircut')).toBeNull();
+  });
+
+  it('fires a single update on a rapid save double-tap', async () => {
+    vi.mocked(api.listOwnerServices).mockResolvedValue([service({ id: 'svc-1', name: 'Haircut', isActive: true })]);
+    let resolveUpdate!: (v: Service | PromiseLike<Service>) => void;
+    vi.mocked(api.updateService).mockImplementation(
+      () => new Promise((res) => { resolveUpdate = res; }),
+    );
+    render(<OwnerServices businessId="biz-1" />);
+    await screen.findByText('Haircut');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    // Second tap while the update is still in flight: the in-flight guard
+    // must drop it even though the button was not yet disabled.
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(api.updateService).toHaveBeenCalledTimes(1);
+
+    resolveUpdate(service({ id: 'svc-1' }));
+    await screen.findByText('Haircut'); // list reloaded after save
+    expect(api.updateService).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates exactly one service on a rapid create double-tap', async () => {
+    vi.mocked(api.listOwnerServices).mockResolvedValue([]);
+    let resolveCreate!: (v: Service | PromiseLike<Service>) => void;
+    vi.mocked(api.createService).mockImplementation(
+      () => new Promise((res) => { resolveCreate = res; }),
+    );
+    render(<OwnerServices businessId="biz-1" />);
+    await screen.findByText('No services yet');
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add service' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Manicure' } });
+    fireEvent.change(screen.getByLabelText('Price (PKR)'), { target: { value: '300' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    expect(api.createService).toHaveBeenCalledTimes(1);
+
+    resolveCreate(service({ id: 'svc-3', name: 'Manicure' }));
+    await screen.findByText('No services yet');
+    expect(api.createService).toHaveBeenCalledTimes(1);
   });
 });
 

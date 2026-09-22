@@ -152,9 +152,13 @@ export function EditProfileScreen(props: { onBack: () => void; onSaved: () => vo
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  // The fetch must fire exactly once per mount and once per manual retry —
+  // never on re-render.
+  const [loadRetry, setLoadRetry] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setLoadError(null);
     whoami()
       .then((p) => {
         if (cancelled) return;
@@ -169,7 +173,8 @@ export function EditProfileScreen(props: { onBack: () => void; onSaved: () => vo
     return () => {
       cancelled = true;
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadRetry]);
 
   const phoneProvided = phone.trim().length > 0;
   const phoneValid = !phoneProvided || /^[+\d][\d\s-]{6,19}$/.test(phone.trim());
@@ -208,7 +213,7 @@ export function EditProfileScreen(props: { onBack: () => void; onSaved: () => vo
 
       {loadError ? (
         <div className="card">
-          <ErrorState message={loadError} />
+          <ErrorState message={loadError} onRetry={() => setLoadRetry((n) => n + 1)} />
         </div>
       ) : !profile ? (
         <div className="loading" role="status">

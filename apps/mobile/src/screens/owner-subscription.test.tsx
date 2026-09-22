@@ -119,6 +119,18 @@ describe('OwnerSubscription (no subscription yet)', () => {
     expect(screen.getByText(/No payment required now/)).toBeTruthy();
   });
 
+  it('never advertises a free trial when the plan has zero trial days', async () => {
+    const noTrialPlan: SubscriptionPlan = { ...plan, trialDays: 0 };
+    vi.spyOn(api, 'getBusinessSubscription').mockResolvedValue({ ...eligibleState });
+    vi.spyOn(api, 'listSubscriptionPlans').mockResolvedValue([noTrialPlan]);
+    render(<OwnerSubscription businessId="biz-1" />);
+    // The plan card and summary render (the plan itself is real), but the
+    // trial banner must not promise a "0-day free trial".
+    await screen.findByText('No subscription');
+    expect(screen.queryByRole('button', { name: /free trial/i })).toBeNull();
+    expect(screen.queryByText(/free trial/i)).toBeNull();
+  });
+
   it('applies the trial with the selected plan slug and reloads the status', async () => {
     const applySpy = vi.spyOn(api, 'applyTrial').mockResolvedValue({ ...trialRow });
     const reloadSpy = vi.spyOn(api, 'getBusinessSubscription');

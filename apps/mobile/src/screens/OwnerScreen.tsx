@@ -42,8 +42,14 @@ const TITLE: Record<string, string> = {
  * through the shared chrome — back link, its own page title, and normal
  * scrolling content — never an overlay.
  */
-export function OwnerScreen(props: { screen: string; businessId: string; onBack: () => void }) {
-  const { screen, businessId, onBack } = props;
+export function OwnerScreen(props: {
+  screen: string;
+  businessId: string;
+  onBack: () => void;
+  /** Opens a booking detail — the bookings list is a management screen, not a detail, so it needs a real opener. */
+  onOpenBooking: (id: string) => void;
+}) {
+  const { screen, businessId, onBack, onOpenBooking } = props;
 
   let body: React.ReactNode;
   switch (screen) {
@@ -72,7 +78,7 @@ export function OwnerScreen(props: { screen: string; businessId: string; onBack:
       body = <OwnerProducts businessId={businessId} />;
       break;
     case 'bookings':
-      body = <OwnerBookingsList businessId={businessId} onOpenBooking={onBack} />;
+      body = <OwnerBookingsList businessId={businessId} onOpenBooking={onOpenBooking} />;
       break;
     case 'orders':
       body = <OwnerOrders businessId={businessId} />;

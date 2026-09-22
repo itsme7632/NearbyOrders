@@ -24,6 +24,16 @@ const STATUS_LABEL: Record<VerificationStatus, string> = {
   CHANGES_REQUESTED: 'Changes requested',
 };
 
+/**
+ * Verification documents carry the server's raw status enum
+ * (PENDING / APPROVED / REJECTED) — users see plain-English labels.
+ */
+const DOC_STATUS_LABEL: Record<string, string> = {
+  PENDING: 'Pending review',
+  APPROVED: 'Approved',
+  REJECTED: 'Rejected',
+};
+
 const DOC_TYPES = [
   { value: 'IDENTITY', label: 'Identity proof', hint: 'CNIC, passport, or driving licence of the business owner.' },
   { value: 'BUSINESS_PROOF', label: 'Business proof', hint: 'Registration certificate, trade licence, or utility bill in the business name.' },
@@ -319,7 +329,7 @@ export function OwnerVerification(props: { businessId: string }) {
                       <span className="item-name">
                         {DOC_TYPES.find((t) => t.value === d.docType)?.label ?? d.docType}
                       </span>
-                      <span className="badge badge-neutral">{d.status}</span>
+                      <span className="badge badge-neutral">{DOC_STATUS_LABEL[d.status] ?? d.status}</span>
                     </div>
                     <p className="item-desc">Uploaded {new Date(d.uploadedAt).toLocaleDateString()}</p>
                   </li>

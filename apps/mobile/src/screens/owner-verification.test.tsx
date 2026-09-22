@@ -165,6 +165,17 @@ describe('OwnerVerification (draft and documents)', () => {
     expect(docsRegion.textContent).toContain('UPLOADED');
   });
 
+  it('renders document statuses in plain English, not raw enum values', async () => {
+    const pendingDoc = { ...doc, id: 'doc-p', status: 'PENDING' };
+    const rejectedDoc = { ...doc, id: 'doc-r', status: 'REJECTED' };
+    verificationSpy.mockResolvedValue(verificationState(draftApp, [pendingDoc, rejectedDoc]));
+    render(<OwnerVerification businessId="biz-1" />);
+    const docsRegion = await screen.findByRole('region', { name: 'Verification documents' });
+    expect(docsRegion.textContent).toContain('Pending review');
+    expect(docsRegion.textContent).toContain('Rejected');
+    expect(docsRegion.textContent).not.toContain('PENDING');
+  });
+
   it('states honestly that documents are stored on the server, not preview-only', async () => {
     verificationSpy.mockResolvedValue(verificationState(draftApp, []));
     render(<OwnerVerification businessId="biz-1" />);

@@ -73,6 +73,7 @@ export function NotificationsScreen(props: {
   const [state, setState] = useState<{ items: Notification[]; cursor: string | null } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [markingAll, setMarkingAll] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const page = useAsyncData(() => listNotifications(), []);
 
@@ -120,12 +121,17 @@ export function NotificationsScreen(props: {
   };
 
   const loadMore = async () => {
-    if (!cursor) return;
+    // In-flight guard: rapid taps must not fire overlapping page requests,
+    // which would each append the same page and duplicate the list.
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
     try {
       const next = await listNotifications(30, cursor);
       setState({ items: [...items, ...next.items], cursor: next.nextCursor });
     } catch {
       // Leave the current page visible; the next attempt can retry.
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -210,8 +216,8 @@ export function NotificationsScreen(props: {
         })
       )}
       {cursor ? (
-        <Button full variant="ghost" onClick={() => void loadMore()}>
-          Load more
+        <Button full variant="ghost" disabled={loadingMore} onClick={() => void loadMore()}>
+          {loadingMore ? 'Loading…' : 'Load more'}
         </Button>
       ) : null}
     </div>

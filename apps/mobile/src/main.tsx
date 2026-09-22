@@ -324,7 +324,12 @@ export function App() {
     );
   } else if (route.name === 'owner-screen') {
     content = session && session.user.role === 'BUSINESS_OWNER' ? (
-      <OwnerScreen screen={route.screen} businessId={route.businessId} onBack={() => push('/owner')} />
+      <OwnerScreen
+        screen={route.screen}
+        businessId={route.businessId}
+        onBack={() => push('/owner')}
+        onOpenBooking={(id) => push(`/booking/${id}`)}
+      />
     ) : (
       profileAuthScreen
     );

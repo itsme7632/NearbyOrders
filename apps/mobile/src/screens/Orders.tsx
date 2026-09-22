@@ -49,6 +49,10 @@ export function orderLabel(status: OrderStatus): { text: string; cls: string } {
       return { text: 'Cancelled', cls: 'status-cancelled' };
     case 'REJECTED':
       return { text: 'Rejected', cls: 'status-cancelled' };
+    default:
+      // Defensive: a future server status enum value must never blank the
+      // whole list with a render exception. Show the raw value honestly.
+      return { text: status, cls: 'status-pending' };
   }
 }
 

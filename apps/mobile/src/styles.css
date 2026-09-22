@@ -210,7 +210,7 @@ main {
   color: var(--secondary);
   font-weight: 600;
   font-size: 14px;
-  padding: 8px 10px;
+  padding: 12px 10px;
   border-radius: 10px;
   background: var(--light);
 }
@@ -703,14 +703,15 @@ p { overflow-wrap: break-word; }
 }
 .badge-verified { background: var(--success); color: #fff; }
 
-/* ---- Header bell + unread badge (Phase 5) ---- */
+/* ---- Header bell + unread badge (Phase 5) ----
+   44px target: the bell is the primary header action on every screen. */
 .bell-btn {
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--card);
@@ -4424,8 +4425,8 @@ nav.nav-v3, nav.business-nav-v3 {
   overflow-wrap: break-word;
 }
 .sheet-close {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 12px;
   display: inline-flex;
   align-items: center;

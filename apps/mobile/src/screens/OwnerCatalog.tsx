@@ -96,6 +96,7 @@ function ServiceRow(props: { service: Service; onSaved: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   const save = async () => {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -120,6 +121,7 @@ function ServiceRow(props: { service: Service; onSaved: () => void }) {
   };
 
   const toggle = async (isActive: boolean) => {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -133,6 +135,7 @@ function ServiceRow(props: { service: Service; onSaved: () => void }) {
   };
 
   const remove = async () => {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -180,7 +183,7 @@ function ServiceRow(props: { service: Service; onSaved: () => void }) {
     <div>
       {error && !editing ? <ErrorState message={error} /> : null}
       <div className="btn-row">
-        <Toggle checked={props.service.isActive} onChange={(v) => toggle(v)} label={props.service.isActive ? 'Active' : 'Inactive'} />
+        <Toggle checked={props.service.isActive} onChange={(v) => toggle(v)} label={props.service.isActive ? 'Active' : 'Inactive'} disabled={busy} />
         <Button sm variant="secondary" onClick={() => setEditing(true)}>
           Edit
         </Button>
@@ -203,6 +206,7 @@ function ServiceForm(props: { businessId: string; onCreated: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   const create = async () => {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -500,6 +504,7 @@ function ProductRow(props: { product: Product; onSaved: () => void }) {
   };
 
   const remove = async () => {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -559,7 +564,7 @@ function ProductRow(props: { product: Product; onSaved: () => void }) {
         </Field>
         {fieldErrors.price ? <p className="auth-error" role="alert"><AlertIcon size={14} /> {fieldErrors.price}</p> : null}
         <Field label="Availability">
-          <Toggle checked={props.product.isActive} onChange={(v) => void toggle(v)} label={props.product.isActive ? 'Available' : 'Unavailable'} />
+          <Toggle checked={props.product.isActive} onChange={(v) => void toggle(v)} label={props.product.isActive ? 'Available' : 'Unavailable'} disabled={busy} />
         </Field>
         {pendingImage ? (
           <p className="hint" role="note">
@@ -580,7 +585,7 @@ function ProductRow(props: { product: Product; onSaved: () => void }) {
 
   return (
     <div className="btn-row">
-      <Toggle checked={props.product.isActive} onChange={(v) => void toggle(v)} label={props.product.isActive ? 'Available' : 'Unavailable'} />
+      <Toggle checked={props.product.isActive} onChange={(v) => void toggle(v)} label={props.product.isActive ? 'Available' : 'Unavailable'} disabled={busy} />
       <Button sm variant="secondary" onClick={() => setEditing(true)}>
         Edit
       </Button>

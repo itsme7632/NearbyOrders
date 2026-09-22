@@ -16,7 +16,15 @@ export function useRoute(): [Route, (to: string) => void, () => void] {
   }, []);
 
   const back = useCallback(() => {
-    window.history.back();
+    // A cold-launched deep link (push notification, restored session, shared
+    // URL) has no in-app history behind it: history.back() would exit the app
+    // outright. Fall back to the home route so back always lands on a real
+    // screen instead of closing the app.
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      window.location.hash = '/';
+    }
   }, []);
 
   return [route, push, back];

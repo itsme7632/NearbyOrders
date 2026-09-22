@@ -219,8 +219,9 @@ export function OwnerSubscription(props: { businessId: string; businessName?: st
 
       {/* Free trial: server-authoritative. The banner shows only while the
           trial is actually offerable; the trial days always come from the
-          working plan, never from client constants. */}
-      {!isLive ? (
+          working plan, never from client constants. A plan with zero trial
+          days must never advertise a "0-day free trial". */}
+      {!isLive && plan.trialDays > 0 ? (
         ineligibilityReason ? (
           <p className="hint sub-note" role="status">
             {ineligibilityReason}
