@@ -303,28 +303,42 @@ describe('admin promotions', () => {
     requestCount: 2,
   };
 
+  const promoRequest = {
+    id: 'rq1',
+    status: 'PENDING' as const,
+    note: 'Feature us for the festival weekend.',
+    reviewerMessage: null,
+    reviewedByUserId: null,
+    createdAt: '2026-09-21T10:00:00.000Z',
+    reviewedAt: null,
+    activatedAt: null,
+    expiresAt: null,
+    paymentStatus: null as 'PENDING' | 'APPROVED' | 'REJECTED' | null,
+    business: {
+      id: 'b1',
+      name: 'Cafe Aroma',
+      slug: 'cafe-aroma',
+      owner: { id: 'u1', email: 'owner@example.com', firstName: 'Ali', lastName: 'Khan' },
+    },
+    promotion: {
+      id: 'pr1',
+      name: 'Ramadan Spotlight',
+      slug: 'ramadan-spotlight',
+      priceMinor: 499900,
+      currency: 'PKR',
+      durationDays: 30,
+    },
+    payments: [] as Array<{ id: string; status: string; amountMinor: number; submittedAt: string }>,
+  };
+
   it('renders the catalog and the requests queue with approve/reject', async () => {
     const api = await import('./api.js');
     vi.mocked(api.listPromotions).mockResolvedValue([promo]);
-    vi.mocked(api.listPromotionRequests).mockResolvedValue([
-      {
-        id: 'rq1',
-        status: 'PENDING',
-        createdAt: '2026-09-21T10:00:00.000Z',
-        reviewedAt: null,
-        reviewerMessage: null,
-        business: { id: 'b1', name: 'Cafe Aroma' },
-        promotion: { id: 'pr1', name: 'Ramadan Spotlight' },
-      },
-    ]);
+    vi.mocked(api.listPromotionRequests).mockResolvedValue([promoRequest]);
     vi.mocked(api.approvePromotionRequest).mockResolvedValue({
-      id: 'rq1',
+      ...promoRequest,
       status: 'APPROVED',
-      createdAt: '2026-09-21T10:00:00.000Z',
       reviewedAt: '2026-09-22T10:00:00.000Z',
-      reviewerMessage: null,
-      business: { id: 'b1', name: 'Cafe Aroma' },
-      promotion: { id: 'pr1', name: 'Ramadan Spotlight' },
     });
     const { PromotionCenter } = await import('./sections.js');
     const c = await renderInto(<PromotionCenter />);
@@ -342,12 +356,36 @@ describe('admin promotions', () => {
     await act(async () => {
       decideBtn.click();
     });
+    // Paid promotions wait for the owner's payment after approval.
+    expect(c.textContent).toContain('the owner must pay before the promotion goes live');
     const confirmBtn = Array.from(c.querySelectorAll('button')).find((b) => b.textContent === 'Confirm approval')!;
     await act(async () => {
       confirmBtn.click();
     });
     await flush();
     expect(vi.mocked(api.approvePromotionRequest)).toHaveBeenCalledWith('rq1', undefined);
+  });
+
+  it('shows the free-promotion activation message for free promotions', async () => {
+    const api = await import('./api.js');
+    vi.mocked(api.listPromotions).mockResolvedValue([]);
+    vi.mocked(api.listPromotionRequests).mockResolvedValue([
+      { ...promoRequest, id: 'rq2', promotion: { ...promoRequest.promotion, priceMinor: 0, name: 'Free Boost' } },
+    ]);
+    const { PromotionCenter } = await import('./sections.js');
+    const c = await renderInto(<PromotionCenter />);
+    const queueTab = Array.from(c.querySelectorAll('button')).find((b) => b.textContent === 'Requests queue')!;
+    await act(async () => {
+      queueTab.click();
+    });
+    await flush();
+
+    expect(c.textContent).toContain('Free');
+    const decideBtn = Array.from(c.querySelectorAll('button')).find((b) => b.textContent === 'Decide')!;
+    await act(async () => {
+      decideBtn.click();
+    });
+    expect(c.textContent).toContain('Approving activates this free promotion immediately');
   });
 });
 

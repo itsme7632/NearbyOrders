@@ -755,7 +755,25 @@ export type Promotion = {
 };
 
 /** Mirrors the server's promotion-request status enum. */
-export type PromotionRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+export type PromotionRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'ACTIVE' | 'EXPIRED' | 'CANCELLED';
+
+/**
+ * Server-computed monetization lifecycle of a promotion request. Drives the
+ * owner-facing status pill and whether a payment step is available:
+ * PAYMENT_REQUIRED means the team approved a paid promotion and the owner
+ * must submit payment proof before the promotion activates.
+ */
+export type PromotionLifecycleState =
+  | 'PENDING_REVIEW'
+  | 'PAYMENT_REQUIRED'
+  | 'PAYMENT_UNDER_REVIEW'
+  | 'ACTIVE'
+  | 'REJECTED'
+  | 'EXPIRED'
+  | 'CANCELLED';
+
+/** Mirrors the server's promotion-payment-request status enum. */
+export type PromotionPaymentStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 
 /** One promotion request placed by an owned business. */
 export type PromotionRequest = {
@@ -764,9 +782,46 @@ export type PromotionRequest = {
   promotionName: string | null;
   note: string | null;
   status: PromotionRequestStatus;
+  /** Server-computed lifecycle — the source of truth for owner-facing state. */
+  lifecycleState: PromotionLifecycleState;
   submittedAt: string;
   reviewedAt: string | null;
+  /** Set when the promotion activates (approval for free promotions, payment approval for paid ones). */
+  activatedAt: string | null;
+  /** Set when an active promotion ends. */
+  expiresAt: string | null;
+  /** Server-computed amount due for paid promotions (0 for free ones). The client never sends an amount. */
+  amountDueMinor: number;
+  currency: string;
+  /** Latest payment submission state, or null when no payment was submitted. */
+  paymentStatus: PromotionPaymentStatus | null;
+  /** True when the most recent payment submission was rejected. */
+  lastPaymentRejected: boolean;
+  /** Requested promotion pricing, resolved from the server catalog. */
+  promotionPriceMinor: number | null;
+  promotionCurrency: string;
+  promotionDurationDays: number | null;
   rejectionReason: string | null;
+};
+
+/** One submitted promotion payment proof as seen by the owning business. */
+export type PromotionPaymentRequest = {
+  id: string;
+  status: PromotionPaymentStatus;
+  /** Server-computed amount due — the client never sends an amount. */
+  amountMinor: number;
+  currency: string;
+  transactionReference: string;
+  receiptStorageKey: string;
+  /** When the owner says the payment was made (their input, ISO string). */
+  paidAt: string | null;
+  /** Optional note the owner attached to the submission. */
+  note: string | null;
+  rejectionReason: string | null;
+  submittedAt: string;
+  reviewedAt: string | null;
+  paymentMethod: { id: string; name: string; type: PaymentMethodType };
+  promotionRequestId: string;
 };
 
 /** Active promotions from the platform catalog (display order). */
@@ -776,21 +831,39 @@ export const listPromotions = () => request<Promotion[]>('/promotions');
 export const getPromotion = (slug: string) => request<Promotion>(`/promotions/${encodeURIComponent(slug)}`);
 
 /**
- * Promotion request history for an owned business. The server returns the
- * owner DTO — { id, status, note, reviewerMessage, createdAt, reviewedAt,
- * promotion: { id, name, slug } } — which the client normalizes to the
- * PromotionRequest shape (promotionId/promotionName/submittedAt/
- * rejectionReason) the screens consume.
+ * Promotion request history for an owned business, newest first. The server
+ * returns the owner DTO — { id, status, lifecycleState, note,
+ * reviewerMessage, createdAt, reviewedAt, activatedAt, expiresAt,
+ * amountDueMinor, currency, paymentStatus, lastPaymentRejected,
+ * promotion: { id, name, slug, priceMinor, currency, durationDays } } —
+ * which the client normalizes to the PromotionRequest shape the screens
+ * consume. lifecycleState is the source of truth for owner-facing state;
+ * a missing value falls back to a status-derived state so a future
+ * wire-shape change degrades honestly instead of crashing.
  */
 export const listPromotionRequests = async (businessId: string): Promise<PromotionRequest[]> => {
   type ServerPromotionRequest = {
     id: string;
     status: PromotionRequestStatus;
+    lifecycleState?: PromotionLifecycleState;
     note: string | null;
     reviewerMessage: string | null;
     createdAt: string;
     reviewedAt: string | null;
-    promotion: { id: string; name: string; slug: string };
+    activatedAt: string | null;
+    expiresAt: string | null;
+    amountDueMinor: number;
+    currency: string;
+    paymentStatus: PromotionPaymentStatus | null;
+    lastPaymentRejected: boolean;
+    promotion: {
+      id: string;
+      name: string;
+      slug: string;
+      priceMinor: number | null;
+      currency: string;
+      durationDays: number | null;
+    };
   };
   const rows = await request<ServerPromotionRequest[]>(`/businesses/${businessId}/promotion-requests`, { auth: true });
   return (rows ?? []).map((r) => ({
@@ -799,19 +872,78 @@ export const listPromotionRequests = async (businessId: string): Promise<Promoti
     promotionName: r.promotion.name,
     note: r.note,
     status: r.status,
+    lifecycleState:
+      r.lifecycleState ??
+      (r.status === 'PENDING'
+        ? 'PENDING_REVIEW'
+        : r.status === 'REJECTED'
+          ? 'REJECTED'
+          : r.status === 'CANCELLED'
+            ? 'CANCELLED'
+            : 'PENDING_REVIEW'),
     submittedAt: r.createdAt,
     reviewedAt: r.reviewedAt,
+    activatedAt: r.activatedAt,
+    expiresAt: r.expiresAt,
+    amountDueMinor: r.amountDueMinor ?? 0,
+    currency: r.currency,
+    paymentStatus: r.paymentStatus,
+    lastPaymentRejected: r.lastPaymentRejected ?? false,
+    promotionPriceMinor: r.promotion.priceMinor,
+    promotionCurrency: r.promotion.currency,
+    promotionDurationDays: r.promotion.durationDays,
     rejectionReason: r.reviewerMessage,
   }));
 };
 
 /**
- * Requests a promotion for an owned business. The request stays PENDING for
- * the NearbyOrders team to review — they contact the owner directly; there
- * is no checkout or payment step in the app.
+ * Requests a promotion for an owned business. The request enters the
+ * monetization lifecycle: PENDING_REVIEW while the NearbyOrders team
+ * reviews it; free promotions activate directly on approval, while paid
+ * promotions move to PAYMENT_REQUIRED and activate only after the payment
+ * proof is approved. Re-applying while a PENDING/APPROVED/ACTIVE request
+ * exists for the same promotion is rejected by the server (409).
  */
 export const requestPromotion = (businessId: string, body: { promotionId: string; note?: string }) =>
   request<PromotionRequest>(`/businesses/${businessId}/promotion-requests`, { method: 'POST', body, auth: true });
+
+/**
+ * Payment proof submissions for one promotion request, newest first.
+ * The server returns { data: [...] }; `request` unwraps the envelope.
+ */
+export const listPromotionPayments = (businessId: string, requestId: string) =>
+  request<PromotionPaymentRequest[]>(
+    `/businesses/${businessId}/promotion-requests/${encodeURIComponent(requestId)}/payment-requests`,
+    { auth: true },
+  );
+
+/**
+ * Submits promotion payment proof for admin verification. The body carries
+ * only the chosen method, the transaction reference, the uploaded receipt's
+ * storage key, and the owner's optional note/payment date — amount and
+ * currency come from the server's promotion catalog (amountDueMinor).
+ * Submission alone never activates the promotion: the NearbyOrders team
+ * reviews every payment.
+ *
+ * Errors: 404 (unknown request), 409 NOT_PAYABLE (not awaiting payment),
+ * 400 PAYMENT_NOT_REQUIRED (free promotion), 409 PAYMENT_ALREADY_PENDING
+ * (a submission is already under review), 400 INVALID_PAYMENT_METHOD.
+ */
+export const submitPromotionPayment = (
+  businessId: string,
+  requestId: string,
+  body: {
+    paymentMethodId: string;
+    transactionReference: string;
+    receiptStorageKey: string;
+    paidAt?: string;
+    note?: string;
+  },
+) =>
+  request<PromotionPaymentRequest>(
+    `/businesses/${businessId}/promotion-requests/${encodeURIComponent(requestId)}/payment-requests`,
+    { method: 'POST', body, auth: true },
+  );
 
 /* --------------------------- businesses ---------------------------- */
 

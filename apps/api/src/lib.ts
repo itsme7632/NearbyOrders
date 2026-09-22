@@ -709,6 +709,41 @@ export const promotionRequestReviewSchema = z.object({
   reviewerMessage: optionalText(1000),
 });
 
+/**
+ * Business submission of a manual PROMOTION payment. Mirrors
+ * paymentRequestCreateSchema: the amount is never accepted from the client —
+ * the server charges the promotion's catalog price.
+ */
+export const promotionPaymentRequestCreateSchema = z.object({
+  paymentMethodId: z.string().uuid(),
+  transactionReference: z
+    .string()
+    .transform((v) => v.trim())
+    .refine((v) => v.length >= 4, { message: 'Transaction reference must be at least 4 characters' })
+    .refine((v) => v.length <= 100, { message: 'Transaction reference must be at most 100 characters' }),
+  receiptStorageKey: z
+    .string()
+    .transform((v) => v.trim())
+    .refine((v) => v.length >= 1, { message: 'A payment receipt image is required' })
+    .refine((v) => v.length <= 512, { message: 'Receipt reference is too long' }),
+  paidAt: z
+    .string()
+    .datetime({ offset: true, message: 'paidAt must be an ISO date' })
+    .refine((v) => Date.parse(v) <= Date.now() + 60_000, { message: 'paidAt cannot be in the future' })
+    .optional(),
+  note: z
+    .string()
+    .trim()
+    .max(500, { message: 'Note must be at most 500 characters' })
+    .optional()
+    .transform((v) => (v === undefined || v === '' ? undefined : v)),
+});
+
+/** Admin approve/reject of a promotion payment; reason is owner-visible. */
+export const promotionPaymentReviewSchema = z.object({
+  reason: optionalText(1000),
+});
+
 /* ------------------------------------------------------------------ */
 /* Customer → business payments (Phase 7C)                             */
 /* ------------------------------------------------------------------ */
@@ -824,6 +859,11 @@ export const NOTIFICATION_TYPES = {
   SUBSCRIPTION_ACTIVATED: 'SUBSCRIPTION_ACTIVATED',
   PROMOTION_REQUEST_APPROVED: 'PROMOTION_REQUEST_APPROVED',
   PROMOTION_REQUEST_REJECTED: 'PROMOTION_REQUEST_REJECTED',
+  PROMOTION_PAYMENT_SUBMITTED: 'PROMOTION_PAYMENT_SUBMITTED',
+  PROMOTION_PAYMENT_APPROVED: 'PROMOTION_PAYMENT_APPROVED',
+  PROMOTION_PAYMENT_REJECTED: 'PROMOTION_PAYMENT_REJECTED',
+  PROMOTION_ACTIVATED: 'PROMOTION_ACTIVATED',
+  PROMOTION_EXPIRED: 'PROMOTION_EXPIRED',
 } as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
@@ -834,7 +874,7 @@ export type NotificationInput = {
   type: NotificationType;
   title: string;
   message: string;
-  entityType: 'Booking' | 'Order' | 'SubscriptionPaymentRequest' | 'BookingPayment' | 'OrderPayment' | 'Review' | 'VerificationApplication' | 'BusinessSubscription' | 'PromotionRequest';
+  entityType: 'Booking' | 'Order' | 'SubscriptionPaymentRequest' | 'PromotionPaymentRequest' | 'BookingPayment' | 'OrderPayment' | 'Review' | 'VerificationApplication' | 'BusinessSubscription' | 'PromotionRequest';
   entityId: string;
 };
 
@@ -1106,6 +1146,19 @@ export const addCalendarMonths = (from: Date, months: number): Date => {
       from.getUTCMilliseconds(),
     ),
   );
+};
+
+/**
+ * Adds whole UTC days to a date (promotion activation windows). Promotion
+ * duration is always measured from activation, never from application.
+ */
+export const addDays = (from: Date, days: number): Date =>
+  new Date(from.getTime() + days * 24 * 60 * 60 * 1000);
+
+/** Formats minor units for human messages, e.g. "Rs 2,999" for PKR. */
+export const formatMinor = (currency: string, amountMinor: number): string => {
+  const major = (amountMinor / 100).toLocaleString('en-PK', { maximumFractionDigits: 2 });
+  return currency === 'PKR' ? `Rs ${major}` : `${major} ${currency}`;
 };
 
 /**

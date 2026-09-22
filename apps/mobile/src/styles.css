@@ -4959,6 +4959,14 @@ button.owner-avatar-btn:active { transform: scale(0.95); }
 /* Payments: always-visible method channels, skeleton loading, empty state. */
 .pay-wrap { display: flex; flex-direction: column; gap: 12px; }
 .pay-block { display: flex; flex-direction: column; }
+.pay-eyebrow {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brand);
+  margin: 0 0 2px;
+}
 .pay-block-title {
   font-size: 16px;
   font-weight: 800;

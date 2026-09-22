@@ -496,24 +496,112 @@ export const updatePromotion = (id: string, input: Partial<PromotionInput>) =>
 
 export const deletePromotion = (id: string) => request<void>(`/admin/promotions/${id}`, { method: 'DELETE' });
 
+export type PromotionRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'ACTIVE' | 'EXPIRED' | 'CANCELLED';
+export type PromotionPaymentStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | null;
+
+/**
+ * One row of the admin promotion-request queue, exactly as the server renders
+ * it. `payments` is newest-first and carries only ids/statuses; fetch the
+ * full payment record to review it.
+ */
 export type AdminPromotionRequest = {
   id: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  status: PromotionRequestStatus;
+  note: string | null;
+  reviewerMessage: string | null;
+  reviewedByUserId: string | null;
   createdAt: string;
   reviewedAt: string | null;
-  reviewerMessage: string | null;
-  business: { id: string; name: string };
-  promotion: { id: string; name: string } | null;
+  activatedAt: string | null;
+  expiresAt: string | null;
+  paymentStatus: PromotionPaymentStatus;
+  business: {
+    id: string;
+    name: string;
+    slug: string;
+    owner: { id: string; email: string; firstName: string | null; lastName: string | null };
+  };
+  promotion: {
+    id: string;
+    name: string;
+    slug: string;
+    priceMinor: number;
+    currency: string;
+    durationDays: number;
+  } | null;
+  payments: Array<{ id: string; status: string; amountMinor: number; submittedAt: string }>;
 };
 
-export const listPromotionRequests = (status?: string) =>
-  request<{ data: AdminPromotionRequest[] }>(`/admin/promotion-requests${status ? `?status=${status}` : ''}`).then((r) => r.data);
+export type PromotionRequestListParams = { status?: string; promotionId?: string; limit?: number };
+
+export const listPromotionRequests = (statusOrParams?: string | PromotionRequestListParams) => {
+  const params: PromotionRequestListParams = typeof statusOrParams === 'string' ? { status: statusOrParams } : (statusOrParams ?? {});
+  const search = new URLSearchParams();
+  if (params.status) search.set('status', params.status);
+  if (params.promotionId) search.set('promotionId', params.promotionId);
+  if (params.limit) search.set('limit', String(params.limit));
+  const qs = search.toString();
+  return request<{ data: AdminPromotionRequest[] }>(`/admin/promotion-requests${qs ? `?${qs}` : ''}`).then((r) => r.data);
+};
 
 export const approvePromotionRequest = (id: string, reviewerMessage?: string) =>
   request<{ data: AdminPromotionRequest }>(`/admin/promotion-requests/${id}/approve`, { method: 'POST', body: { reviewerMessage } }).then((r) => r.data);
 
 export const rejectPromotionRequest = (id: string, reviewerMessage?: string) =>
   request<{ data: AdminPromotionRequest }>(`/admin/promotion-requests/${id}/reject`, { method: 'POST', body: { reviewerMessage } }).then((r) => r.data);
+
+/* ------------------- promotion payment requests (admin) ------------------- */
+
+export type AdminPromotionPayment = {
+  id: string;
+  status: string;
+  amountMinor: number;
+  currency: string;
+  transactionReference: string | null;
+  receiptStorageKey: string | null;
+  paidAt: string | null;
+  note: string | null;
+  rejectionReason: string | null;
+  submittedAt: string;
+  reviewedAt: string | null;
+  reviewedByUserId: string | null;
+  business: { id: string; name: string };
+  promotionRequest: { id: string };
+  promotion: { id: string; name: string; slug: string };
+  paymentMethod: { id: string; name: string; type: string };
+};
+
+export type PromotionPaymentListParams = {
+  status?: string;
+  promotionRequestId?: string;
+  businessId?: string;
+  limit?: number;
+  cursor?: string;
+};
+
+export const listPromotionPaymentRequests = (params: PromotionPaymentListParams = {}) => {
+  const search = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== '') search.set(k, String(v));
+  }
+  const qs = search.toString();
+  return request<{ data: { items: AdminPromotionPayment[]; nextCursor: string | null } }>(
+    `/admin/promotion-payment-requests${qs ? `?${qs}` : ''}`,
+  ).then((r) => r.data);
+};
+
+export const getPromotionPaymentRequest = (id: string) =>
+  request<{ data: AdminPromotionPayment }>(`/admin/promotion-payment-requests/${id}`).then((r) => r.data);
+
+/** Approving a payment activates the promotion server-side with server-set start/end dates. */
+export const approvePromotionPayment = (id: string) =>
+  request<{ data: AdminPromotionPayment }>(`/admin/promotion-payment-requests/${id}/approve`, { method: 'POST', body: {} }).then((r) => r.data);
+
+/** Rejecting a payment keeps the promotion request APPROVED so the business can resubmit. */
+export const rejectPromotionPayment = (id: string, reason?: string) =>
+  request<{ data: AdminPromotionPayment }>(`/admin/promotion-payment-requests/${id}/reject`, { method: 'POST', body: { reason } }).then(
+    (r) => r.data,
+  );
 
 /* ------------------------- authorized blob viewing ---------------------- */
 /* Verification documents are viewed through the same authorized receipt

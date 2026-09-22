@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach, type MockInstance } fr
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { OwnerPromotions } from './OwnerPromotionsScreen.js';
 import * as api from '../api.js';
-import type { Promotion, PromotionRequest } from '../api.js';
+import type { Promotion, PromotionRequest, PromotionLifecycleState } from '../api.js';
 
 afterEach(cleanup);
 
@@ -39,8 +39,18 @@ const pendingRequest: PromotionRequest = {
   promotionName: 'Homepage spotlight',
   note: null,
   status: 'PENDING',
+  lifecycleState: 'PENDING_REVIEW',
   submittedAt: '2026-09-10T00:00:00.000Z',
   reviewedAt: null,
+  activatedAt: null,
+  expiresAt: null,
+  amountDueMinor: 499900,
+  currency: 'PKR',
+  paymentStatus: null,
+  lastPaymentRejected: false,
+  promotionPriceMinor: 499900,
+  promotionCurrency: 'PKR',
+  promotionDurationDays: 7,
   rejectionReason: null,
 };
 
@@ -153,5 +163,143 @@ describe('OwnerPromotions (request flow)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send request' }));
     expect(await screen.findByText(/You already requested this promotion\./)).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Homepage spotlight' })).toBeTruthy();
+  });
+});
+
+describe('OwnerPromotions (tabs)', () => {
+  it('defaults to the Available tab and switches to My requests', async () => {
+    requestsSpy.mockResolvedValue([pendingRequest]);
+    render(<OwnerPromotions businessId="biz-1" />);
+    // Available is the default tab: the catalog renders.
+    expect(await screen.findByRole('region', { name: 'Homepage spotlight' })).toBeTruthy();
+    // My requests lists the same request with its lifecycle pill.
+    fireEvent.click(screen.getByRole('radio', { name: 'My requests' }));
+    const req = await screen.findByRole('region', { name: 'Homepage spotlight' });
+    expect(within(req).getByText('Pending review')).toBeTruthy();
+    // Back to Available.
+    fireEvent.click(screen.getByRole('radio', { name: 'Available' }));
+    expect(await screen.findByRole('region', { name: 'Category boost' })).toBeTruthy();
+  });
+
+  it('shows an honest empty state when there are no requests', async () => {
+    render(<OwnerPromotions businessId="biz-1" />);
+    fireEvent.click(await screen.findByRole('radio', { name: 'My requests' }));
+    expect(await screen.findByText('No requests yet')).toBeTruthy();
+    expect(
+      screen.getByText(/its status and any payment steps will appear here/),
+    ).toBeTruthy();
+  });
+
+  it('surfaces request list errors with a retry', async () => {
+    requestsSpy.mockRejectedValue(new api.ApiError(0, 'NETWORK_ERROR', 'Cannot reach the NearbyOrders API.'));
+    render(<OwnerPromotions businessId="biz-1" />);
+    fireEvent.click(await screen.findByRole('radio', { name: 'My requests' }));
+    expect(await screen.findByText(/Cannot reach the NearbyOrders API/)).toBeTruthy();
+  });
+});
+
+describe('OwnerPromotions (my requests lifecycle)', () => {
+  const base: PromotionRequest = {
+    ...pendingRequest,
+    id: 'req-x',
+    promotionId: 'promo-2',
+    promotionName: 'Category boost',
+  };
+
+  const cases: Array<{
+    lifecycleState: PromotionLifecycleState;
+    status: PromotionRequest['status'];
+    pill: string;
+    extra: string;
+    overrides?: Partial<PromotionRequest>;
+  }> = [
+    {
+      lifecycleState: 'PENDING_REVIEW',
+      status: 'PENDING',
+      pill: 'Pending review',
+      extra: 'The NearbyOrders team is reviewing your request',
+    },
+    {
+      lifecycleState: 'PAYMENT_REQUIRED',
+      status: 'APPROVED',
+      pill: 'Payment required',
+      extra: 'Pay now',
+    },
+    {
+      lifecycleState: 'PAYMENT_UNDER_REVIEW',
+      status: 'APPROVED',
+      pill: 'Payment under review',
+      extra: 'Your payment proof is with the NearbyOrders team',
+    },
+    {
+      lifecycleState: 'ACTIVE',
+      status: 'ACTIVE',
+      pill: 'Active',
+      extra: 'Active from',
+      overrides: { activatedAt: '2026-09-20T00:00:00.000Z', expiresAt: '2026-09-27T00:00:00.000Z' },
+    },
+    {
+      lifecycleState: 'REJECTED',
+      status: 'REJECTED',
+      pill: 'Rejected',
+      extra: 'Photos missing.',
+      overrides: { rejectionReason: 'Photos missing.' },
+    },
+    {
+      lifecycleState: 'EXPIRED',
+      status: 'EXPIRED',
+      pill: 'Expired',
+      extra: 'Ran',
+      overrides: { activatedAt: '2026-09-10T00:00:00.000Z', expiresAt: '2026-09-17T00:00:00.000Z' },
+    },
+    {
+      lifecycleState: 'CANCELLED',
+      status: 'CANCELLED',
+      pill: 'Cancelled',
+      extra: 'Requested',
+    },
+  ];
+
+  it.each(cases)('renders $lifecycleState with the "$pill" pill', async (c) => {
+    requestsSpy.mockResolvedValue([{ ...base, lifecycleState: c.lifecycleState, status: c.status, ...c.overrides }]);
+    render(<OwnerPromotions businessId="biz-1" />);
+    fireEvent.click(await screen.findByRole('radio', { name: 'My requests' }));
+    const req = await screen.findByRole('region', { name: 'Category boost' });
+    expect(within(req).getByText(c.pill)).toBeTruthy();
+    expect(req.textContent).toContain(c.extra);
+  });
+
+  it('shows a prominent Pay now action only for PAYMENT_REQUIRED requests', async () => {
+    requestsSpy.mockResolvedValue([
+      { ...base, lifecycleState: 'PAYMENT_REQUIRED', status: 'APPROVED' },
+      { ...base, id: 'req-y', promotionName: 'Homepage spotlight', lifecycleState: 'PENDING_REVIEW', status: 'PENDING' },
+    ]);
+    render(<OwnerPromotions businessId="biz-1" />);
+    fireEvent.click(await screen.findByRole('radio', { name: 'My requests' }));
+    await screen.findByRole('region', { name: 'Homepage spotlight' });
+    expect(screen.getAllByRole('button', { name: 'Pay now' })).toHaveLength(1);
+    const payRow = screen.getByRole('region', { name: 'Category boost' });
+    expect(within(payRow).getByRole('button', { name: 'Pay now' })).toBeTruthy();
+  });
+
+  it('shows the server amount due on PAYMENT_REQUIRED requests', async () => {
+    requestsSpy.mockResolvedValue([
+      { ...base, lifecycleState: 'PAYMENT_REQUIRED', status: 'APPROVED', amountDueMinor: 199900, currency: 'PKR' },
+    ]);
+    render(<OwnerPromotions businessId="biz-1" />);
+    fireEvent.click(await screen.findByRole('radio', { name: 'My requests' }));
+    const req = await screen.findByRole('region', { name: 'Category boost' });
+    expect(req.textContent).toContain('Amount due');
+    expect(req.textContent).toContain('1,999');
+  });
+
+  it('flags a rejected last payment on PAYMENT_REQUIRED requests', async () => {
+    requestsSpy.mockResolvedValue([
+      { ...base, lifecycleState: 'PAYMENT_REQUIRED', status: 'APPROVED', lastPaymentRejected: true },
+    ]);
+    render(<OwnerPromotions businessId="biz-1" />);
+    fireEvent.click(await screen.findByRole('radio', { name: 'My requests' }));
+    const req = await screen.findByRole('region', { name: 'Category boost' });
+    expect(req.textContent).toContain('Your last payment was rejected');
   });
 });

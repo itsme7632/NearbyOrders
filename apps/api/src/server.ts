@@ -14,6 +14,8 @@ import {
   NOTIFICATION_TYPES,
   createNotifications,
   addCalendarMonths,
+  addDays,
+  formatMinor,
   paymentRequestCreateSchema,
   planCreateSchema,
   planUpdateSchema,
@@ -25,6 +27,8 @@ import {
   promotionUpdateSchema,
   promotionRequestCreateSchema,
   promotionRequestReviewSchema,
+  promotionPaymentRequestCreateSchema,
+  promotionPaymentReviewSchema,
   paymentMethodSchema,
   paymentMethodUpdateSchema,
   paymentRejectSchema,
@@ -1464,26 +1468,186 @@ export async function buildApp(): Promise<FastifyInstance> {
     return { data: publicPromotion(promotion) };
   });
 
-  /** Owner-safe promotion-request DTO. */
+  /**
+   * Promotion monetization lifecycle (Phase 19).
+   *
+   *   PENDING (application) -> APPROVED (payment required, paid promotions)
+   *     -> payment PENDING -> payment APPROVED -> ACTIVE (dates set)
+   *     -> EXPIRED (server-side transition on access)
+   *
+   * A zero-price promotion skips payment: application approval activates it
+   * directly. Application approval NEVER activates a paid promotion.
+   * Duration is always measured from activation, never from application.
+   * Every transition is server-authoritative: price, duration, dates and
+   * statuses are resolved from the catalog/database, never the client.
+   */
+  const PROMOTION_DEFAULT_DURATION_DAYS = 30;
+
+  /** Owner-visible lifecycle state derived from request + latest payment. */
+  const promotionLifecycleState = (
+    status: string,
+    priceMinor: number | null,
+    latestPaymentStatus: string | null,
+  ): string => {
+    if (status === 'PENDING') return 'PENDING_REVIEW';
+    if (status === 'REJECTED') return 'REJECTED';
+    if (status === 'CANCELLED') return 'CANCELLED';
+    if (status === 'EXPIRED') return 'EXPIRED';
+    if (status === 'ACTIVE') return 'ACTIVE';
+    // APPROVED: a paid promotion still needs a verified payment.
+    if (latestPaymentStatus === 'PENDING') return 'PAYMENT_UNDER_REVIEW';
+    return 'PAYMENT_REQUIRED';
+  };
+
+  /** Amount the business must pay for a promotion (server-resolved catalog price). */
+  const promotionAmountDue = (priceMinor: number | null): number => priceMinor ?? 0;
+
+  /**
+   * Server-side expiration: ACTIVE requests whose end date passed are
+   * flipped to EXPIRED on access (read path), never by the client. Runs
+   * before business/admin promotion-request reads. Notifications are
+   * idempotent thanks to the (userId, type, entityId) unique constraint.
+   */
+  const expireOverduePromotionRequests = async (db: typeof prisma): Promise<void> => {
+    const now = new Date();
+    const overdue = await db.promotionRequest.findMany({
+      where: { status: 'ACTIVE', expiresAt: { lt: now } },
+      select: {
+        id: true,
+        promotion: { select: { name: true } },
+        business: { select: { ownerId: true } },
+      },
+    });
+    if (overdue.length === 0) return;
+    await db.promotionRequest.updateMany({
+      where: { id: { in: overdue.map((o) => o.id) }, status: 'ACTIVE' },
+      data: { status: 'EXPIRED' },
+    });
+    await db.auditLog.createMany({
+      data: overdue.map((o) => ({
+        // System transition: no human actor performed this; keep actorId null
+        // rather than attributing it to the business owner.
+        actorId: null,
+        action: 'PROMOTION_EXPIRED',
+        entityType: 'PromotionRequest',
+        entityId: o.id,
+      })),
+    });
+    void createNotifications(
+      prisma,
+      overdue.map((o) => ({
+        userId: o.business.ownerId,
+        type: NOTIFICATION_TYPES.PROMOTION_EXPIRED,
+        title: 'Promotion ended',
+        message: `Your "${o.promotion.name}" promotion has ended.`,
+        entityType: 'PromotionRequest',
+        entityId: o.id,
+      })),
+    ).catch(() => undefined);
+  };
+
+  /** Owner-safe promotion-request DTO, incl. lifecycle state and payment info. */
   const ownerPromotionRequest = (p: {
     id: string; status: string; note: string | null; reviewerMessage: string | null;
-    createdAt: Date; reviewedAt: Date | null;
-    promotion: { id: string; name: string; slug: string };
+    createdAt: Date; reviewedAt: Date | null; activatedAt: Date | null; expiresAt: Date | null;
+    promotion: { id: string; name: string; slug: string; priceMinor: number | null; currency: string; durationDays: number | null };
+    payments: { status: string }[];
+  }) => {
+    const priceMinor = p.promotion.priceMinor;
+    const latestPaymentStatus = p.payments[0]?.status ?? null;
+    return {
+      id: p.id,
+      status: p.status,
+      lifecycleState: promotionLifecycleState(p.status, priceMinor, latestPaymentStatus),
+      note: p.note,
+      reviewerMessage: p.reviewerMessage,
+      createdAt: p.createdAt.toISOString(),
+      reviewedAt: p.reviewedAt?.toISOString() ?? null,
+      activatedAt: p.activatedAt?.toISOString() ?? null,
+      expiresAt: p.expiresAt?.toISOString() ?? null,
+      amountDueMinor: promotionAmountDue(priceMinor),
+      currency: p.promotion.currency,
+      paymentStatus: latestPaymentStatus,
+      lastPaymentRejected: p.payments.some((x) => x.status === 'REJECTED'),
+      promotion: p.promotion,
+    };
+  };
+
+  const PROMOTION_REQUEST_PAYMENTS_INCLUDE = {
+    payments: { select: { status: true }, orderBy: { submittedAt: 'desc' as const }, take: 1 },
+  } as const;
+
+  /** Owner-safe promotion-payment DTO: business-safe fields, no reviewer internals. */
+  const ownerPromotionPayment = (p: {
+    id: string; status: string; amountMinor: number; currency: string;
+    transactionReference: string; receiptStorageKey: string;
+    paidAt: Date | null; note: string | null; rejectionReason: string | null;
+    submittedAt: Date; reviewedAt: Date | null; promotionRequestId: string;
+    paymentMethod: { id: string; name: string; type: string };
   }) => ({
     id: p.id,
     status: p.status,
+    amountMinor: p.amountMinor,
+    currency: p.currency,
+    transactionReference: p.transactionReference,
+    receiptStorageKey: p.receiptStorageKey,
+    paidAt: p.paidAt?.toISOString() ?? null,
     note: p.note,
-    reviewerMessage: p.reviewerMessage,
-    createdAt: p.createdAt.toISOString(),
+    rejectionReason: p.rejectionReason,
+    submittedAt: p.submittedAt.toISOString(),
     reviewedAt: p.reviewedAt?.toISOString() ?? null,
-    promotion: p.promotion,
+    promotionRequestId: p.promotionRequestId,
+    paymentMethod: p.paymentMethod,
   });
 
+  /** Admin DTO for a promotion payment: full review context. */
+  const adminPromotionPayment = (p: {
+    id: string; status: string; amountMinor: number; currency: string;
+    transactionReference: string; receiptStorageKey: string;
+    paidAt: Date | null; note: string | null; rejectionReason: string | null;
+    submittedAt: Date; reviewedAt: Date | null; reviewedByUserId: string | null;
+    business: { id: string; name: string };
+    promotionRequest: { id: string; status: string; promotion: { id: string; name: string; slug: string } };
+    paymentMethod: { id: string; name: string; type: string };
+  }) => ({
+    id: p.id,
+    status: p.status,
+    amountMinor: p.amountMinor,
+    currency: p.currency,
+    transactionReference: p.transactionReference,
+    receiptStorageKey: p.receiptStorageKey,
+    paidAt: p.paidAt?.toISOString() ?? null,
+    note: p.note,
+    rejectionReason: p.rejectionReason,
+    submittedAt: p.submittedAt.toISOString(),
+    reviewedAt: p.reviewedAt?.toISOString() ?? null,
+    reviewedByUserId: p.reviewedByUserId,
+    business: p.business,
+    promotionRequest: { id: p.promotionRequest.id, status: p.promotionRequest.status },
+    promotion: p.promotionRequest.promotion,
+    paymentMethod: p.paymentMethod,
+  });
+
+  const PROMOTION_PAYMENT_INCLUDE = {
+    business: { select: { id: true, name: true } },
+    promotionRequest: {
+      select: {
+        id: true,
+        status: true,
+        promotion: { select: { id: true, name: true, slug: true } },
+      },
+    },
+    paymentMethod: { select: { id: true, name: true, type: true } },
+  } as const;
+
   /**
-   * Requests to join a promotion. Requesting is free — it creates a PENDING
-   * row an admin reviews; the team contacts the business about next steps.
-   * There is no paid checkout on promotions. One pending request per
-   * business+promotion (re-request allowed after a decision).
+   * Requests to join a promotion. Requesting creates a PENDING row an admin
+   * reviews. Paid promotions require a verified manual payment AFTER
+   * application approval — approval alone never activates them. A zero-price
+   * promotion activates directly on approval. One live request per
+   * business+promotion: a new application is blocked while a PENDING,
+   * APPROVED or ACTIVE request exists (re-request allowed after a decision
+   * or expiry).
    */
   app.post('/api/v1/businesses/:id/promotion-requests', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
     const id = (q.params as { id: string }).id;
@@ -1491,31 +1655,149 @@ export async function buildApp(): Promise<FastifyInstance> {
     const body = promotionRequestCreateSchema.parse(q.body);
     const promotion = await prisma.promotion.findFirst({ where: { id: body.promotionId, isActive: true } });
     if (!promotion) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Promotion not found' } });
-    const pending = await prisma.promotionRequest.findFirst({
-      where: { businessId: id, promotionId: promotion.id, status: 'PENDING' },
-      select: { id: true },
-    });
-    if (pending) return r.status(409).send({ error: { code: 'REQUEST_ALREADY_PENDING', message: 'You already have a pending request for this promotion' } });
-    const created = await prisma.promotionRequest.create({
-      data: { businessId: id, promotionId: promotion.id, note: body.note ?? null },
-      include: { promotion: { select: { id: true, name: true, slug: true } } },
-    });
-    await prisma.auditLog.create({
-      data: { actorId: currentUser(q).id, action: 'PROMOTION_REQUEST_CREATED', entityType: 'PromotionRequest', entityId: created.id, metadata: { businessId: id, promotionId: promotion.id } },
-    });
-    return r.status(201).send({ data: ownerPromotionRequest(created) });
+    // Duplicate guard under an advisory lock on (business, promotion): the
+    // pre-check-then-create race would otherwise allow two live requests.
+    try {
+      const created = await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${id}:${promotion.id}`}))`;
+        const live = await tx.promotionRequest.findFirst({
+          where: { businessId: id, promotionId: promotion.id, status: { in: ['PENDING', 'APPROVED', 'ACTIVE'] } },
+          select: { id: true },
+        });
+        if (live) throw Object.assign(new Error('dup'), { code: 'REQUEST_ALREADY_PENDING' });
+        return tx.promotionRequest.create({
+          data: { businessId: id, promotionId: promotion.id, note: body.note ?? null },
+          include: {
+            promotion: { select: { id: true, name: true, slug: true, priceMinor: true, currency: true, durationDays: true } },
+            ...PROMOTION_REQUEST_PAYMENTS_INCLUDE,
+          },
+        });
+      });
+      await prisma.auditLog.create({
+        data: { actorId: currentUser(q).id, action: 'PROMOTION_REQUEST_CREATED', entityType: 'PromotionRequest', entityId: created.id, metadata: { businessId: id, promotionId: promotion.id } },
+      });
+      return r.status(201).send({ data: ownerPromotionRequest(created) });
+    } catch (e) {
+      if ((e as { code?: string }).code === 'REQUEST_ALREADY_PENDING')
+        return r.status(409).send({ error: { code: 'REQUEST_ALREADY_PENDING', message: 'You already have an active or pending request for this promotion' } });
+      throw e;
+    }
   });
 
-  /** Owner's promotion requests, newest first. */
+  /** Owner's promotion requests, newest first (with server-side expiry applied). */
   app.get('/api/v1/businesses/:id/promotion-requests', { preHandler: roles('BUSINESS_OWNER') }, async (q) => {
     const id = (q.params as { id: string }).id;
     await ownedBusiness(q, id);
+    await expireOverduePromotionRequests(prisma);
     const requests = await prisma.promotionRequest.findMany({
       where: { businessId: id },
-      include: { promotion: { select: { id: true, name: true, slug: true } } },
+      include: {
+        promotion: { select: { id: true, name: true, slug: true, priceMinor: true, currency: true, durationDays: true } },
+        ...PROMOTION_REQUEST_PAYMENTS_INCLUDE,
+      },
       orderBy: { createdAt: 'desc' },
     });
     return { data: requests.map(ownerPromotionRequest) };
+  });
+
+  /**
+   * Submits a manual payment for an APPROVED paid promotion request. The
+   * amount is the server-resolved catalog price — never a client number.
+   * One PENDING payment per request (advisory-lock guarded). Submission
+   * never activates the promotion; admin payment approval does.
+   */
+  app.post('/api/v1/businesses/:id/promotion-requests/:requestId/payment-requests', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const requestId = (q.params as { requestId: string }).requestId;
+    await ownedBusiness(q, id);
+    const body = promotionPaymentRequestCreateSchema.parse(q.body);
+
+    const target = await prisma.promotionRequest.findFirst({
+      where: { id: requestId, businessId: id },
+      include: { promotion: { select: { id: true, name: true, priceMinor: true, currency: true } } },
+    });
+    if (!target) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Promotion request not found' } });
+    const amountMinor = promotionAmountDue(target.promotion.priceMinor);
+    if (amountMinor <= 0)
+      return r.status(400).send({ error: { code: 'PAYMENT_NOT_REQUIRED', message: 'This promotion is free: no payment is required' } });
+    if (target.status !== 'APPROVED')
+      return r.status(409).send({ error: { code: 'NOT_PAYABLE', message: 'This promotion request is not awaiting payment' } });
+
+    const method = await prisma.paymentMethod.findFirst({ where: { id: body.paymentMethodId, isActive: true } });
+    if (!method) return r.status(400).send({ error: { code: 'INVALID_PAYMENT_METHOD', message: 'Choose a valid payment method' } });
+
+    const now = new Date();
+    const pending = await prisma.promotionPaymentRequest.findFirst({
+      where: { promotionRequestId: requestId, status: 'PENDING' },
+      select: { id: true },
+    });
+    if (pending) return r.status(409).send({ error: { code: 'PAYMENT_ALREADY_PENDING', message: 'You already have a payment awaiting review for this promotion' } });
+
+    try {
+      const created = await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${requestId}))`;
+        const recheck = await tx.promotionRequest.findUnique({ where: { id: requestId }, select: { status: true } });
+        if (!recheck || recheck.status !== 'APPROVED') throw Object.assign(new Error('state'), { code: 'NOT_PAYABLE' });
+        const dup = await tx.promotionPaymentRequest.findFirst({ where: { promotionRequestId: requestId, status: 'PENDING' }, select: { id: true } });
+        if (dup) throw Object.assign(new Error('dup'), { code: 'PAYMENT_ALREADY_PENDING' });
+        return tx.promotionPaymentRequest.create({
+          data: {
+            promotionRequestId: requestId,
+            businessId: id,
+            paymentMethodId: method.id,
+            amountMinor,
+            currency: target.promotion.currency,
+            transactionReference: body.transactionReference,
+            receiptStorageKey: body.receiptStorageKey,
+            paidAt: body.paidAt ? new Date(body.paidAt) : null,
+            note: body.note ?? null,
+            status: 'PENDING',
+            submittedAt: now,
+          },
+        });
+      });
+      await prisma.auditLog.create({
+        data: { actorId: currentUser(q).id, action: 'PROMOTION_PAYMENT_SUBMITTED', entityType: 'PromotionPaymentRequest', entityId: created.id, metadata: { businessId: id, promotionRequestId: requestId, amountMinor } },
+      });
+      const owner = await prisma.business.findUniqueOrThrow({ where: { id }, select: { ownerId: true } });
+      void createNotifications(prisma, [
+        {
+          userId: owner.ownerId,
+          type: NOTIFICATION_TYPES.PROMOTION_PAYMENT_SUBMITTED,
+          title: 'Promotion payment submitted',
+          message: `Your payment for "${target.promotion.name}" was submitted and is under review. The promotion activates after approval.`,
+          entityType: 'PromotionPaymentRequest',
+          entityId: created.id,
+        },
+      ]).catch(() => undefined);
+      const withRelations = await prisma.promotionPaymentRequest.findUniqueOrThrow({
+        where: { id: created.id },
+        include: { paymentMethod: { select: { id: true, name: true, type: true } } },
+      });
+      return r.status(201).send({ data: ownerPromotionPayment(withRelations) });
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === 'PAYMENT_ALREADY_PENDING')
+        return r.status(409).send({ error: { code, message: 'You already have a payment awaiting review for this promotion' } });
+      if (code === 'NOT_PAYABLE')
+        return r.status(409).send({ error: { code, message: 'This promotion request is not awaiting payment' } });
+      throw e;
+    }
+  });
+
+  /** Owner's promotion payments for one of their requests, newest first. */
+  app.get('/api/v1/businesses/:id/promotion-requests/:requestId/payment-requests', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const requestId = (q.params as { requestId: string }).requestId;
+    await ownedBusiness(q, id);
+    const target = await prisma.promotionRequest.findFirst({ where: { id: requestId, businessId: id }, select: { id: true } });
+    if (!target) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Promotion request not found' } });
+    const payments = await prisma.promotionPaymentRequest.findMany({
+      where: { promotionRequestId: requestId, businessId: id },
+      include: { paymentMethod: { select: { id: true, name: true, type: true } } },
+      orderBy: { submittedAt: 'desc' },
+    });
+    return { data: payments.map(ownerPromotionPayment) };
   });
 
   /* ------------------- Manual subscription payments (Phase 7B) ------- */
@@ -1617,10 +1899,14 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (!RECEIPT_KEY_PATTERN.test(storageKey))
       return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Receipt not found' } });
     const request = await prisma.subscriptionPaymentRequest.findFirst({ where: { receiptStorageKey: storageKey }, include: { business: { select: { ownerId: true } } } });
-    if (!request)
+    const promoRequest = request
+      ? null
+      : await prisma.promotionPaymentRequest.findFirst({ where: { receiptStorageKey: storageKey }, include: { business: { select: { ownerId: true } } } });
+    const ownerId = request?.business.ownerId ?? promoRequest?.business.ownerId;
+    if (!ownerId)
       return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Receipt not found' } });
     const user = currentUser(q);
-    const authorized = user.role === 'ADMIN' || request.business.ownerId === user.id;
+    const authorized = user.role === 'ADMIN' || ownerId === user.id;
     if (!authorized)
       return r.status(403).send({ error: { code: 'FORBIDDEN', message: 'You cannot view this receipt' } });
     const bytes = await readReceipt(storageKey);
@@ -4926,12 +5212,14 @@ export async function buildApp(): Promise<FastifyInstance> {
     return r.status(204).send();
   });
 
-  /** Admin DTO for promotion requests: business identity + reviewer fields. */
+  /** Admin DTO for promotion requests: business identity + reviewer + payment/activation fields. */
   const adminPromotionRequest = (p: {
     id: string; status: string; note: string | null; reviewerMessage: string | null;
     reviewedByUserId: string | null; createdAt: Date; reviewedAt: Date | null;
-    promotion: { id: string; name: string; slug: string };
+    activatedAt: Date | null; expiresAt: Date | null;
+    promotion: { id: string; name: string; slug: string; priceMinor: number | null; currency: string; durationDays: number | null };
     business: { id: string; name: string; slug: string; owner: { id: string; email: string; firstName: string | null; lastName: string | null } };
+    payments: { id: string; status: string; amountMinor: number; submittedAt: Date }[];
   }) => ({
     id: p.id,
     status: p.status,
@@ -4940,26 +5228,32 @@ export async function buildApp(): Promise<FastifyInstance> {
     reviewedByUserId: p.reviewedByUserId,
     createdAt: p.createdAt.toISOString(),
     reviewedAt: p.reviewedAt?.toISOString() ?? null,
+    activatedAt: p.activatedAt?.toISOString() ?? null,
+    expiresAt: p.expiresAt?.toISOString() ?? null,
+    paymentStatus: p.payments[0]?.status ?? null,
+    payments: p.payments.map((x) => ({ id: x.id, status: x.status, amountMinor: x.amountMinor, submittedAt: x.submittedAt.toISOString() })),
     promotion: p.promotion,
     business: p.business,
   });
 
   const PROMOTION_REQUEST_INCLUDE = {
-    promotion: { select: { id: true, name: true, slug: true } },
+    promotion: { select: { id: true, name: true, slug: true, priceMinor: true, currency: true, durationDays: true } },
     business: {
       select: { id: true, name: true, slug: true, owner: { select: { id: true, email: true, firstName: true, lastName: true } } },
     },
+    payments: { select: { id: true, status: true, amountMinor: true, submittedAt: true }, orderBy: { submittedAt: 'desc' as const } },
   } as const;
 
-  /** Promotion request queue: filterable by status/promotion, newest first. */
+  /** Promotion request queue: filterable by status/promotion, newest first (expiry applied on read). */
   app.get('/api/v1/admin/promotion-requests', { preHandler: roles('ADMIN') }, async (q) => {
     const query = z
       .object({
-        status: z.enum(['PENDING', 'APPROVED', 'REJECTED']).optional(),
+        status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'ACTIVE', 'EXPIRED', 'CANCELLED']).optional(),
         promotionId: z.string().uuid().optional(),
         limit: z.coerce.number().int().min(1).max(100).default(50),
       })
       .parse(q.query ?? {});
+    await expireOverduePromotionRequests(prisma);
     const where: Record<string, unknown> = {};
     if (query.status) where.status = query.status;
     if (query.promotionId) where.promotionId = query.promotionId;
@@ -4973,6 +5267,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   app.get('/api/v1/admin/promotion-requests/:id', { preHandler: roles('ADMIN') }, async (q, r) => {
+    await expireOverduePromotionRequests(prisma);
     const request = await prisma.promotionRequest.findUnique({
       where: { id: (q.params as { id: string }).id },
       include: PROMOTION_REQUEST_INCLUDE,
@@ -4982,9 +5277,13 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   /**
-   * Approves a promotion request: the owner is told the request was approved
-   * and that the team will contact them about next steps. No checkout, no
-   * payment — joining a promotion is arranged offline.
+   * Approves a promotion request.
+   *
+   * - Zero-price promotion: activates immediately (status ACTIVE with
+   *   server-computed start/end dates) — no payment is ever requested.
+   * - Paid promotion: moves to APPROVED ("payment required"). Application
+   *   approval NEVER activates a paid promotion; only admin approval of the
+   *   business's payment does.
    */
   app.post('/api/v1/admin/promotion-requests/:id/approve', { preHandler: roles('ADMIN') }, async (q, r) => {
     const id = (q.params as { id: string }).id;
@@ -4993,28 +5292,62 @@ export async function buildApp(): Promise<FastifyInstance> {
     const now = new Date();
     const existing = await prisma.promotionRequest.findUnique({
       where: { id },
-      include: { business: { select: { ownerId: true } }, promotion: { select: { name: true } } },
+      include: {
+        business: { select: { ownerId: true } },
+        promotion: { select: { name: true, priceMinor: true, currency: true, durationDays: true } },
+      },
     });
     if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Promotion request not found' } });
     if (existing.status !== 'PENDING')
       return r.status(409).send({ error: { code: 'NOT_PENDING', message: 'This promotion request has already been reviewed' } });
+    const amountMinor = promotionAmountDue(existing.promotion.priceMinor);
+    const isFree = amountMinor <= 0;
+    const days = Math.max(1, existing.promotion.durationDays ?? PROMOTION_DEFAULT_DURATION_DAYS);
     const approved = await prisma.promotionRequest.update({
       where: { id },
-      data: { status: 'APPROVED', reviewerMessage: reviewerMessage ?? null, reviewedByUserId: admin.id, reviewedAt: now },
+      data: isFree
+        ? {
+            status: 'ACTIVE',
+            activatedAt: now,
+            expiresAt: addDays(now, days),
+            reviewerMessage: reviewerMessage ?? null,
+            reviewedByUserId: admin.id,
+            reviewedAt: now,
+          }
+        : {
+            status: 'APPROVED',
+            reviewerMessage: reviewerMessage ?? null,
+            reviewedByUserId: admin.id,
+            reviewedAt: now,
+          },
       include: PROMOTION_REQUEST_INCLUDE,
     });
     await prisma.auditLog.create({
-      data: { actorId: admin.id, action: 'PROMOTION_REQUEST_APPROVED', entityType: 'PromotionRequest', entityId: id },
-    });
-    void createNotifications(prisma, [
-      {
-        userId: existing.business.ownerId,
-        type: NOTIFICATION_TYPES.PROMOTION_REQUEST_APPROVED,
-        title: 'Promotion request approved',
-        message: `Your request to join "${existing.promotion.name}" was approved. Our team will contact you about the next steps.`,
+      data: {
+        actorId: admin.id,
+        action: isFree ? 'PROMOTION_ACTIVATED' : 'PROMOTION_REQUEST_APPROVED',
         entityType: 'PromotionRequest',
         entityId: id,
       },
+    });
+    void createNotifications(prisma, [
+      isFree
+        ? {
+            userId: existing.business.ownerId,
+            type: NOTIFICATION_TYPES.PROMOTION_ACTIVATED,
+            title: 'Promotion active',
+            message: `Your request to join "${existing.promotion.name}" was approved and the promotion is now active.`,
+            entityType: 'PromotionRequest',
+            entityId: id,
+          }
+        : {
+            userId: existing.business.ownerId,
+            type: NOTIFICATION_TYPES.PROMOTION_REQUEST_APPROVED,
+            title: 'Promotion request approved',
+            message: `Your request to join "${existing.promotion.name}" was approved. A payment of ${formatMinor(existing.promotion.currency, amountMinor)} is required to activate it.`,
+            entityType: 'PromotionRequest',
+            entityId: id,
+          },
     ]).catch(() => undefined);
     return { data: adminPromotionRequest(approved) };
   });
@@ -5051,6 +5384,185 @@ export async function buildApp(): Promise<FastifyInstance> {
       },
     ]).catch(() => undefined);
     return { data: adminPromotionRequest(rejected) };
+  });
+
+  /* ---------------- Admin: promotion payment review ----------------- */
+  /**
+   * Promotion payment queue: filterable by status/request/business, newest
+   * first. Same paginated envelope as the subscription payment queue.
+   */
+  app.get('/api/v1/admin/promotion-payment-requests', { preHandler: roles('ADMIN') }, async (q) => {
+    const query = z
+      .object({
+        status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']).optional(),
+        promotionRequestId: z.string().uuid().optional(),
+        businessId: z.string().uuid().optional(),
+        limit: z.coerce.number().int().min(1).max(100).optional(),
+        cursor: z.string().optional(),
+      })
+      .parse(q.query ?? {});
+    const where: Record<string, unknown> = {};
+    if (query.status) where.status = query.status;
+    if (query.promotionRequestId) where.promotionRequestId = query.promotionRequestId;
+    if (query.businessId) where.businessId = query.businessId;
+    const requests = await prisma.promotionPaymentRequest.findMany({
+      where,
+      orderBy: [{ submittedAt: 'desc' }, { id: 'desc' }],
+      take: query.limit ?? 50,
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+      include: PROMOTION_PAYMENT_INCLUDE,
+    });
+    return {
+      data: {
+        items: requests.map(adminPromotionPayment),
+        nextCursor: requests.length === (query.limit ?? 50) ? requests[requests.length - 1].id : null,
+      },
+    };
+  });
+
+  app.get('/api/v1/admin/promotion-payment-requests/:id', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const req = await prisma.promotionPaymentRequest.findUnique({
+      where: { id: (q.params as { id: string }).id },
+      include: PROMOTION_PAYMENT_INCLUDE,
+    });
+    if (!req) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Promotion payment request not found' } });
+    return { data: adminPromotionPayment(req) };
+  });
+
+  /**
+   * Approves a promotion payment: the payment becomes APPROVED and — only
+   * now — the promotion request becomes ACTIVE with server-computed
+   * start/end dates (activation moment + catalog duration). Advisory-locked
+   * so a payment is processed exactly once; the promotion request must be
+   * APPROVED (application stage) or the approval is refused.
+   */
+  app.post('/api/v1/admin/promotion-payment-requests/:id/approve', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const requestId = (q.params as { id: string }).id;
+    const admin = currentUser(q);
+    const now = new Date();
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const existing = await tx.promotionPaymentRequest.findUnique({ where: { id: requestId } });
+        if (!existing) throw Object.assign(new Error('missing'), { code: 'NOT_FOUND' });
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${existing.promotionRequestId}))`;
+
+        // Reload inside the lock — the authoritative state.
+        const payment = await tx.promotionPaymentRequest.findUniqueOrThrow({
+          where: { id: requestId },
+          include: {
+            business: { select: { ownerId: true } },
+            promotionRequest: { select: { id: true, status: true, promotionId: true } },
+          },
+        });
+        if (payment.status !== 'PENDING') throw Object.assign(new Error('dup'), { code: 'NOT_PENDING' });
+        if (payment.promotionRequest.status !== 'APPROVED')
+          throw Object.assign(new Error('state'), { code: 'REQUEST_NOT_APPROVED' });
+
+        const method = await tx.paymentMethod.findUnique({ where: { id: payment.paymentMethodId } });
+        if (!method || !method.isActive) throw Object.assign(new Error('method'), { code: 'INVALID_PAYMENT_METHOD' });
+
+        // Approving the same transaction reference twice (two requests
+        // claiming one real payment) is rejected.
+        const referenceClash = await tx.promotionPaymentRequest.findFirst({
+          where: { transactionReference: payment.transactionReference, status: 'APPROVED', id: { not: payment.id } },
+          select: { id: true },
+        });
+        if (referenceClash) throw Object.assign(new Error('ref'), { code: 'REFERENCE_ALREADY_APPROVED' });
+
+        // Amount and duration are server-authoritative, resolved at
+        // activation: the catalog price/duration as they exist NOW.
+        const promotion = await tx.promotion.findUniqueOrThrow({ where: { id: payment.promotionRequest.promotionId } });
+        const days = Math.max(1, promotion.durationDays ?? PROMOTION_DEFAULT_DURATION_DAYS);
+        const approvedPayment = await tx.promotionPaymentRequest.update({
+          where: { id: payment.id },
+          data: { status: 'APPROVED', reviewedAt: now, reviewedByUserId: admin.id },
+        });
+        const activated = await tx.promotionRequest.update({
+          where: { id: payment.promotionRequest.id },
+          data: { status: 'ACTIVE', activatedAt: now, expiresAt: addDays(now, days) },
+        });
+        return { payment: approvedPayment, request: activated, ownerId: payment.business.ownerId, promotionName: promotion.name };
+      });
+      await prisma.auditLog.create({
+        data: { actorId: admin.id, action: 'PROMOTION_PAYMENT_APPROVED', entityType: 'PromotionPaymentRequest', entityId: requestId },
+      });
+      void createNotifications(prisma, [
+        {
+          userId: result.ownerId,
+          type: NOTIFICATION_TYPES.PROMOTION_PAYMENT_APPROVED,
+          title: 'Promotion payment approved',
+          message: `Your payment for "${result.promotionName}" was approved.`,
+          entityType: 'PromotionPaymentRequest',
+          entityId: requestId,
+        },
+        {
+          userId: result.ownerId,
+          type: NOTIFICATION_TYPES.PROMOTION_ACTIVATED,
+          title: 'Promotion active',
+          message: `Your "${result.promotionName}" promotion is now active until ${result.request.expiresAt!.toISOString().slice(0, 10)}.`,
+          entityType: 'PromotionRequest',
+          entityId: result.request.id,
+        },
+      ]).catch(() => undefined);
+      const full = await prisma.promotionPaymentRequest.findUniqueOrThrow({
+        where: { id: requestId },
+        include: PROMOTION_PAYMENT_INCLUDE,
+      });
+      return { data: adminPromotionPayment(full) };
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === 'NOT_FOUND') return r.status(404).send({ error: { code, message: 'Promotion payment request not found' } });
+      if (code === 'NOT_PENDING')
+        return r.status(409).send({ error: { code, message: 'This promotion payment has already been reviewed' } });
+      if (code === 'REQUEST_NOT_APPROVED')
+        return r.status(409).send({ error: { code, message: 'The promotion application is not approved, so a payment cannot activate it' } });
+      if (code === 'INVALID_PAYMENT_METHOD')
+        return r.status(400).send({ error: { code, message: 'The payment method is no longer active' } });
+      if (code === 'REFERENCE_ALREADY_APPROVED')
+        return r.status(409).send({ error: { code, message: 'This transaction reference was already approved for another payment' } });
+      throw e;
+    }
+  });
+
+  /**
+   * Rejects a promotion payment with an owner-visible reason (optional).
+   * The promotion request stays APPROVED so the business can submit a
+   * corrected payment — rejection never activates anything.
+   */
+  app.post('/api/v1/admin/promotion-payment-requests/:id/reject', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const requestId = (q.params as { id: string }).id;
+    const admin = currentUser(q);
+    const { reason } = promotionPaymentReviewSchema.parse(q.body ?? {});
+    const now = new Date();
+    const existing = await prisma.promotionPaymentRequest.findUnique({
+      where: { id: requestId },
+      include: {
+        business: { select: { ownerId: true } },
+        promotionRequest: { select: { promotion: { select: { name: true } } } },
+      },
+    });
+    if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Promotion payment request not found' } });
+    if (existing.status !== 'PENDING')
+      return r.status(409).send({ error: { code: 'NOT_PENDING', message: 'This promotion payment has already been reviewed' } });
+    const rejected = await prisma.promotionPaymentRequest.update({
+      where: { id: requestId },
+      data: { status: 'REJECTED', rejectionReason: reason ?? null, reviewedAt: now, reviewedByUserId: admin.id },
+      include: PROMOTION_PAYMENT_INCLUDE,
+    });
+    await prisma.auditLog.create({
+      data: { actorId: admin.id, action: 'PROMOTION_PAYMENT_REJECTED', entityType: 'PromotionPaymentRequest', entityId: requestId },
+    });
+    void createNotifications(prisma, [
+      {
+        userId: existing.business.ownerId,
+        type: NOTIFICATION_TYPES.PROMOTION_PAYMENT_REJECTED,
+        title: 'Promotion payment rejected',
+        message: `Your payment for "${existing.promotionRequest.promotion.name}" was not approved.${reason ? ` ${reason}` : ''} You can submit a corrected payment from your promotion requests.`,
+        entityType: 'PromotionPaymentRequest',
+        entityId: requestId,
+      },
+    ]).catch(() => undefined);
+    return { data: adminPromotionPayment(rejected) };
   });
 
   /** Orders across all businesses with business + customer identity. */

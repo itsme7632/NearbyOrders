@@ -144,6 +144,7 @@ model User {
   notificationPrefs         NotificationPreference?
   reviews                   Review[]                     @relation("ReviewCustomer")
   reviewedPayments          SubscriptionPaymentRequest[] @relation("PaymentReviewer")
+  reviewedPromotionPayments PromotionPaymentRequest[]  @relation("PromotionPaymentReviewer")
   reviewedVerifications     VerificationApplication[]    @relation("VerificationReviewer")
   reviewedPromotionRequests PromotionRequest[]           @relation("PromotionReviewer")
   bookingPayments           BookingPayment[]             @relation("BookingPaymentCustomer")
@@ -202,6 +203,7 @@ model Business {
   reviews                 Review[]
   subscriptions           BusinessSubscription[]
   paymentRequests         SubscriptionPaymentRequest[]
+  promotionPaymentRequests PromotionPaymentRequest[]
   payInMethods            BusinessPaymentMethod[]
   bookingPayments         BookingPayment[]
   orderPayments           OrderPayment[]
@@ -640,6 +642,7 @@ model PaymentMethod {
   createdAt       DateTime                     @default(now())
   updatedAt       DateTime                     @updatedAt
   paymentRequests SubscriptionPaymentRequest[]
+  promotionPaymentRequests PromotionPaymentRequest[]
 
   @@index([isActive, displayOrder])
 }
@@ -874,8 +877,9 @@ enum PromotionRequestStatus {
 }
 
 /// An admin-defined promotional campaign businesses can ask to join
-/// (e.g. "Ramadan Featured", "New in Town"). Display-only marketing data —
-/// no payment is ever attached to a promotion.
+/// (e.g. "Ramadan Featured", "New in Town"). Paid promotions are settled
+/// through manual PromotionPaymentRequest rows verified by an admin; a
+/// zero-price promotion activates on application approval with no payment.
 model Promotion {
   id           String             @id @default(uuid())
   name         String
@@ -905,12 +909,59 @@ model PromotionRequest {
   reviewerMessage  String?
   reviewedAt       DateTime?
   reviewedByUserId String?
+  /// Server-set when the promotion actually becomes ACTIVE (never at
+  /// application time). Duration is measured from here.
+  activatedAt      DateTime?
+  /// Server-computed at activation: activatedAt + promotion.durationDays.
+  expiresAt        DateTime?
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
   business         Business               @relation(fields: [businessId], references: [id], onDelete: Cascade)
   promotion        Promotion              @relation(fields: [promotionId], references: [id])
   reviewer         User?                  @relation("PromotionReviewer", fields: [reviewedByUserId], references: [id])
+  payments         PromotionPaymentRequest[]
 
   @@index([businessId, createdAt])
   @@index([status, createdAt])
+  @@index([status, expiresAt])
+}
+
+/// A business's manual PROMOTION-payment proof, awaiting (or past) admin
+/// verification. Mirrors SubscriptionPaymentRequest but is explicitly a
+/// promotion payment: it links to the PromotionRequest it pays for, and the
+/// amount is always the server-computed promotion price — never a
+/// client-sent number. Admin approval of THIS payment (never of the
+/// application alone) is what activates a paid promotion. Uses the same
+/// advisory-lock transaction pattern, so a payment can only ever be
+/// processed once.
+model PromotionPaymentRequest {
+  id                   String               @id @default(uuid())
+  promotionRequestId   String
+  businessId           String
+  paymentMethodId      String
+  amountMinor          Int
+  currency             String               @default("PKR")
+  transactionReference String
+  receiptStorageKey    String
+  status               PaymentRequestStatus @default(PENDING)
+  rejectionReason      String?
+  /// When the business says it actually paid (owner-supplied, not future).
+  /// For admin reference only — activation dates are server-computed.
+  paidAt               DateTime?
+  /// Optional owner note about the payment (max 500 chars).
+  note                 String?
+  submittedAt          DateTime             @default(now())
+  reviewedAt           DateTime?
+  reviewedByUserId     String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  promotionRequest     PromotionRequest     @relation(fields: [promotionRequestId], references: [id], onDelete: Cascade)
+  business             Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  paymentMethod        PaymentMethod        @relation(fields: [paymentMethodId], references: [id])
+  reviewedBy           User?                @relation("PromotionPaymentReviewer", fields: [reviewedByUserId], references: [id])
+
+  @@index([promotionRequestId, submittedAt])
+  @@index([businessId, submittedAt])
+  @@index([status, submittedAt])
+  @@index([transactionReference])
 }

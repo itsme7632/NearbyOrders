@@ -62,14 +62,14 @@ export function Modal(props: { title: string; onClose: () => void; wide?: boolea
 
 /* ----------------------- authorized document viewer --------------------- */
 
-export function useBlobViewer() {
+export function useBlobViewer(fetchFile: (storageKey: string) => Promise<string> = api.fetchVerificationDocumentUrl) {
   const [state, setState] = useState<{ url: string; error: string | null } | null>(null);
   const [loading, setLoading] = useState(false);
   const open = async (storageKey: string) => {
     setLoading(true);
     setState(null);
     try {
-      const url = await api.fetchVerificationDocumentUrl(storageKey);
+      const url = await fetchFile(storageKey);
       setState({ url, error: null });
     } catch (e) {
       setState({ url: '', error: e instanceof Error ? e.message : 'Could not load the file.' });
@@ -1198,6 +1198,248 @@ function PromotionCatalog() {
   );
 }
 
+const PROMOTION_REQUEST_STATUSES = ['PENDING', 'APPROVED', 'REJECTED', 'ACTIVE', 'EXPIRED', 'CANCELLED'];
+
+/** Reviews the newest payment of an APPROVED paid promotion request. */
+function PromotionPaymentReview(props: { paymentId: string; onChanged: () => void }) {
+  const [payment, setPayment] = useState<api.AdminPromotionPayment | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  // Promotion payment receipts are served by the same authorized receipt
+  // endpoint as subscription payments.
+  const blob = useBlobViewer(api.fetchReceiptObjectUrl);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    api
+      .getPromotionPaymentRequest(props.paymentId)
+      .then((p) => {
+        if (!cancelled) setPayment(p);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Could not load the payment.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [props.paymentId]);
+
+  const act = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await fn();
+      setRejecting(false);
+      setReason('');
+      props.onChanged();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Action failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const approve = (p: api.AdminPromotionPayment) => {
+    if (
+      !window.confirm(
+        `Approve this payment of ${fmtMoney(p.amountMinor, p.currency)} from ${p.business.name}? The promotion activates immediately with server-set start and end dates.`,
+      )
+    )
+      return;
+    void act(() => api.approvePromotionPayment(p.id));
+  };
+
+  if (loading) return <div className="loading">Loading latest payment…</div>;
+  if (error || !payment) return <div className="form-error">{error ?? 'Payment not found.'}</div>;
+
+  return (
+    <>
+      {actionError ? (
+        <div className="form-error" role="alert">
+          {actionError}
+        </div>
+      ) : null}
+      <table className="admin-table">
+        <tbody>
+          <tr>
+            <th style={{ width: 200 }}>Amount</th>
+            <td>{fmtMoney(payment.amountMinor, payment.currency)}</td>
+          </tr>
+          <tr>
+            <th>Payment method</th>
+            <td>
+              {payment.paymentMethod.name} <span className="muted">({payment.paymentMethod.type.replace(/_/g, ' ')})</span>
+            </td>
+          </tr>
+          <tr>
+            <th>Transaction reference</th>
+            <td className="mono">{payment.transactionReference ?? 'N/A'}</td>
+          </tr>
+          <tr>
+            <th>Paid date</th>
+            <td>{payment.paidAt ? fmtDate(payment.paidAt) : <span className="muted">Not provided</span>}</td>
+          </tr>
+          <tr>
+            <th>Submitted</th>
+            <td>{fmtDate(payment.submittedAt)}</td>
+          </tr>
+          {payment.note ? (
+            <tr>
+              <th>Business note</th>
+              <td>{payment.note}</td>
+            </tr>
+          ) : null}
+          <tr>
+            <th>Receipt / proof</th>
+            <td>
+              {payment.receiptStorageKey ? (
+                <button className="btn btn-ghost btn-sm" disabled={blob.loading} onClick={() => void blob.open(payment.receiptStorageKey!)}>
+                  {blob.loading ? 'Loading…' : 'View receipt'}
+                </button>
+              ) : (
+                <span className="muted">No receipt uploaded</span>
+              )}
+            </td>
+          </tr>
+          <tr>
+            <th>Status</th>
+            <td>
+              <StatusBadge value={payment.status} />
+            </td>
+          </tr>
+          {payment.reviewedAt ? (
+            <tr>
+              <th>Decision</th>
+              <td>
+                <div>Decided {fmtDate(payment.reviewedAt)}</div>
+                {payment.rejectionReason ? <div className="reason-box">{payment.rejectionReason}</div> : null}
+              </td>
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
+      {payment.status === 'PENDING' ? (
+        rejecting ? (
+          <div style={{ marginTop: 10, minWidth: 220 }}>
+            <input
+              className="admin-input"
+              style={{ minWidth: 0, width: '100%', marginBottom: 6 }}
+              placeholder="Rejection reason (required)"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              aria-label="Payment rejection reason"
+            />
+            <button
+              className="btn btn-danger btn-sm"
+              disabled={busy || reason.trim().length < 4}
+              onClick={() => void act(() => api.rejectPromotionPayment(payment.id, reason.trim()))}
+            >
+              Confirm rejection
+            </button>{' '}
+            <button className="btn btn-ghost btn-sm" onClick={() => setRejecting(false)}>
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+            <button className="btn btn-sm" disabled={busy} onClick={() => approve(payment)}>
+              {busy ? 'Working…' : 'Approve payment'}
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setRejecting(true)}>
+              Reject payment
+            </button>
+          </div>
+        )
+      ) : null}
+      <BlobViewerModal title="Payment receipt" state={blob.state} onClose={blob.close} />
+    </>
+  );
+}
+
+/** Expandable detail for one promotion request: note, reviewer message,
+    timeline, and (for approved paid requests) the payment review. */
+function PromotionRequestDetail(props: { request: AdminPromotionRequest; onChanged: () => void }) {
+  const r = props.request;
+  const price = r.promotion?.priceMinor ?? 0;
+  const isPaid = price > 0;
+  const ownerName = [r.business.owner.firstName, r.business.owner.lastName].filter(Boolean).join(' ') || 'No name on file';
+  return (
+    <>
+      <table className="admin-table">
+        <tbody>
+          <tr>
+            <th style={{ width: 200 }}>Business</th>
+            <td>
+              <strong>{r.business.name}</strong>
+              <div className="muted mono">{r.business.slug}</div>
+            </td>
+          </tr>
+          <tr>
+            <th>Owner</th>
+            <td>
+              <span className="mono">{r.business.owner.email}</span>
+              <div className="muted">{ownerName}</div>
+            </td>
+          </tr>
+          {r.promotion ? (
+            <tr>
+              <th>Promotion</th>
+              <td>
+                {r.promotion.name}
+                <div className="muted mono">
+                  {r.promotion.slug} · {r.promotion.durationDays} days · {isPaid ? fmtMoney(price, r.promotion.currency) : 'Free'}
+                </div>
+              </td>
+            </tr>
+          ) : null}
+          {r.note ? (
+            <tr>
+              <th>Application note</th>
+              <td>{r.note}</td>
+            </tr>
+          ) : null}
+          {r.reviewerMessage ? (
+            <tr>
+              <th>Reviewer message</th>
+              <td>
+                <div className="reason-box">{r.reviewerMessage}</div>
+              </td>
+            </tr>
+          ) : null}
+          <tr>
+            <th>Timeline</th>
+            <td>
+              <div>Requested {fmtDate(r.createdAt)}</div>
+              {r.reviewedAt ? <div>Decided {fmtDate(r.reviewedAt)}</div> : null}
+              {r.activatedAt ? <div>Activated {fmtDate(r.activatedAt)}</div> : null}
+              {r.expiresAt ? <div>Expires {fmtDate(r.expiresAt)}</div> : null}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      {r.status === 'APPROVED' && isPaid ? (
+        <div className="panel" style={{ marginTop: 12, marginBottom: 0 }}>
+          <h2>Latest payment</h2>
+          {r.payments.length === 0 ? (
+            <div className="empty">No payment submitted yet. The business owner can submit one from their app.</div>
+          ) : (
+            <PromotionPaymentReview paymentId={r.payments[0].id} onChanged={props.onChanged} />
+          )}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 function PromotionRequestQueue() {
   const [status, setStatus] = useState('PENDING');
   const [reqs, setReqs] = useState<AdminPromotionRequest[] | null>(null);
@@ -1207,6 +1449,7 @@ function PromotionRequestQueue() {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -1247,7 +1490,7 @@ function PromotionRequestQueue() {
       <div className="toolbar">
         <select className="admin-select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filter promotion requests by status">
           <option value="">All statuses</option>
-          {['PENDING', 'APPROVED', 'REJECTED'].map((s) => (
+          {PROMOTION_REQUEST_STATUSES.map((s) => (
             <option key={s} value={s}>
               {s}
             </option>
@@ -1271,57 +1514,108 @@ function PromotionRequestQueue() {
                   <th>Requested</th>
                   <th>Business</th>
                   <th>Promotion</th>
-                  <th>Status</th>
+                  <th>Price</th>
+                  <th>Applied</th>
+                  <th>Application status</th>
+                  <th>Payment status</th>
+                  <th>Promotion status</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {reqs!.map((r) => (
-                  <tr key={r.id}>
-                    <td>{fmtDate(r.createdAt)}</td>
-                    <td>{r.business.name}</td>
-                    <td>{r.promotion?.name ?? <span className="muted">N/A</span>}</td>
-                    <td>
-                      <StatusBadge value={r.status} />
-                    </td>
-                    <td>
-                      {r.status === 'PENDING' ? (
-                        messageFor === r.id ? (
-                          <div style={{ minWidth: 240 }}>
-                            <input
-                              className="admin-input"
-                              style={{ minWidth: 0, width: '100%', marginBottom: 6 }}
-                              placeholder="Reviewer message (optional)"
-                              value={message}
-                              onChange={(e) => setMessage(e.target.value)}
-                            />
-                            <button className="btn btn-sm" disabled={busy} onClick={() => void act(r.id, 'approve')}>
-                              Confirm approval
-                            </button>{' '}
-                            <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => void act(r.id, 'reject')}>
-                              Confirm rejection
-                            </button>{' '}
-                            <button className="btn btn-ghost btn-sm" onClick={() => setMessageFor(null)}>
-                              Cancel
+                {reqs!.map((r) => {
+                  const price = r.promotion?.priceMinor ?? 0;
+                  const isPaid = price > 0;
+                  const isOpen = expanded === r.id;
+                  return (
+                    <React.Fragment key={r.id}>
+                      <tr>
+                        <td>{fmtDate(r.createdAt)}</td>
+                        <td>
+                          <strong>{r.business.name}</strong>
+                          <div className="muted mono">{r.business.owner.email}</div>
+                        </td>
+                        <td>
+                          {r.promotion?.name ?? <span className="muted">N/A</span>}
+                          {r.promotion ? <div className="muted">{r.promotion.durationDays} days</div> : null}
+                        </td>
+                        <td>{r.promotion ? (isPaid ? fmtMoney(price, r.promotion.currency) : 'Free') : <span className="muted">N/A</span>}</td>
+                        <td>{r.activatedAt ? fmtDate(r.activatedAt) : <span className="muted">Not active</span>}</td>
+                        <td>
+                          <StatusBadge value={r.status} />
+                        </td>
+                        <td>{r.paymentStatus ? <StatusBadge value={r.paymentStatus} /> : <span className="muted">None</span>}</td>
+                        <td>
+                          {r.status === 'ACTIVE' ? (
+                            <>
+                              <span className="badge badge-open">Active</span>
+                              {r.expiresAt ? <div className="muted">until {fmtDate(r.expiresAt)}</div> : null}
+                            </>
+                          ) : r.status === 'EXPIRED' ? (
+                            <StatusBadge value="EXPIRED" />
+                          ) : (
+                            <span className="muted">N/A</span>
+                          )}
+                        </td>
+                        <td>
+                          {r.status === 'PENDING' ? (
+                            messageFor === r.id ? (
+                              <div style={{ minWidth: 240 }}>
+                                <div className="muted" style={{ marginBottom: 6 }}>
+                                  {isPaid
+                                    ? 'Approval moves this to the payment step: the owner must pay before the promotion goes live.'
+                                    : 'Approving activates this free promotion immediately. No payment is needed.'}
+                                </div>
+                                <input
+                                  className="admin-input"
+                                  style={{ minWidth: 0, width: '100%', marginBottom: 6 }}
+                                  placeholder="Reviewer message (optional)"
+                                  value={message}
+                                  onChange={(e) => setMessage(e.target.value)}
+                                />
+                                <button className="btn btn-sm" disabled={busy} onClick={() => void act(r.id, 'approve')}>
+                                  Confirm approval
+                                </button>{' '}
+                                <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => void act(r.id, 'reject')}>
+                                  Confirm rejection
+                                </button>{' '}
+                                <button className="btn btn-ghost btn-sm" onClick={() => setMessageFor(null)}>
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <>
+                                <button className="btn btn-ghost btn-sm" onClick={() => setMessageFor(r.id)}>
+                                  Decide
+                                </button>{' '}
+                                <button className="btn btn-ghost btn-sm" onClick={() => setExpanded(r.id)}>
+                                  Details
+                                </button>
+                              </>
+                            )
+                          ) : (
+                            <button className="btn btn-ghost btn-sm" onClick={() => setExpanded(isOpen ? null : r.id)}>
+                              {isOpen ? 'Hide details' : 'Details'}
                             </button>
-                          </div>
-                        ) : (
-                          <button className="btn btn-ghost btn-sm" onClick={() => setMessageFor(r.id)}>
-                            Decide
-                          </button>
-                        )
-                      ) : (
-                        <>
-                          {r.reviewerMessage ? <div className="reason-box">{r.reviewerMessage}</div> : null}
-                          {r.reviewedAt ? <div className="muted">Decided {fmtDate(r.reviewedAt)}</div> : null}
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                          )}
+                        </td>
+                      </tr>
+                      {isOpen ? (
+                        <tr key={`${r.id}-detail`}>
+                          <td colSpan={9}>
+                            <PromotionRequestDetail request={r} onChanged={() => void load()} />
+                          </td>
+                        </tr>
+                      ) : null}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           )}
+          <p className="hint">
+            Free promotions activate immediately on approval. Paid promotions wait for the owner's payment before going live.
+          </p>
         </div>
       )}
     </>
