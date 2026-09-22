@@ -27,7 +27,7 @@ beforeEach(() => {
   // AccountHub reads the session directly (no props) — provide a stable one.
   vi.spyOn(sessionApi, 'getSession').mockReturnValue(session);
   vi.spyOn(sessionApi, 'onSessionChange').mockReturnValue(() => {});
-  vi.spyOn(sessionApi, 'logout').mockImplementation(() => {});
+  vi.spyOn(sessionApi, 'logout').mockResolvedValue(undefined);
 });
 
 const noop = () => {};

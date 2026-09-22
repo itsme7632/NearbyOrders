@@ -109,7 +109,7 @@ export function MoveToCollectionSheet(props: {
         <EmptyState
           icon={<ShelvesIcon size={28} />}
           title="No collections yet"
-          body="Collections are little shelves for your saved businesses — Food, Services, Places to try."
+          body="Collections are little shelves for your saved businesses: Food, Services, Places to try."
         />
       ) : (
         <ul className="collection-pick-list" style={{ listStyle: 'none', margin: '0 0 12px', padding: 0, display: 'grid', gap: 8 }}>
@@ -266,7 +266,7 @@ export function CollectionsView(props: {
           </Button>
           {deleting ? (
             <p className="hint" style={{ marginTop: 6 }}>
-              The businesses stay in your Saved list — only the “{collection.name}” shelf is removed.
+              The businesses stay in your Saved list. Only the “{collection.name}” shelf is removed.
             </p>
           ) : null}
         </div>
@@ -299,7 +299,7 @@ export function CollectionsView(props: {
         <EmptyState
           icon={<ShelvesIcon size={30} />}
           title="Shelves, not piles"
-          body="Group the businesses you love into little collections — “Weekend food”, “Tailors to try”, “Family clinics”. Everything stays in your Saved list too."
+          body="Group the businesses you love into little collections (“Weekend food”, “Tailors to try”, “Family clinics”). Everything stays in your Saved list too."
         />
       ) : (
         <ul className="collection-list" style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 8 }}>

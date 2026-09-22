@@ -2,23 +2,18 @@ import { useState } from 'react';
 import {
   getBusinessSubscription,
   listSubscriptionPlans,
-  startBusinessTrial,
-  cancelBusinessSubscription,
+  listPaymentRequests,
+  applyTrial,
+  type PaymentRequest,
   type Subscription,
+  type BusinessSubscriptionState,
   type SubscriptionPlan,
 } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, Loading, Money } from '../components/ui.js';
-import { formatMoney } from '@nearbyorders/shared';
-import { CheckIcon, StarIcon } from '../components/icons.js';
+import { StarIcon } from '../components/icons.js';
+import { OwnerChoosePlan } from './OwnerChoosePlanScreen.js';
 import { OwnerPayments } from './OwnerSubscriptionPayments.js';
-
-/**
- * The one real subscription product. The trial endpoint starts this plan by
- * slug server-side (ensurePlan('nearbyorders-business')), so the client
- * selects it the same way instead of picking an arbitrary catalog row.
- */
-const CANONICAL_PLAN_SLUG = 'nearbyorders-business';
 
 const SUBSCRIPTION_STATUS_LABEL: Record<Subscription['status'], string> = {
   TRIAL: 'Free trial',
@@ -29,224 +24,213 @@ const SUBSCRIPTION_STATUS_LABEL: Record<Subscription['status'], string> = {
 };
 
 /**
- * What the single NearbyOrders Business plan actually includes. Derived only
- * from the plan description stored in the backend ("appear in search, take
- * bookings and orders, and manage your storefront") plus platform
- * capabilities that genuinely exist (catalog showcase, customer reviews).
- * Nothing is invented: there is no priority-support tier, no second plan.
- */
-const PLAN_BENEFITS = [
-  'Get discovered by more customers',
-  'Accept bookings and orders',
-  'Showcase your services & products',
-  'Customer reviews and ratings',
-] as const;
-
-/**
- * Business subscription as a professional pricing page: the trial hero, the
- * one real plan with its honest benefits, the live subscription state, and
- * the manual payment flow. There is exactly one backend plan
- * (PLAN_CATALOG) — tiers are never invented here.
+ * Business subscription: the live plan state, trial application for the
+ * selected plan, plan management, and the manual payment flow. Every number
+ * (price, trial days, renewal date) comes from the API — trial terms are
+ * never hard-coded, and submitting payment proof never claims activation:
+ * the NearbyOrders team reviews every request.
  */
 export function OwnerSubscription(props: { businessId: string; businessName?: string }) {
-  const subscription = useAsyncData<Subscription | null>(() => getBusinessSubscription(props.businessId), [props.businessId]);
+  const subscription = useAsyncData<BusinessSubscriptionState | null>(() => getBusinessSubscription(props.businessId), [props.businessId]);
   const plans = useAsyncData<SubscriptionPlan[]>(() => listSubscriptionPlans(), []);
+  const requests = useAsyncData<PaymentRequest[]>(() => listPaymentRequests(props.businessId), [props.businessId]);
+  const [choosingPlan, setChoosingPlan] = useState(false);
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const act = async (fn: () => Promise<Subscription>) => {
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await fn();
-      subscription.reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong');
-    } finally {
-      setBusy(false);
-    }
-  };
+  const [trialNotice, setTrialNotice] = useState<string | null>(null);
 
   if (subscription.loading || plans.loading) return <Loading label="Loading subscription…" />;
   if (subscription.error) return <ErrorState message={subscription.error} onRetry={subscription.reload} />;
   if (plans.error) return <ErrorState message={plans.error} onRetry={plans.reload} />;
 
-  const sub = subscription.data;
-  // The plan shown comes from the live subscription when one exists, else the
-  // canonical NearbyOrders Business plan from the public catalog — the price
-  // is never hard-coded here, and a non-canonical catalog row is never
-  // chosen arbitrarily.
-  const plan = sub?.plan ?? plans.data?.find((p) => p.slug === CANONICAL_PLAN_SLUG) ?? null;
-  // No subscription and no canonical plan in the catalog: say so honestly
-  // instead of inventing trial terms or a price for the hero below.
+  const state = subscription.data;
+  const sub = state?.subscription ?? null;
+  const activePlans = (plans.data ?? []).filter((p) => p.isActive);
+  // The working plan: the subscription's plan when one exists, else the
+  // owner's explicit choice, else the highlighted catalog plan. Never an
+  // arbitrary first row.
+  const plan =
+    sub?.plan ??
+    activePlans.find((p) => p.slug === selectedSlug) ??
+    activePlans.find((p) => p.isHighlighted) ??
+    activePlans[0] ??
+    null;
   if (!plan) {
     return (
       <EmptyState
         icon={<StarIcon size={22} />}
         title="No plans available right now"
         body="There are no subscription plans to show at the moment. Pull to refresh or try again later."
-        action={<Button onClick={() => { subscription.reload(); plans.reload(); }}>Retry</Button>}
+        action={
+          <Button
+            onClick={() => {
+              subscription.reload();
+              plans.reload();
+            }}
+          >
+            Retry
+          </Button>
+        }
       />
     );
   }
   const isLive = sub?.status === 'TRIAL' || sub?.status === 'ACTIVE';
-  const periodEnd = sub ? new Date(sub.currentPeriodEndAt).toLocaleDateString() : null;
+  // Trial eligibility is server-computed (trialStatus): ELIGIBLE means the
+  // business may start its one trial; ACTIVE/EXPIRED/CONVERTED means the
+  // trial was already used; anything else means not available right now.
+  const trialStatus = state?.trialStatus ?? null;
+  const trialWindow = state?.trial ?? null;
   const trialDaysLeft =
-    sub?.status === 'TRIAL' && sub.trialEndAt
+    trialWindow?.daysRemaining ??
+    (sub?.status === 'TRIAL' && sub.trialEndAt
       ? Math.max(0, Math.ceil((new Date(sub.trialEndAt).getTime() - Date.now()) / 86_400_000))
+      : null);
+  const renewalDate = sub ? new Date(sub.currentPeriodEndAt).toLocaleDateString() : null;
+
+  const latestRequest = (requests.data ?? [])[0] ?? null;
+  const paymentStatus = latestRequest
+    ? latestRequest.status === 'PENDING'
+      ? 'Payment under review by the NearbyOrders team'
+      : latestRequest.status === 'APPROVED'
+        ? `Last payment approved${latestRequest.reviewedAt ? ` on ${new Date(latestRequest.reviewedAt).toLocaleDateString()}` : ''}`
+        : latestRequest.status === 'REJECTED'
+          ? 'Last payment was rejected (see history)'
+          : 'Last payment request was cancelled'
+    : 'No payments submitted yet';
+
+  // Only the server's explicit ineligible verdict hides the CTA. With no
+  // trial status yet there is no signal either way, so the trial stays
+  // offered and applyTrial's 403/409 carries the server's reason.
+  const ineligibilityReason =
+    trialStatus && trialStatus !== 'ELIGIBLE'
+      ? trialStatus === 'ACTIVE' || trialStatus === 'EXPIRED' || trialStatus === 'CONVERTED'
+        ? 'Your free trial has already been used for this business.'
+        : 'A free trial is not available for this business right now.'
       : null;
+
+  const startTrial = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    setTrialNotice(null);
+    try {
+      const result = await applyTrial(props.businessId, plan.slug);
+      setTrialNotice(
+        `Free trial started. It ends on ${result.trialEndAt ? new Date(result.trialEndAt).toLocaleDateString() : 'the end of the trial period'}. Add a payment before then to stay active.`,
+      );
+      subscription.reload();
+    } catch (e) {
+      // 403 NOT_ELIGIBLE / 409 ALREADY_SUBSCRIBED lands here with the
+      // server's reason — surfaced verbatim, never invented.
+      setError(e instanceof Error ? e.message : 'Could not start the free trial');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div>
       {error ? <ErrorState message={error} /> : null}
-
-      {/* Intro: what NearbyOrders Business is. */}
-      <section aria-label="About NearbyOrders Business">
-        <h2 className="sub-page-title">{plan.name}</h2>
-        <p className="muted" style={{ marginTop: 2 }}>
-          {plan.description ?? 'Get discovered, accept bookings and orders, and grow your local business.'}
+      {trialNotice ? (
+        <p className="save-ok" role="status">
+          {trialNotice}
         </p>
+      ) : null}
+
+      {/* Current plan state. */}
+      <section className="sub-plan-card" aria-label="Current plan">
+        <div className="sub-plan-head">
+          <span className="sub-plan-name">{plan.name}</span>
+          <span className="sub-plan-price">
+            <Money minor={plan.monthlyPriceMinor} currency={plan.currency} />
+            <span className="muted"> /month</span>
+          </span>
+        </div>
+        {plan.description ? <p className="muted" style={{ marginTop: 6 }}>{plan.description}</p> : null}
+        <p className="sub-state-line" role="status">
+          <span className={`badge ${!sub ? 'badge-neutral' : sub.status === 'TRIAL' || sub.status === 'ACTIVE' ? 'badge-open' : sub.status === 'SUSPENDED' ? 'badge-warn' : 'badge-closed'}`}>
+            {sub ? SUBSCRIPTION_STATUS_LABEL[sub.status] : 'No subscription'}
+          </span>
+          {sub?.status === 'TRIAL' && trialDaysLeft !== null ? (
+            <span>
+              {trialDaysLeft} day{trialDaysLeft === 1 ? '' : 's'} remaining (trial ends{' '}
+              {trialWindow?.endsAt ? new Date(trialWindow.endsAt).toLocaleDateString() : 'soon'})
+            </span>
+          ) : null}
+          {sub?.status === 'ACTIVE' && renewalDate ? <span>Renews {renewalDate}</span> : null}
+        </p>
+        <div className="pay-details" style={{ marginTop: 10 }}>
+          <div className="pay-detail-row">
+            <span className="pay-detail-label">Payment status</span>
+            <span className="pay-detail-value">{paymentStatus}</span>
+          </div>
+          {latestRequest?.status === 'REJECTED' && latestRequest.rejectionReason ? (
+            <div className="pay-detail-row">
+              <span className="pay-detail-label">Rejection reason</span>
+              <span className="pay-detail-value">{latestRequest.rejectionReason}</span>
+            </div>
+          ) : null}
+        </div>
       </section>
 
-      {/* Trial hero: shown until the business is on a live plan. */}
+      {/* Trial application. */}
       {!isLive ? (
-        <section className="sub-trial-hero" aria-label="Free trial">
-          <span className="sub-trial-icon" aria-hidden>
-            <StarIcon size={22} />
-          </span>
-          <span className="sub-trial-main">
-            <span className="sub-trial-title">{`${plan.trialDays}-day free trial`}</span>
-            <span className="sub-trial-sub">Try all features free{plan ? ` for ${plan.trialDays} days` : ''}. No payment required now.</span>
-          </span>
+        <section className="sub-plan-card" aria-label="Free trial" style={{ marginTop: 12 }}>
+          <h3 className="sub-plan-name" style={{ fontSize: 15 }}>
+            {plan.trialDays}-day free trial
+          </h3>
+          <p className="muted" style={{ marginTop: 4 }}>
+            Try all features free for {plan.trialDays} days. No payment required now.
+          </p>
+          {ineligibilityReason ? (
+            <p className="hint" role="status">
+              {ineligibilityReason}
+            </p>
+          ) : (
+            <Button full disabled={busy} onClick={startTrial} >
+              {busy ? 'Starting…' : `Start ${plan.trialDays}-day free trial`}
+            </Button>
+          )}
         </section>
       ) : null}
 
-      {/* The plan card: the one real plan, its honest benefits, and the CTA
-          or live state. */}
-      {plan ? (
-        <section className="sub-plan-card" aria-label="Plan">
-          <div className="sub-plan-head">
-            <span className="sub-plan-name">{plan.name}</span>
-            <span className="sub-plan-price">
-              <Money minor={plan.monthlyPriceMinor} currency={plan.currency} />
-              <span className="muted"> /month</span>
-            </span>
-          </div>
-          {!isLive ? <p className="hint">after {plan.trialDays}-day free trial</p> : null}
-          <ul className="sub-benefits">
-            {PLAN_BENEFITS.map((b) => (
-              <li key={b}>
-                <CheckIcon size={15} />
-                <span>{b}</span>
-              </li>
-            ))}
-          </ul>
+      {/* Plan management: pick the plan the trial and the payment flow use. */}
+      <section aria-label="Manage plan" style={{ marginTop: 12 }}>
+        {choosingPlan ? (
+          <OwnerChoosePlan
+            businessId={props.businessId}
+            onBack={() => setChoosingPlan(false)}
+            onSelect={(p) => {
+              setSelectedSlug(p.slug);
+              setChoosingPlan(false);
+            }}
+          />
+        ) : (
+          <Button full variant="secondary" onClick={() => setChoosingPlan(true)}>
+            Manage plan
+          </Button>
+        )}
+      </section>
 
-          {!sub ? (
-            <Button full disabled={busy} onClick={() => act(() => startBusinessTrial(props.businessId))}>
-              {busy ? 'Starting…' : `Start ${plan.trialDays}-day free trial`}
-            </Button>
-          ) : sub.status === 'TRIAL' ? (
-            <>
-              <p className="sub-state-line" role="status">
-                <span className="badge badge-open">{SUBSCRIPTION_STATUS_LABEL.TRIAL}</span>
-                <span>
-                  {trialDaysLeft !== null
-                    ? `${trialDaysLeft} day${trialDaysLeft === 1 ? '' : 's'} remaining — then ${formatMoney(plan.monthlyPriceMinor, plan.currency)} /month`
-                    : `Trial in progress — then ${formatMoney(plan.monthlyPriceMinor, plan.currency)} /month`}
-                </span>
-              </p>
-              <CancelControl
-                busy={busy}
-                confirming={confirmingCancel}
-                onAsk={() => setConfirmingCancel(true)}
-                onKeep={() => setConfirmingCancel(false)}
-                onConfirm={() => act(() => cancelBusinessSubscription(props.businessId))}
-              />
-            </>
-          ) : sub.status === 'ACTIVE' ? (
-            <>
-              <p className="sub-state-line" role="status">
-                <span className="badge badge-open">{SUBSCRIPTION_STATUS_LABEL.ACTIVE}</span>
-                <span>{periodEnd ? `Renews ${periodEnd}` : 'Active'}</span>
-              </p>
-              <CancelControl
-                busy={busy}
-                confirming={confirmingCancel}
-                onAsk={() => setConfirmingCancel(true)}
-                onKeep={() => setConfirmingCancel(false)}
-                onConfirm={() => act(() => cancelBusinessSubscription(props.businessId))}
-              />
-            </>
-          ) : (
-            <>
-              <p className="sub-state-line" role="status">
-                <span className={`badge ${sub.status === 'SUSPENDED' ? 'badge-warn' : 'badge-closed'}`}>
-                  {SUBSCRIPTION_STATUS_LABEL[sub.status]}
-                </span>
-                <span>
-                  {sub.status === 'CANCELLED' && periodEnd
-                    ? `Access continues until ${periodEnd}`
-                    : sub.status === 'SUSPENDED'
-                      ? 'Payment verification in progress'
-                      : 'Ended. Start again any time.'}
-                </span>
-              </p>
-              {/*
-                Restart semantics verified against the server: trial starts are
-                rejected with 409 ALREADY_SUBSCRIBED only for live (TRIAL /
-                ACTIVE) subscriptions, so offering a fresh trial for EXPIRED /
-                CANCELLED / SUSPENDED does exactly what the button says.
-              */}
-              <Button full disabled={busy} onClick={() => act(() => startBusinessTrial(props.businessId))}>
-                {busy ? 'Starting…' : `Start ${plan.trialDays}-day free trial`}
-              </Button>
-            </>
-          )}
-        </section>
-      ) : (
-        <ErrorState message="Plan information is unavailable right now." onRetry={plans.reload} />
-      )}
-
-      {/* Manual payment flow (Phase 7B): pay-in details, receipt submission
-          and history. Rendered for every subscription state — an expired or
-          cancelled business pays the same way as a fresh one. */}
+      {/* Manual payment flow: pay-in details, receipt submission, history.
+          Rendered for every subscription state — an expired business pays the
+          same way as a fresh one. */}
       <section aria-label="Subscription payments" style={{ marginTop: 16 }}>
         <div className="section-head-v3">
           <h2>Payments</h2>
         </div>
-        <OwnerPayments businessId={props.businessId} />
+        <OwnerPayments
+          businessId={props.businessId}
+          planPriceMinor={plan.monthlyPriceMinor}
+          planCurrency={plan.currency}
+          planName={plan.name}
+          requests={requests.data ?? null}
+          requestsLoading={requests.loading}
+          requestsError={requests.error}
+          onRequestsReload={requests.reload}
+        />
       </section>
-    </div>
-  );
-}
-
-function CancelControl(props: {
-  busy: boolean;
-  confirming: boolean;
-  onAsk: () => void;
-  onKeep: () => void;
-  onConfirm: () => void;
-}) {
-  if (!props.confirming) {
-    return (
-      <div className="btn-row" style={{ marginTop: 10 }}>
-        <Button sm variant="ghost" onClick={props.onAsk} disabled={props.busy}>
-          Cancel subscription
-        </Button>
-      </div>
-    );
-  }
-  return (
-    <div className="btn-row" role="alert" style={{ marginTop: 10 }}>
-      <Button sm variant="danger" disabled={props.busy} onClick={props.onConfirm}>
-        {props.busy ? 'Cancelling…' : 'Yes, cancel'}
-      </Button>
-      <Button sm variant="ghost" disabled={props.busy} onClick={props.onKeep}>
-        Keep subscription
-      </Button>
     </div>
   );
 }

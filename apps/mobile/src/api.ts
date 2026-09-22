@@ -1,4 +1,5 @@
 import type { SearchPage } from '@nearbyorders/shared';
+import { getRefreshTokenStorage } from './auth-storage.js';
 
 /**
  * API base URL.
@@ -48,6 +49,21 @@ export function onSessionChange(listener: (s: Session | null) => void): () => vo
   return () => sessionListeners.delete(listener);
 }
 
+/**
+ * Drops the whole auth state: the memory-only access token/session and the
+ * securely stored refresh token. Used when the server rejects the session
+ * (401) so a revoked or expired login consistently returns to the login
+ * screen instead of retrying with a dead refresh token on next launch.
+ */
+export function clearAuthState(): void {
+  setSession(null);
+  void getRefreshTokenStorage()
+    .clearRefreshToken()
+    .catch(() => {
+      // Storage already unreachable — the memory session is what matters here.
+    });
+}
+
 async function request<T>(path: string, options: { method?: string; body?: unknown; auth?: boolean } = {}): Promise<T> {
   const headers: Record<string, string> = {};
   if (options.body !== undefined) headers['content-type'] = 'application/json';
@@ -70,7 +86,7 @@ async function request<T>(path: string, options: { method?: string; body?: unkno
 
   if (!res.ok) {
     const err = (payload as { error?: { code?: string; message?: string } } | null)?.error;
-    if (res.status === 401 && session) setSession(null);
+    if (res.status === 401 && session) clearAuthState();
     // Validation failures carry a Zod field map — surface it so users see
     // which field to fix instead of a generic "Invalid request".
     const details = (payload as { error?: { details?: { fieldErrors?: Record<string, string[]> } } } | null)?.error?.details
@@ -223,9 +239,22 @@ export type HourInput = { dayOfWeek: number; isClosed: boolean; opensAt?: string
 
 /* ------------------------------- auth ------------------------------ */
 
+/** Login response also carries a rotating refresh token (persisted securely). */
+type LoginResult = Session & { refreshToken?: string };
+
 export const login = (email: string, password: string) =>
-  request<Session>('/auth/login', { method: 'POST', body: { email, password } }).then((s) => {
-    setSession(s);
+  request<LoginResult>('/auth/login', { method: 'POST', body: { email, password } }).then(async (s) => {
+    // The access token lives in memory only. The refresh token goes straight
+    // into the secure store — never beside the session, never in our own
+    // plaintext.
+    setSession({ accessToken: s.accessToken, user: s.user });
+    if (s.refreshToken) {
+      try {
+        await getRefreshTokenStorage().setRefreshToken(s.refreshToken);
+      } catch {
+        // Login still succeeded; the session just won't survive an app restart.
+      }
+    }
     return s;
   });
 
@@ -241,7 +270,77 @@ export type RegisterResult = { id: string; email: string; role: string };
 export const register = (email: string, password: string, role: 'CUSTOMER' | 'BUSINESS_OWNER') =>
   request<RegisterResult>('/auth/register', { method: 'POST', body: { email, password, role } });
 
-export const logout = () => setSession(null);
+/**
+ * Logs out everywhere this device knows about: clears the in-memory session
+ * synchronously (the UI drops it at once), then revokes the stored refresh
+ * token server-side and wipes it from the secure store. Revocation failures
+ * never block logout — the local secret is gone either way.
+ */
+export const logout = (): Promise<void> => {
+  setSession(null);
+  return (async () => {
+    let refreshToken: string | null = null;
+    try {
+      refreshToken = await getRefreshTokenStorage().getRefreshToken();
+    } catch {
+      // Storage unreachable — local state is already cleared above.
+    }
+    try {
+      await getRefreshTokenStorage().clearRefreshToken();
+    } catch {
+      // Clearing is idempotent.
+    }
+    if (refreshToken) {
+      try {
+        await request<void>('/auth/logout', { method: 'POST', body: { refreshToken } });
+      } catch {
+        // Revoked-or-gone is the goal; never fail a logout over it.
+      }
+    }
+  })();
+};
+
+/**
+ * App-startup session restore (persistent login). When a refresh token was
+ * stored securely, exchange it for a fresh access/refresh pair, rotate the
+ * stored token, then re-read the user through GET /auth/me and restore the
+ * in-memory session. Any failure (expired, revoked, invalid, or offline)
+ * clears the stored token and returns false so the app shows the login
+ * screen. Passwords are never stored.
+ */
+export async function bootstrapSession(): Promise<boolean> {
+  let refreshToken: string | null = null;
+  try {
+    refreshToken = await getRefreshTokenStorage().getRefreshToken();
+  } catch {
+    refreshToken = null;
+  }
+  if (!refreshToken) return false;
+  try {
+    const refreshed = await request<{ accessToken: string; refreshToken: string; user: Session['user'] }>(
+      '/auth/refresh',
+      { method: 'POST', body: { refreshToken } },
+    );
+    try {
+      await getRefreshTokenStorage().setRefreshToken(refreshed.refreshToken);
+    } catch {
+      // Rotation write failed; the new pair still works for this run.
+    }
+    setSession({ accessToken: refreshed.accessToken, user: refreshed.user });
+    // Authoritative user restore after the token exchange.
+    const me = await whoami();
+    setSession({ accessToken: refreshed.accessToken, user: { id: me.id, email: me.email, role: me.role } });
+    return true;
+  } catch {
+    try {
+      await getRefreshTokenStorage().clearRefreshToken();
+    } catch {
+      // Clearing is idempotent.
+    }
+    setSession(null);
+    return false;
+  }
+}
 
 /* ------------------------------ account ----------------------------- */
 
@@ -279,17 +378,45 @@ export const updateCategory = (id: string, patch: { name?: string; isActive?: bo
 /** Mirrors the server's SubscriptionStatus enum (Phase 7A foundation). */
 export type SubscriptionStatus = 'TRIAL' | 'ACTIVE' | 'EXPIRED' | 'CANCELLED' | 'SUSPENDED';
 
-/** Plan as embedded in a subscription response (display only). */
+/**
+ * Plan as listed by GET /subscription/plans: the full public catalog row.
+ * Plans, prices and trial terms always come from this endpoint — never
+ * hard-coded in the app.
+ */
 export type SubscriptionPlan = {
+  id: string;
   slug: string;
   name: string;
   description: string | null;
   monthlyPriceMinor: number;
   currency: string;
   trialDays: number;
+  billingInterval: string;
+  benefits: string[];
+  displayOrder: number;
+  isHighlighted: boolean;
+  isActive: boolean;
 };
 
-/** The business's current (latest) subscription, or null before first trial. */
+/** Plan summary embedded in a subscription row (server shape: no id/isActive). */
+export type SubscriptionRowPlan = {
+  slug: string;
+  name: string;
+  description: string | null;
+  monthlyPriceMinor: number;
+  currency: string;
+  trialDays: number;
+  benefits: string[];
+  billingInterval: string;
+  displayOrder: number;
+  isHighlighted: boolean;
+};
+
+/**
+ * A business subscription row as returned by the API. Trial eligibility lives
+ * on the enclosing BusinessSubscriptionState (server-computed) — never
+ * guessed client-side.
+ */
 export type Subscription = {
   id: string;
   status: SubscriptionStatus;
@@ -298,23 +425,52 @@ export type Subscription = {
   currentPeriodStartAt: string;
   currentPeriodEndAt: string;
   cancelledAt: string | null;
-  plan: SubscriptionPlan;
+  planNameSnapshot: string | null;
+  planPriceMinorSnapshot: number | null;
+  plan: SubscriptionRowPlan | null;
 };
 
-/** Current subscription for an owned business (server evaluates expiry). */
+/** Live trial window computed by the server; null when no trial is live. */
+export type TrialWindow = { startsAt: string; endsAt: string; daysRemaining: number };
+
+/**
+ * Full subscription state for an owned business, exactly as
+ * GET /businesses/:id/subscription returns it: the latest subscription row
+ * (or null before the first trial), the live trial window, the
+ * server-computed trial status (NOT_ELIGIBLE / ELIGIBLE / ACTIVE / EXPIRED /
+ * CONVERTED), and the verification status — one round trip, server evaluates
+ * expiry.
+ */
+export type BusinessSubscriptionState = {
+  businessId: string;
+  subscription: Subscription | null;
+  status: SubscriptionStatus | null;
+  trial: TrialWindow | null;
+  planNameSnapshot: string | null;
+  planPriceMinorSnapshot: number | null;
+  verificationStatus: string | null;
+  trialStatus: string | null;
+};
+
+/** Current subscription state for an owned business (server evaluates expiry). */
 export const getBusinessSubscription = (businessId: string) =>
-  request<Subscription | null>(`/businesses/${businessId}/subscription`, { auth: true });
+  request<BusinessSubscriptionState>(`/businesses/${businessId}/subscription`, { auth: true });
 
 /** Public plan catalog: real plans and pricing, never hard-coded client-side. */
 export const listSubscriptionPlans = () => request<SubscriptionPlan[]>('/subscription/plans');
 
-/** Starts the plan's free trial; dates are server-generated, body is empty. */
-export const startBusinessTrial = (businessId: string) =>
-  request<Subscription>(`/businesses/${businessId}/subscription/trial`, { method: 'POST', auth: true });
-
-/** Cancels the live subscription; access continues until the period ends. */
-export const cancelBusinessSubscription = (businessId: string) =>
-  request<Subscription>(`/businesses/${businessId}/subscription/cancel`, { method: 'POST', auth: true });
+/**
+ * Applies the free trial for the chosen plan slug. Eligibility is decided
+ * server-side: 403 NOT_ELIGIBLE / 409 ALREADY_SUBSCRIBED surface as ApiError
+ * codes for the UI to explain honestly. Returns the created subscription row;
+ * its trialEndAt is server-generated from the plan's trial days.
+ */
+export const applyTrial = (businessId: string, planSlug: string) =>
+  request<Subscription>(`/businesses/${businessId}/subscription/trial/apply`, {
+    method: 'POST',
+    body: { planSlug },
+    auth: true,
+  });
 
 /* --------------------- manual subscription payments ---------------- */
 
@@ -330,6 +486,9 @@ export type PaymentMethod = {
   accountNumber: string;
   iban: string | null;
   instructions: string | null;
+  /** Optional QR image for the pay-in channel (server-provided URL or null). */
+  qrImageUrl: string | null;
+  displayOrder: number;
 };
 
 /** Mirrors the server's PaymentRequestStatus enum. */
@@ -339,11 +498,19 @@ export type PaymentRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCEL
 export type PaymentRequest = {
   id: string;
   status: PaymentRequestStatus;
+  /** Plan the payment was made for (server-resolved display name). */
+  planName: string | null;
   /** Server-computed plan price — the client never sends an amount. */
   amountMinor: number;
   currency: string;
+  /** Pay-in channel display name (server-resolved). */
+  paymentMethodName: string | null;
   transactionReference: string;
   receiptStorageKey: string;
+  /** Optional note the owner attached to the submission. */
+  note: string | null;
+  /** When the owner says the payment was made (their input, ISO string). */
+  paidAt: string | null;
   rejectionReason: string | null;
   submittedAt: string;
   reviewedAt: string | null;
@@ -351,32 +518,30 @@ export type PaymentRequest = {
   paymentMethod: { id: string; name: string; type: PaymentMethodType };
 };
 
-/** Wrapped list response for payment history: { data: { items, nextCursor } }. */
-export type PaymentRequestPage = { items: PaymentRequest[]; nextCursor: string | null };
-
 /** Active pay-in channels in display order (shown to any authenticated user). */
 export const listPaymentMethods = () => request<PaymentMethod[]>('/subscription/payment-methods', { auth: true });
 
-/** Payment history for an owned business, newest first. */
-export const listPaymentRequests = (businessId: string, limit = 20, cursor?: string) => {
-  const qs = new URLSearchParams({ limit: String(limit) });
-  if (cursor) qs.set('cursor', cursor);
-  return request<PaymentRequestPage>(`/businesses/${businessId}/subscription/payment-requests?${qs.toString()}`, { auth: true });
-};
+/** Payment history for an owned business, newest first: GET returns { data: [...] }. */
+export const listPaymentRequests = (businessId: string) =>
+  request<PaymentRequest[]>(`/businesses/${businessId}/subscription/payment-requests`, { auth: true });
 
 /**
  * Submits payment proof for admin verification. The body carries only the
- * chosen method, the transaction reference and the uploaded receipt's storage
- * key — amount and currency come from the server's plan catalog.
+ * chosen method, the transaction reference, the uploaded receipt's storage
+ * key, and the owner's optional note/payment date — amount and currency come
+ * from the server's plan catalog. Submission alone never activates anything:
+ * the NearbyOrders team reviews every request.
  */
 export const submitPaymentRequest = (
   businessId: string,
-  body: { paymentMethodId: string; transactionReference: string; receiptStorageKey: string },
+  body: {
+    paymentMethodId: string;
+    transactionReference: string;
+    receiptStorageKey: string;
+    paidAt?: string;
+    note?: string;
+  },
 ) => request<PaymentRequest>(`/businesses/${businessId}/subscription/payment-requests`, { method: 'POST', body, auth: true });
-
-/** Cancels the business's own PENDING request so a corrected one can be sent. */
-export const cancelPaymentRequest = (businessId: string, requestId: string) =>
-  request<PaymentRequest>(`/businesses/${businessId}/subscription/payment-requests/${requestId}/cancel`, { method: 'POST', auth: true });
 
 /**
  * Uploads the picked receipt image to the API (multipart). The server stores
@@ -398,13 +563,195 @@ export async function uploadPaymentReceipt(file: File): Promise<string> {
 
   const payload = (await res.json().catch(() => null)) as { data?: { storageKey?: string }; error?: { code?: string; message?: string } } | null;
   if (!res.ok) {
-    if (res.status === 401 && session) setSession(null);
+    if (res.status === 401 && session) clearAuthState();
     throw new ApiError(res.status, payload?.error?.code ?? 'UNKNOWN', payload?.error?.message ?? `Receipt upload failed (${res.status})`);
   }
   const storageKey = payload?.data?.storageKey;
   if (!storageKey) throw new ApiError(500, 'UNKNOWN', 'Receipt upload returned no storage key');
   return storageKey;
 }
+
+/**
+ * Downloads a stored receipt/proof through the authorized endpoint and
+ * returns it as a Blob the owner can view. Receipts are never rendered from
+ * a public URL — every read goes through this authenticated fetch.
+ */
+export async function downloadReceipt(storageKey: string): Promise<Blob> {
+  const s = getSession();
+  const headers: Record<string, string> = {};
+  if (s) headers.authorization = `Bearer ${s.accessToken}`;
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/subscription/payment-receipts/${encodeURIComponent(storageKey)}`, { headers });
+  } catch {
+    throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the NearbyOrders API. Is the API server running?');
+  }
+  if (!res.ok) {
+    if (res.status === 401 && s) clearAuthState();
+    throw new ApiError(res.status, 'UNKNOWN', `Receipt download failed (${res.status})`);
+  }
+  return res.blob();
+}
+
+/* --------------------------- verification -------------------------- */
+
+/** Mirrors the server's verification application status enum. */
+export type VerificationStatus = 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'CHANGES_REQUESTED';
+
+/** One uploaded verification document (identity or business proof). */
+export type VerificationDocument = {
+  id: string;
+  docType: string;
+  storageKey: string;
+  status: string;
+  uploadedAt: string;
+};
+
+/** The business's verification application (draft until submitted). */
+export type VerificationApplication = {
+  id: string;
+  status: VerificationStatus;
+  reviewerMessage: string | null;
+  legalName: string | null;
+  publicName: string | null;
+  ownerName: string | null;
+  phone: string | null;
+  address: string | null;
+  city: string | null;
+  categoryId: string | null;
+  description: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  registrationInfo: string | null;
+  submittedAt: string | null;
+  reviewedAt: string | null;
+};
+
+/** Full verification state: the application plus its uploaded documents. */
+export type VerificationState = {
+  application: VerificationApplication | null;
+  documents: VerificationDocument[];
+};
+
+/** Editable draft fields for the verification application. */
+export type VerificationDraft = {
+  legalName?: string | null;
+  publicName?: string | null;
+  ownerName?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  city?: string | null;
+  categoryId?: string | null;
+  description?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  registrationInfo?: string | null;
+};
+
+/** Reads the verification application + documents for an owned business. */
+export const getVerification = (businessId: string) =>
+  request<VerificationState>(`/businesses/${businessId}/verification`, { auth: true });
+
+/** Saves draft verification fields (no validation until submit). */
+export const updateVerificationDraft = (businessId: string, draft: VerificationDraft) =>
+  request<VerificationApplication>(`/businesses/${businessId}/verification`, { method: 'PUT', body: draft, auth: true });
+
+/** Submits the verification application: the server validates required fields + documents. */
+export const submitVerification = (businessId: string) =>
+  request<VerificationApplication>(`/businesses/${businessId}/verification/submit`, { method: 'POST', auth: true });
+
+/**
+ * Uploads a verification document (multipart file + docType). The server
+ * stores the bytes and returns the document row — never a public URL.
+ */
+export async function uploadVerificationDocument(
+  businessId: string,
+  file: File,
+  docType: string,
+): Promise<VerificationDocument> {
+  const s = getSession();
+  const headers: Record<string, string> = {};
+  if (s) headers.authorization = `Bearer ${s.accessToken}`;
+
+  let res: Response;
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('docType', docType);
+    res = await fetch(`${API_BASE}/businesses/${businessId}/verification/documents`, {
+      method: 'POST',
+      headers,
+      body: form,
+    });
+  } catch {
+    throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the NearbyOrders API. Is the API server running?');
+  }
+  const payload = (await res.json().catch(() => null)) as {
+    data?: VerificationDocument;
+    error?: { code?: string; message?: string };
+  } | null;
+  if (!res.ok) {
+    if (res.status === 401 && s) clearAuthState();
+    throw new ApiError(
+      res.status,
+      payload?.error?.code ?? 'UNKNOWN',
+      payload?.error?.message ?? `Document upload failed (${res.status})`,
+    );
+  }
+  const doc = payload?.data;
+  if (!doc?.id) throw new ApiError(500, 'UNKNOWN', 'Document upload returned no document');
+  return doc;
+}
+
+/* ---------------------------- promotions --------------------------- */
+
+/** One active promotion from the platform catalog. */
+export type Promotion = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  benefits: string[];
+  priceMinor: number;
+  currency: string;
+  durationDays: number;
+  requirements: string | null;
+  displayOrder: number;
+};
+
+/** Mirrors the server's promotion-request status enum. */
+export type PromotionRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+
+/** One promotion request placed by an owned business. */
+export type PromotionRequest = {
+  id: string;
+  promotionId: string;
+  promotionName: string | null;
+  note: string | null;
+  status: PromotionRequestStatus;
+  submittedAt: string;
+  reviewedAt: string | null;
+  rejectionReason: string | null;
+};
+
+/** Active promotions from the platform catalog (display order). */
+export const listPromotions = () => request<Promotion[]>('/promotions');
+
+/** One promotion by slug. */
+export const getPromotion = (slug: string) => request<Promotion>(`/promotions/${encodeURIComponent(slug)}`);
+
+/** Promotion request history for an owned business. */
+export const listPromotionRequests = (businessId: string) =>
+  request<PromotionRequest[]>(`/businesses/${businessId}/promotion-requests`, { auth: true });
+
+/**
+ * Requests a promotion for an owned business. The request stays PENDING for
+ * the NearbyOrders team to review — they contact the owner directly; there
+ * is no checkout or payment step in the app.
+ */
+export const requestPromotion = (businessId: string, body: { promotionId: string; note?: string }) =>
+  request<PromotionRequest>(`/businesses/${businessId}/promotion-requests`, { method: 'POST', body, auth: true });
 
 /* --------------------------- businesses ---------------------------- */
 

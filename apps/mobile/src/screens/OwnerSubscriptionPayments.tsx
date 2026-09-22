@@ -1,26 +1,36 @@
 import { useState } from 'react';
 import {
   listPaymentMethods,
-  listPaymentRequests,
   submitPaymentRequest,
-  cancelPaymentRequest,
   uploadPaymentReceipt,
+  downloadReceipt,
   type PaymentMethod,
   type PaymentRequest,
 } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, ErrorState, Field, Loading, Money } from '../components/ui.js';
-import { ImageUploader, type ImageUploaderState, type PendingImage } from '../components/ImageUploader.js';
+import { ImageUploader, type PendingImage } from '../components/ImageUploader.js';
 
-export function validatePaymentForm(form: { transactionReference: string; hasReceipt: boolean }): string | null {
+export function validatePaymentForm(form: {
+  transactionReference: string;
+  hasReceipt: boolean;
+  paidAt?: string;
+  note?: string;
+}): string | null {
   const ref = form.transactionReference.trim();
   if (ref.length < 4) return 'Enter the transaction reference (at least 4 characters).';
   if (ref.length > 100) return 'Transaction reference must be at most 100 characters.';
   if (!form.hasReceipt) return 'Attach a photo of your payment receipt.';
+  if (form.paidAt) {
+    const paid = new Date(form.paidAt);
+    if (Number.isNaN(paid.getTime())) return 'Enter a valid payment date.';
+    if (paid.getTime() > Date.now()) return 'The payment date cannot be in the future.';
+  }
+  if ((form.note ?? '').length > 500) return 'The note must be at most 500 characters.';
   return null;
 }
 
-/** Owner-facing labels for manual payment-request states (Phase 7B). */
+/** Owner-facing labels for manual payment-request states. */
 const PAYMENT_STATUS_LABEL: Record<PaymentRequest['status'], string> = {
   PENDING: 'Awaiting verification',
   APPROVED: 'Approved',
@@ -30,30 +40,44 @@ const PAYMENT_STATUS_LABEL: Record<PaymentRequest['status'], string> = {
 
 /**
  * The pay + verify experience for one owned business: server-configured
- * pay-in channels, a real receipt-pick (persisted through the image-storage
- * provider once connected, honestly blocked before that), submission for
- * admin verification, and the business's payment history with cancellation
- * of its own pending request. No client-sent amounts, no fake activations.
+ * pay-in channels, a real receipt-pick (persisted through the API's multipart
+ * endpoint), submission for admin verification, and the business's payment
+ * history. The amount shown is always the server plan price — the client
+ * never sends an amount, and submitting proof never claims activation: the
+ * NearbyOrders team reviews every request.
  */
-export function OwnerPayments(props: { businessId: string }) {
+export function OwnerPayments(props: {
+  businessId: string;
+  planPriceMinor: number | null;
+  planCurrency: string;
+  planName: string | null;
+  requests: PaymentRequest[] | null;
+  requestsLoading: boolean;
+  requestsError: string | null;
+  onRequestsReload: () => void;
+}) {
   const methods = useAsyncData<PaymentMethod[]>(() => listPaymentMethods(), []);
-  const history = useAsyncData<PaymentRequest[]>(() => listPaymentRequests(props.businessId).then((p) => p.items), [props.businessId]);
   const [formOpen, setFormOpen] = useState(false);
   const [methodId, setMethodId] = useState<string>('');
   const [reference, setReference] = useState('');
+  const [paidAt, setPaidAt] = useState('');
+  const [note, setNote] = useState('');
   const [pendingReceipt, setPendingReceipt] = useState<PendingImage | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
+  const [viewingReceiptId, setViewingReceiptId] = useState<string | null>(null);
 
   const methodList = methods.data ?? [];
-  const pendingRequest = (history.data ?? []).find((p) => p.status === 'PENDING');
+  const history = props.requests ?? [];
+  const pendingRequest = history.find((p) => p.status === 'PENDING');
   const selectedMethod = methodList.find((m) => m.id === methodId) ?? methodList[0] ?? null;
 
   const resetForm = () => {
     setFormOpen(false);
     setReference('');
+    setPaidAt('');
+    setNote('');
     setPendingReceipt(null);
     setError(null);
   };
@@ -64,7 +88,12 @@ export function OwnerPayments(props: { businessId: string }) {
       setError('Choose a payment method.');
       return;
     }
-    const validation = validatePaymentForm({ transactionReference: reference, hasReceipt: Boolean(pendingReceipt) });
+    const validation = validatePaymentForm({
+      transactionReference: reference,
+      hasReceipt: Boolean(pendingReceipt),
+      paidAt: paidAt || undefined,
+      note: note.trim() || undefined,
+    });
     if (validation) {
       setError(validation);
       return;
@@ -80,10 +109,14 @@ export function OwnerPayments(props: { businessId: string }) {
         paymentMethodId: selectedMethod.id,
         transactionReference: reference.trim(),
         receiptStorageKey: storageKey,
+        ...(paidAt ? { paidAt: new Date(paidAt).toISOString() } : {}),
+        ...(note.trim() ? { note: note.trim() } : {}),
       });
-      setNotice('Payment submitted. NearbyOrders will verify it shortly: your subscription activates after approval.');
+      setNotice(
+        'Payment submitted. The NearbyOrders team will review it and activate your subscription after approval.',
+      );
       resetForm();
-      history.reload();
+      props.onRequestsReload();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not submit the payment');
     } finally {
@@ -91,19 +124,21 @@ export function OwnerPayments(props: { businessId: string }) {
     }
   };
 
-  const cancelRequest = async (requestId: string) => {
-    if (busy) return;
-    setBusy(true);
+  /** Opens the stored receipt through the authorized endpoint (never a public URL). */
+  const viewReceipt = async (request: PaymentRequest) => {
+    if (viewingReceiptId) return;
+    setViewingReceiptId(request.id);
     setError(null);
     try {
-      await cancelPaymentRequest(props.businessId, requestId);
-      setConfirmCancelId(null);
-      setNotice('Payment request cancelled. You can submit a corrected one now.');
-      history.reload();
+      const blob = await downloadReceipt(request.receiptStorageKey);
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener');
+      // Revoke after a beat so the new tab has time to load the blob.
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not cancel the payment request');
+      setError(e instanceof Error ? e.message : 'Could not open the receipt');
     } finally {
-      setBusy(false);
+      setViewingReceiptId(null);
     }
   };
 
@@ -113,7 +148,7 @@ export function OwnerPayments(props: { businessId: string }) {
   if (methodList.length === 0) {
     return (
       <div className="pay-section">
-        <h3>Pay by hand: verified by NearbyOrders</h3>
+        <h3>Pay by hand, verified by NearbyOrders</h3>
         <p className="muted">No payment methods are available right now. Please try again later.</p>
       </div>
     );
@@ -121,7 +156,7 @@ export function OwnerPayments(props: { businessId: string }) {
 
   return (
     <div className="pay-section">
-      <h3>Pay by hand — verified by NearbyOrders</h3>
+      <h3>Pay by hand, verified by NearbyOrders</h3>
       {notice ? (
         <p className="save-ok" role="status">
           {notice}
@@ -131,8 +166,8 @@ export function OwnerPayments(props: { businessId: string }) {
 
       {pendingRequest ? (
         <div className="pay-pending" role="status">
-          <strong>Awaiting verification.</strong> Reference {pendingRequest.transactionReference}: we'll
-          activate your subscription as soon as it's approved.
+          <strong>Awaiting verification.</strong> Reference {pendingRequest.transactionReference}: the NearbyOrders
+          team reviews every payment, and your subscription activates after approval.
         </div>
       ) : !formOpen ? (
         <Button full variant="secondary" onClick={() => setFormOpen(true)} disabled={busy}>
@@ -162,12 +197,25 @@ export function OwnerPayments(props: { businessId: string }) {
               </div>
               <div className="pay-detail-row">
                 <span className="pay-detail-label">{selectedMethod.type === 'BANK_TRANSFER' ? 'IBAN / account' : 'Number'}</span>
-                <span className="pay-detail-value pay-detail-mono">{selectedMethod.type === 'BANK_TRANSFER' && selectedMethod.iban ? selectedMethod.iban : selectedMethod.accountNumber}</span>
+                <span className="pay-detail-value pay-detail-mono">
+                  {selectedMethod.type === 'BANK_TRANSFER' && selectedMethod.iban ? selectedMethod.iban : selectedMethod.accountNumber}
+                </span>
               </div>
               {selectedMethod.instructions ? <p className="hint">{selectedMethod.instructions}</p> : null}
             </div>
           ) : null}
-          <Field label="Transaction reference" hint="From your payment app or bank slip — we match it against your receipt.">
+          {props.planPriceMinor !== null ? (
+            <div className="pay-details">
+              <div className="pay-detail-row">
+                <span className="pay-detail-label">Amount due{props.planName ? ` (${props.planName})` : ''}</span>
+                <span className="pay-detail-value">
+                  <Money minor={props.planPriceMinor} currency={props.planCurrency} />
+                </span>
+              </div>
+              <p className="hint">Pay exactly this amount to the account above, then submit your proof below.</p>
+            </div>
+          ) : null}
+          <Field label="Transaction reference" hint="From your payment app or bank slip. We match it against your receipt.">
             <input
               value={reference}
               onChange={(e) => setReference(e.target.value)}
@@ -175,11 +223,22 @@ export function OwnerPayments(props: { businessId: string }) {
               maxLength={100}
             />
           </Field>
+          <Field label="Payment date" hint="When you made the payment (optional).">
+            <input type="date" value={paidAt} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setPaidAt(e.target.value)} />
+          </Field>
           <Field label="Payment receipt">
             <ImageUploader
               currentUrl={null}
               label="Payment receipt"
               onChange={(state) => setPendingReceipt(state.pending)}
+            />
+          </Field>
+          <Field label="Note (optional)">
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Anything the review team should know"
+              maxLength={500}
             />
           </Field>
           <div className="btn-row">
@@ -193,40 +252,36 @@ export function OwnerPayments(props: { businessId: string }) {
         </div>
       ) : null}
 
-      {history.error ? <ErrorState message={history.error} onRetry={history.reload} /> : null}
-      {history.data?.length ? (
+      {props.requestsError ? <ErrorState message={props.requestsError} onRetry={props.onRequestsReload} /> : null}
+      {props.requestsLoading && history.length === 0 ? <Loading label="Loading payment history…" /> : null}
+      {history.length > 0 ? (
         <div className="pay-history">
           <h4>Payment history</h4>
           <ul className="manage-list">
-            {history.data.map((p) => (
+            {history.map((p) => (
               <li key={p.id} className="manage-item">
                 <div className="item-row">
-                  <span className="item-name">{p.paymentMethod.name}</span>
+                  <span className="item-name">{p.paymentMethodName ?? p.paymentMethod.name}</span>
                   <Money minor={p.amountMinor} currency={p.currency} />
                 </div>
+                <p className="item-desc">
+                  {p.planName ? `${p.planName} · ` : ''}Submitted {new Date(p.submittedAt).toLocaleDateString()}
+                </p>
                 <p className="item-desc pay-ref">Ref {p.transactionReference}</p>
+                {p.paidAt ? <p className="item-desc">Paid on {new Date(p.paidAt).toLocaleDateString()}</p> : null}
+                {p.note ? <p className="item-desc">Note: {p.note}</p> : null}
                 <p className={`badge ${p.status === 'APPROVED' ? 'badge-open' : p.status === 'PENDING' ? 'badge-neutral' : 'badge-closed'}`}>
                   {PAYMENT_STATUS_LABEL[p.status]}
                 </p>
-                {p.status === 'REJECTED' && p.rejectionReason ? <p className="item-desc">Reason: {p.rejectionReason}</p> : null}
-                {p.status === 'PENDING' ? (
-                  confirmCancelId === p.id ? (
-                    <div className="btn-row" role="alert">
-                      <Button sm variant="danger" disabled={busy} onClick={() => void cancelRequest(p.id)}>
-                        {busy ? 'Cancelling…' : 'Yes, cancel it'}
-                      </Button>
-                      <Button sm variant="ghost" disabled={busy} onClick={() => setConfirmCancelId(null)}>
-                        Keep
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="btn-row">
-                      <Button sm variant="ghost" disabled={busy} onClick={() => setConfirmCancelId(p.id)}>
-                        Cancel request
-                      </Button>
-                    </div>
-                  )
+                {p.reviewedAt ? (
+                  <p className="item-desc">Reviewed {new Date(p.reviewedAt).toLocaleDateString()}</p>
                 ) : null}
+                {p.status === 'REJECTED' && p.rejectionReason ? <p className="item-desc">Reason: {p.rejectionReason}</p> : null}
+                <div className="btn-row">
+                  <Button sm variant="ghost" disabled={viewingReceiptId === p.id} onClick={() => void viewReceipt(p)}>
+                    {viewingReceiptId === p.id ? 'Opening…' : 'View receipt'}
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>
@@ -235,6 +290,3 @@ export function OwnerPayments(props: { businessId: string }) {
     </div>
   );
 }
-
-/* ------------------------------ Services ------------------------------ */
-

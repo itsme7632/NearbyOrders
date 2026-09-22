@@ -317,7 +317,7 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
           </div>
         ) : null}
         {fulfillment === 'DELIVERY' && addresses !== null && addresses.length === 0 ? (
-          <p className="addr-hint">No saved addresses yet — add one under Profile → Addresses. The business will confirm delivery details with you.</p>
+          <p className="addr-hint">No saved addresses yet. Add one under Profile → Addresses. The business will confirm delivery details with you.</p>
         ) : null}
       </section>
 

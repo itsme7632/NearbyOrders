@@ -24,7 +24,16 @@ beforeEach(() => {
   vi.spyOn(api, 'listBusinessOrders').mockResolvedValue([]);
   vi.spyOn(api, 'listBusinessBookings').mockResolvedValue([]);
   vi.spyOn(api, 'listOwnerPayments').mockResolvedValue({ bookingPayments: [], orderPayments: [] });
-  vi.spyOn(api, 'getBusinessSubscription').mockResolvedValue(null);
+  vi.spyOn(api, 'getBusinessSubscription').mockResolvedValue({
+    businessId: 'biz-1',
+    subscription: null,
+    status: null,
+    trial: null,
+    planNameSnapshot: null,
+    planPriceMinorSnapshot: null,
+    verificationStatus: null,
+    trialStatus: null,
+  });
 });
 
 const customerSession: Session = {

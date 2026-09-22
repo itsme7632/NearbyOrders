@@ -616,7 +616,7 @@ export function ProfileScreen(props: {
           <p className="auth-lede">
             {registering
               ? 'One account for discovering local businesses, booking services, and placing orders.'
-              : 'Pick up where you left off — your orders, bookings, and saved places are here.'}
+              : 'Pick up where you left off: your orders, bookings, and saved places are here.'}
           </p>
         </div>
 

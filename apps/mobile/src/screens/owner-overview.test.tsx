@@ -89,7 +89,7 @@ describe('business overview (redesigned hub)', () => {
     expect(region).toHaveTextContent('once approved');
   });
 
-  it('renders this-month metrics verbatim from the server — never invented', async () => {
+  it('renders this-month metrics verbatim from the server, never invented', async () => {
     await renderHome();
     await screen.findByText('Total bookings'); // loaded tiles, not the skeleton
     const region = screen.getByRole('region', { name: 'Key metrics' });

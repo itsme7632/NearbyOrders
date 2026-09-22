@@ -81,7 +81,7 @@ describe('push registration service (Phase 13)', () => {
     vi.restoreAllMocks();
   });
 
-  it('reports unavailable on the plain web build — no fabricated token', async () => {
+  it('reports unavailable on the plain web build, with no fabricated token', async () => {
     stubCapacitor('web');
     const outcome = await registerForPush();
     expect(outcome.status).toBe('unavailable');
@@ -116,7 +116,7 @@ describe('push registration service (Phase 13)', () => {
     }
   });
 
-  it('requests permission when prompted and denies honestly when refused — register never called', async () => {
+  it('requests permission when prompted and denies honestly when refused (register never called)', async () => {
     stubCapacitor('android');
     const harness = stubPlugin({ receive: 'prompt', requestReceive: 'denied' });
     const outcome = await registerForPush();

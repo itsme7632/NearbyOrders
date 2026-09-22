@@ -57,7 +57,7 @@ describe('customer location service (Phase 11)', () => {
     }
   });
 
-  it('maps a permission rejection to denied — and never invents coordinates', async () => {
+  it('maps a permission rejection to denied, and never invents coordinates', async () => {
     stubGeolocation({ code: 1 });
     const outcome = await requestCustomerLocation(1000);
     expect(outcome.status).toBe('denied');
@@ -172,7 +172,7 @@ describe('native permission flow (Capacitor Geolocation)', () => {
     return e;
   };
 
-  it('reads the position when permission is already granted — no prompt involved', async () => {
+  it('reads the position when permission is already granted (no prompt involved)', async () => {
     const geo = stubPlugin();
     const outcome = await acquireViaCapacitorPlugin(geo, 8000);
     expect(outcome).toEqual({ status: 'granted', coords: { lat: 31.5204, lng: 74.3587 } });
@@ -191,7 +191,7 @@ describe('native permission flow (Capacitor Geolocation)', () => {
     expect(geo.getCurrentPosition).toHaveBeenCalledTimes(1);
   });
 
-  it('treats coarse-only (approximate) grants as sufficient — Android 12+ behavior', async () => {
+  it('treats coarse-only (approximate) grants as sufficient: Android 12+ behavior', async () => {
     const geo = stubPlugin({
       checkPermissions: vi.fn().mockResolvedValue({ location: 'denied', coarseLocation: 'granted' }),
     });
@@ -200,7 +200,7 @@ describe('native permission flow (Capacitor Geolocation)', () => {
     expect(geo.requestPermissions).not.toHaveBeenCalled();
   });
 
-  it('never re-prompts when the OS will not show one — reports permanently-denied', async () => {
+  it('never re-prompts when the OS will not show one, and reports permanently-denied', async () => {
     const geo = stubPlugin({
       checkPermissions: vi.fn().mockResolvedValue({ location: 'denied', coarseLocation: 'denied' }),
     });

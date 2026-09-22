@@ -1,7 +1,49 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor, within } from '@testing-library/react';
 import * as api from '../api.js';
-import type { Business } from '../api.js';
+import type { Business, SubscriptionPlan, Subscription, SubscriptionRowPlan, BusinessSubscriptionState } from '../api.js';
+
+const testPlan: SubscriptionPlan = {
+  id: 'plan-1',
+  slug: 'p',
+  name: 'NearbyOrders Business',
+  description: null,
+  monthlyPriceMinor: 299900,
+  currency: 'PKR',
+  trialDays: 30,
+  billingInterval: 'MONTHLY',
+  benefits: [],
+  displayOrder: 0,
+  isHighlighted: true,
+  isActive: true,
+};
+
+/** Plan summary as embedded in a subscription row (server shape). */
+const testRowPlan: SubscriptionRowPlan = {
+  slug: 'p',
+  name: 'NearbyOrders Business',
+  description: null,
+  monthlyPriceMinor: 299900,
+  currency: 'PKR',
+  trialDays: 30,
+  benefits: [],
+  billingInterval: 'MONTHLY',
+  displayOrder: 0,
+  isHighlighted: true,
+};
+
+/** Wraps a subscription row in the server's subscription-state envelope. */
+const stateOf = (row: Subscription | null, patch: Partial<BusinessSubscriptionState> = {}): BusinessSubscriptionState => ({
+  businessId: 'biz-1',
+  subscription: row,
+  status: row?.status ?? null,
+  trial: null,
+  planNameSnapshot: row?.planNameSnapshot ?? null,
+  planPriceMinorSnapshot: row?.planPriceMinorSnapshot ?? null,
+  verificationStatus: null,
+  trialStatus: null,
+  ...patch,
+});
 
 afterEach(cleanup);
 
@@ -50,23 +92,20 @@ const business = (patch: Partial<Business> = {}): Business => ({
 
 describe('subscription badge', () => {
   it('shows real trial state with days remaining', async () => {
-    vi.mocked(api.getBusinessSubscription).mockResolvedValue({
-      id: 'sub-1',
-      status: 'TRIAL',
-      trialStartAt: new Date().toISOString(),
-      trialEndAt: new Date(Date.now() + 3 * 86_400_000).toISOString(),
-      currentPeriodStartAt: new Date().toISOString(),
-      currentPeriodEndAt: new Date(Date.now() + 3 * 86_400_000).toISOString(),
-      cancelledAt: null,
-      plan: {
-        slug: 'p',
-        name: 'NearbyOrders Business',
-        description: null,
-        monthlyPriceMinor: 299900,
-        currency: 'PKR',
-        trialDays: 30,
-      },
-    });
+    vi.mocked(api.getBusinessSubscription).mockResolvedValue(
+      stateOf({
+        id: 'sub-1',
+        status: 'TRIAL',
+        trialStartAt: new Date().toISOString(),
+        trialEndAt: new Date(Date.now() + 3 * 86_400_000).toISOString(),
+        currentPeriodStartAt: new Date().toISOString(),
+        currentPeriodEndAt: new Date(Date.now() + 3 * 86_400_000).toISOString(),
+        cancelledAt: null,
+        planNameSnapshot: 'NearbyOrders Business',
+        planPriceMinorSnapshot: 299900,
+        plan: testRowPlan,
+      }),
+    );
     const { SubscriptionBadge } = await import('./subscription-badge.js');
     render(<SubscriptionBadge businessId="biz-1" />);
     expect(await screen.findByText(/Free Trial/)).toBeTruthy();
@@ -74,16 +113,20 @@ describe('subscription badge', () => {
   });
 
   it('shows an active plan with its renewal date', async () => {
-    vi.mocked(api.getBusinessSubscription).mockResolvedValue({
-      id: 'sub-2',
-      status: 'ACTIVE',
-      trialStartAt: null,
-      trialEndAt: null,
-      currentPeriodStartAt: new Date().toISOString(),
-      currentPeriodEndAt: new Date('2026-10-01T00:00:00.000Z').toISOString(),
-      cancelledAt: null,
-      plan: { slug: 'p', name: 'NearbyOrders Business', description: null, monthlyPriceMinor: 299900, currency: 'PKR', trialDays: 30 },
-    });
+    vi.mocked(api.getBusinessSubscription).mockResolvedValue(
+      stateOf({
+        id: 'sub-2',
+        status: 'ACTIVE',
+        trialStartAt: null,
+        trialEndAt: null,
+        currentPeriodStartAt: new Date().toISOString(),
+        currentPeriodEndAt: new Date('2026-10-01T00:00:00.000Z').toISOString(),
+        cancelledAt: null,
+        planNameSnapshot: 'NearbyOrders Business',
+        planPriceMinorSnapshot: 299900,
+        plan: testRowPlan,
+      }),
+    );
     const { SubscriptionBadge } = await import('./subscription-badge.js');
     render(<SubscriptionBadge businessId="biz-1" />);
     expect(await screen.findByText(/Business Plan: Active/)).toBeTruthy();
@@ -91,16 +134,20 @@ describe('subscription badge', () => {
   });
 
   it('shows the expired state instead of a generic row', async () => {
-    vi.mocked(api.getBusinessSubscription).mockResolvedValue({
-      id: 'sub-3',
-      status: 'EXPIRED',
-      trialStartAt: null,
-      trialEndAt: null,
-      currentPeriodStartAt: new Date().toISOString(),
-      currentPeriodEndAt: new Date().toISOString(),
-      cancelledAt: null,
-      plan: { slug: 'p', name: 'NearbyOrders Business', description: null, monthlyPriceMinor: 299900, currency: 'PKR', trialDays: 30 },
-    });
+    vi.mocked(api.getBusinessSubscription).mockResolvedValue(
+      stateOf({
+        id: 'sub-3',
+        status: 'EXPIRED',
+        trialStartAt: null,
+        trialEndAt: null,
+        currentPeriodStartAt: new Date().toISOString(),
+        currentPeriodEndAt: new Date().toISOString(),
+        cancelledAt: null,
+        planNameSnapshot: 'NearbyOrders Business',
+        planPriceMinorSnapshot: 299900,
+        plan: testRowPlan,
+      }),
+    );
     const { SubscriptionBadge } = await import('./subscription-badge.js');
     render(<SubscriptionBadge businessId="biz-1" />);
     expect(await screen.findByText(/Plan Expired/)).toBeTruthy();
@@ -110,7 +157,7 @@ describe('subscription badge', () => {
 describe('business overview uses real data and business wording', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(api.getBusinessSubscription).mockResolvedValue(null);
+    vi.mocked(api.getBusinessSubscription).mockResolvedValue(stateOf(null));
   });
 
   it('renders honest zero states rather than invented numbers', async () => {

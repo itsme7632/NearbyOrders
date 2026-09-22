@@ -248,7 +248,7 @@ export function HomeScreen(props: {
         ) : locNotice ? (
           <button type="button" className="home-context-place home-context-toggle" onClick={enableNearby} aria-label="Location is off. Tap to try again.">
             <PinIcon size={13} />
-            Location off — tap to retry
+            Location off. Tap to retry
           </button>
         ) : (
           <button type="button" className="home-context-place home-context-toggle" onClick={enableNearby} aria-label="Show businesses near your location">

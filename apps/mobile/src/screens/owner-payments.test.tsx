@@ -14,7 +14,9 @@ const methods: PaymentMethod[] = [
     accountTitle: 'NearbyOrders Test',
     accountNumber: '03000000000',
     iban: null,
-    instructions: 'DEVELOPMENT TEST ACCOUNT — not a real Easypaisa number.',
+    instructions: 'DEVELOPMENT TEST ACCOUNT: not a real Easypaisa number.',
+    qrImageUrl: null,
+    displayOrder: 0,
   },
   {
     id: 'method-bank',
@@ -24,16 +26,22 @@ const methods: PaymentMethod[] = [
     accountNumber: '0000000000000',
     iban: 'PK00TEST0000000000000000',
     instructions: null,
+    qrImageUrl: null,
+    displayOrder: 1,
   },
 ];
 
 const historyItem: PaymentRequest = {
   id: 'pay-1',
   status: 'PENDING',
+  planName: 'NearbyOrders Business',
   amountMinor: 299900,
   currency: 'PKR',
+  paymentMethodName: 'Easypaisa (Test)',
   transactionReference: 'TX-HISTORY-1',
   receiptStorageKey: 'receipts/r.jpg',
+  note: null,
+  paidAt: null,
   rejectionReason: null,
   submittedAt: '2026-09-11T00:00:00.000Z',
   reviewedAt: null,
@@ -44,8 +52,28 @@ const historyItem: PaymentRequest = {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(api, 'listPaymentMethods').mockResolvedValue(methods);
-  vi.spyOn(api, 'listPaymentRequests').mockResolvedValue({ items: [], nextCursor: null });
 });
+
+const renderPayments = (overrides?: {
+  requests?: PaymentRequest[] | null;
+  requestsLoading?: boolean;
+  requestsError?: string | null;
+}) => {
+  const onRequestsReload = vi.fn();
+  render(
+    <OwnerPayments
+      businessId="biz-1"
+      planPriceMinor={299900}
+      planCurrency="PKR"
+      planName="NearbyOrders Business"
+      requests={overrides?.requests ?? []}
+      requestsLoading={overrides?.requestsLoading ?? false}
+      requestsError={overrides?.requestsError ?? null}
+      onRequestsReload={onRequestsReload}
+    />,
+  );
+  return { onRequestsReload };
+};
 
 const openForm = async () => {
   fireEvent.click(await screen.findByRole('button', { name: "I've paid: submit proof" }));
@@ -58,14 +86,21 @@ const setReceipt = () =>
 
 describe('OwnerPayments (pay-in details)', () => {
   it('renders server-configured pay-in details, never hardcoded numbers', async () => {
-    render(<OwnerPayments businessId="biz-1" />);
+    renderPayments();
     await openForm();
     expect(await screen.findByText('NearbyOrders Test')).toBeTruthy();
     expect(screen.getByText('03000000000')).toBeTruthy(); // from the mocked API
   });
 
+  it('shows the server plan amount due, never a client-typed number', async () => {
+    renderPayments();
+    await openForm();
+    expect(await screen.findByText(/Amount due/)).toBeTruthy();
+    expect(screen.getByText('Rs 2,999')).toBeTruthy(); // planPriceMinor prop, server plan price
+  });
+
   it('shows the IBAN for bank transfers and the number for wallets', async () => {
-    render(<OwnerPayments businessId="biz-1" />);
+    renderPayments();
     await openForm();
     await screen.findByText('NearbyOrders Test');
     // Default selection is the first method (Easypaisa): shows the number.
@@ -77,7 +112,7 @@ describe('OwnerPayments (pay-in details)', () => {
 
   it('explains when no payment methods are configured', async () => {
     vi.spyOn(api, 'listPaymentMethods').mockResolvedValue([]);
-    render(<OwnerPayments businessId="biz-1" />);
+    renderPayments();
     expect(await screen.findByText(/No payment methods are available/i)).toBeTruthy();
   });
 });
@@ -90,7 +125,7 @@ describe('OwnerPayments (submitting proof)', () => {
   });
 
   it('blocks submission without a receipt pick', async () => {
-    render(<OwnerPayments businessId="biz-1" />);
+    renderPayments();
     fireEvent.click(await screen.findByRole('button', { name: "I've paid: submit proof" }));
     const submit = screen.getByRole('button', { name: 'Submit for verification' });
     expect(submit.hasAttribute('disabled')).toBe(true);
@@ -99,7 +134,7 @@ describe('OwnerPayments (submitting proof)', () => {
   it('uploads the receipt, submits the server storage key and reloads history', async () => {
     const uploadSpy = vi.spyOn(api, 'uploadPaymentReceipt').mockResolvedValue('receipts/uploaded.jpg');
     const submitSpy = vi.spyOn(api, 'submitPaymentRequest').mockResolvedValue(historyItem);
-    render(<OwnerPayments businessId="biz-1" />);
+    const { onRequestsReload } = renderPayments();
     await openForm();
     fireEvent.change(screen.getByPlaceholderText('e.g. TX-123456789'), {
       target: { value: 'TX-NEW-1' },
@@ -115,12 +150,39 @@ describe('OwnerPayments (submitting proof)', () => {
     );
     expect(uploadSpy).toHaveBeenCalledTimes(1);
     expect(await screen.findByText(/Payment submitted/i)).toBeTruthy();
+    expect(onRequestsReload).toHaveBeenCalledTimes(1);
+  });
+
+  it('submits the optional note and payment date when provided', async () => {
+    vi.spyOn(api, 'uploadPaymentReceipt').mockResolvedValue('receipts/uploaded.jpg');
+    const submitSpy = vi.spyOn(api, 'submitPaymentRequest').mockResolvedValue(historyItem);
+    renderPayments();
+    await openForm();
+    fireEvent.change(screen.getByPlaceholderText('e.g. TX-123456789'), {
+      target: { value: 'TX-NEW-2' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Anything the review team should know'), {
+      target: { value: 'Paid from my JazzCash-adjacent wallet' },
+    });
+    setReceipt();
+    fireEvent.click(screen.getByRole('button', { name: 'Submit for verification' }));
+    await waitFor(() =>
+      expect(submitSpy).toHaveBeenCalledWith(
+        'biz-1',
+        expect.objectContaining({
+          paymentMethodId: 'method-easypaisa',
+          transactionReference: 'TX-NEW-2',
+          receiptStorageKey: 'receipts/uploaded.jpg',
+          note: 'Paid from my JazzCash-adjacent wallet',
+        }),
+      ),
+    );
   });
 
   it('surfaces a failed receipt upload without submitting', async () => {
     vi.spyOn(api, 'uploadPaymentReceipt').mockRejectedValue(new api.ApiError(400, 'VALIDATION_ERROR', 'Receipts must be JPG, PNG or WebP images'));
     const submitSpy = vi.spyOn(api, 'submitPaymentRequest');
-    render(<OwnerPayments businessId="biz-1" />);
+    renderPayments();
     await openForm();
     fireEvent.change(screen.getByPlaceholderText('e.g. TX-123456789'), {
       target: { value: 'TX-BAD-FILE' },
@@ -136,7 +198,7 @@ describe('OwnerPayments (submitting proof)', () => {
     vi.spyOn(api, 'submitPaymentRequest').mockRejectedValue(
       new api.ApiError(409, 'PAYMENT_ALREADY_PENDING', 'You already have a payment awaiting verification'),
     );
-    render(<OwnerPayments businessId="biz-1" />);
+    renderPayments();
     await openForm();
     fireEvent.change(screen.getByPlaceholderText('e.g. TX-123456789'), {
       target: { value: 'TX-ERR-1' },
@@ -149,42 +211,38 @@ describe('OwnerPayments (submitting proof)', () => {
 
 describe('OwnerPayments (history)', () => {
   it('lists history with status labels and the server-computed amount', async () => {
-    vi.spyOn(api, 'listPaymentRequests').mockResolvedValue({ items: [historyItem], nextCursor: null });
-    render(<OwnerPayments businessId="biz-1" />);
+    renderPayments({ requests: [historyItem] });
     expect(await screen.findByText('Awaiting verification')).toBeTruthy();
     expect(screen.getByText('Ref TX-HISTORY-1')).toBeTruthy();
     expect(screen.getByText('Rs 2,999')).toBeTruthy();
+    expect(screen.getByText(/NearbyOrders Business/)).toBeTruthy();
   });
 
   it('shows the rejection reason on rejected requests', async () => {
-    vi.spyOn(api, 'listPaymentRequests').mockResolvedValue({
-      items: [{ ...historyItem, id: 'pay-2', status: 'REJECTED', rejectionReason: 'Receipt unreadable.' }],
-      nextCursor: null,
-    });
-    render(<OwnerPayments businessId="biz-1" />);
+    renderPayments({ requests: [{ ...historyItem, id: 'pay-2', status: 'REJECTED', rejectionReason: 'Receipt unreadable.' }] });
     expect(await screen.findByText('Rejected')).toBeTruthy();
     expect(screen.getByText(/Reason: Receipt unreadable\./)).toBeTruthy();
   });
 
-  it('cancels its own pending request after confirmation', async () => {
-    vi.spyOn(api, 'listPaymentRequests').mockResolvedValue({ items: [historyItem], nextCursor: null });
-    const cancelSpy = vi
-      .spyOn(api, 'cancelPaymentRequest')
-      .mockResolvedValue({ ...historyItem, status: 'CANCELLED', reviewedAt: '2026-09-11T01:00:00.000Z' });
-    render(<OwnerPayments businessId="biz-1" />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancel request' }));
-    // Confirmation step first.
-    expect(cancelSpy).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Yes, cancel it' }));
-    await waitFor(() => expect(cancelSpy).toHaveBeenCalledWith('biz-1', 'pay-1'));
-    expect(await screen.findByText(/Payment request cancelled/i)).toBeTruthy();
+  it('shows the owner note and paid date on history entries', async () => {
+    renderPayments({
+      requests: [{ ...historyItem, note: 'Paid via Easypaisa agent', paidAt: '2026-09-10T00:00:00.000Z' }],
+    });
+    expect(await screen.findByText(/Note: Paid via Easypaisa agent/)).toBeTruthy();
+    expect(screen.getByText(/Paid on/)).toBeTruthy();
   });
 
   it('keeps the pending banner while a request awaits verification', async () => {
-    vi.spyOn(api, 'listPaymentRequests').mockResolvedValue({ items: [historyItem], nextCursor: null });
-    render(<OwnerPayments businessId="biz-1" />);
+    renderPayments({ requests: [historyItem] });
     expect(await screen.findByText(/Awaiting verification\./)).toBeTruthy();
     // The submit CTA is hidden while a request is pending.
     expect(screen.queryByRole('button', { name: "I've paid: submit proof" })).toBeNull();
+  });
+
+  it('surfaces history load errors with a retry', async () => {
+    const { onRequestsReload } = renderPayments({ requestsError: 'Could not load history' });
+    expect(await screen.findByText(/Could not load history/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+    expect(onRequestsReload).toHaveBeenCalledTimes(1);
   });
 });

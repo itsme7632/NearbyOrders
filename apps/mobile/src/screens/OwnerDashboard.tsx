@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { getMyBusinesses, type Business } from '../api.js';
+import { getMyBusinesses, getVerification, getBusinessSubscription, listPaymentRequests, type Business } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, Loading } from '../components/ui.js';
 import { CheckIcon, OrdersIcon, PinIcon, StoreIcon } from '../components/icons.js';
@@ -91,6 +91,12 @@ export function OwnerDashboardScreen(props: {
           </Button>
         ) : null}
       </div>
+
+      <OwnerAttentionItems
+        businessId={active.id}
+        onOpenVerification={() => props.onOpen(`${base}/verification`)}
+        onOpenSubscription={() => props.onOpen(`${base}/subscription`)}
+      />
 
       <OwnerHubSection label="Business">
         <OwnerHubRow
@@ -194,5 +200,90 @@ export function OwnerDashboardScreen(props: {
         />
       </OwnerHubSection>
     </div>
+  );
+}
+
+/**
+ * Actionable attention items only: verification not approved, an unused free
+ * trial, or a subscription that needs attention (expiring soon, expired, or
+ * a rejected payment). Renders nothing when everything is healthy — the hub
+ * structure below is untouched.
+ */
+export function OwnerAttentionItems(props: {
+  businessId: string;
+  onOpenVerification: () => void;
+  onOpenSubscription: () => void;
+}) {
+  const verification = useAsyncData(() => getVerification(props.businessId), [props.businessId]);
+  const subscription = useAsyncData(() => getBusinessSubscription(props.businessId), [props.businessId]);
+  const requests = useAsyncData(() => listPaymentRequests(props.businessId), [props.businessId]);
+
+  if (verification.loading || subscription.loading || requests.loading) return null;
+  if (verification.error || subscription.error || requests.error) return null;
+
+  const items: { title: string; subtitle: string; onClick: () => void }[] = [];
+
+  const verificationStatus = verification.data?.application?.status ?? null;
+  if (verificationStatus !== 'APPROVED') {
+    items.push({
+      title: 'Complete verification',
+      subtitle:
+        verificationStatus === 'SUBMITTED' || verificationStatus === 'UNDER_REVIEW'
+          ? 'Your application is under review'
+          : verificationStatus === 'CHANGES_REQUESTED'
+            ? 'The review team asked for changes'
+            : 'Get the verified badge for your business',
+      onClick: props.onOpenVerification,
+    });
+  }
+
+  const state = subscription.data;
+  const sub = state?.subscription ?? null;
+  const trialStatus = state?.trialStatus ?? null;
+  if (trialStatus === 'ELIGIBLE' && sub?.status !== 'TRIAL' && sub?.status !== 'ACTIVE') {
+    items.push({
+      title: 'Start your free trial',
+      subtitle: 'Try every feature free before you pay',
+      onClick: props.onOpenSubscription,
+    });
+  }
+
+  const latestRequest = (requests.data ?? [])[0] ?? null;
+  const trialDaysLeft = state?.trial?.daysRemaining ?? null;
+  const needsPlanAttention =
+    sub?.status === 'EXPIRED' ||
+    sub?.status === 'SUSPENDED' ||
+    (sub?.status === 'TRIAL' && trialDaysLeft !== null && trialDaysLeft <= 3) ||
+    latestRequest?.status === 'REJECTED';
+  if (needsPlanAttention) {
+    items.push({
+      title: 'Your plan needs attention',
+      subtitle:
+        sub?.status === 'EXPIRED'
+          ? 'Your subscription has expired'
+          : sub?.status === 'SUSPENDED'
+            ? 'Payment verification in progress'
+            : latestRequest?.status === 'REJECTED'
+              ? 'Your last payment was rejected'
+              : 'Your free trial ends soon',
+      onClick: props.onOpenSubscription,
+    });
+  }
+
+  if (items.length === 0) return null;
+
+  return (
+    <OwnerHubSection label="Needs attention">
+      {items.map((item) => (
+        <OwnerHubRow
+          key={item.title}
+          icon={<CheckIcon size={18} />}
+          title={item.title}
+          subtitle={item.subtitle}
+          badge="Action needed"
+          onClick={item.onClick}
+        />
+      ))}
+    </OwnerHubSection>
   );
 }

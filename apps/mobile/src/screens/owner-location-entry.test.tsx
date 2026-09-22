@@ -13,7 +13,16 @@ vi.mock('../api.js', async (importOriginal) => ({
   listBusinessBookings: vi.fn().mockResolvedValue([]),
   listBusinessReviews: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
   listOwnerPayments: vi.fn().mockResolvedValue({ bookingPayments: [], orderPayments: [] }),
-  getBusinessSubscription: vi.fn().mockResolvedValue(null),
+  getBusinessSubscription: vi.fn().mockResolvedValue({
+    businessId: 'biz-1',
+    subscription: null,
+    status: null,
+    trial: null,
+    planNameSnapshot: null,
+    planPriceMinorSnapshot: null,
+    verificationStatus: null,
+    trialStatus: null,
+  }),
 }));
 
 vi.mock('../useCartCount.js', () => ({ useCartCount: () => 0 }));

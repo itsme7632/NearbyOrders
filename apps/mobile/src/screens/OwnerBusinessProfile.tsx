@@ -1,18 +1,23 @@
 import { useState } from 'react';
-import { getMyBusinesses, logout, type Business } from '../api.js';
+import { getMyBusinesses, getVerification, logout, type Business } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, Loading } from '../components/ui.js';
 import { StoreIcon } from '../components/icons.js';
-import { SubscriptionBadge } from './subscription-badge.js';
+import { OwnerPlanCard } from './subscription-badge.js';
 import { Stars } from '../components/ReviewForm.js';
 
 /**
  * Business-mode Profile: the SELECTED BUSINESS's identity and business /
  * platform controls. Personal identity (My Orders, My Bookings, My Reviews)
  * lives only in Customer mode.
+ *
+ * Section order is deliberate: 1) business identity/status, 2) the
+ * NearbyOrders Plan card (never buried), 3) manage my business,
+ * 4) verification (real status), 5) promotions (real), 6) account.
  */
 export function OwnerBusinessProfile(props: {
   onOpenDashboard: () => void;
+  onOpenBusinessScreen: (businessId: string, screen: 'subscription' | 'verification' | 'promotions') => void;
   onEditProfile: () => void;
   onChangePassword: () => void;
   onOpenNotifications: () => void;
@@ -40,6 +45,8 @@ export function OwnerBusinessProfile(props: {
   const active = businesses.data.find((b) => b.id === selectedId) ?? businesses.data[0];
   const place = [active.locality, active.city].filter(Boolean).join(', ');
   const category = active.categories[0]?.name;
+  const open = (screen: 'subscription' | 'verification' | 'promotions') =>
+    props.onOpenBusinessScreen(active.id, screen);
 
   return (
     <div className="screen">
@@ -47,6 +54,7 @@ export function OwnerBusinessProfile(props: {
         <h1>Business Profile</h1>
       </header>
 
+      {/* 1) Business identity / status. */}
       <div className="card profile-hero">
         <div className="avatar" aria-hidden>
           {active.name[0]?.toUpperCase() ?? '?'}
@@ -64,7 +72,13 @@ export function OwnerBusinessProfile(props: {
           {active.averageRating != null ? <Stars value={active.averageRating} /> : null}
         </div>
       </div>
-      <SubscriptionBadge businessId={active.id} />
+
+      {/* 2) NearbyOrders Plan: prominent, near the top, never buried. */}
+      <OwnerPlanCard
+        businessId={active.id}
+        onManagePlan={() => open('subscription')}
+        onViewPayments={() => open('subscription')}
+      />
 
       {businesses.data.length > 1 ? (
         <div className="filter-row" aria-label="Switch business">
@@ -76,14 +90,9 @@ export function OwnerBusinessProfile(props: {
         </div>
       ) : null}
 
-      <div className="card">
-        <Button full onClick={props.onOpenDashboard}>
-          Manage my business
-        </Button>
-      </div>
-
-      <section className="hub-section" aria-label="Business management">
-        <h3 className="hub-section-label">Business management</h3>
+      {/* 3) Manage my business. */}
+      <section className="hub-section" aria-label="Manage my business">
+        <h3 className="hub-section-label">Manage my business</h3>
         <div className="hub-card">
           <button type="button" className="hub-row" onClick={props.onOpenDashboard}>
             <span className="hub-row-icon" aria-hidden>
@@ -100,32 +109,12 @@ export function OwnerBusinessProfile(props: {
         </div>
       </section>
 
-      <section className="hub-section" aria-label="Platform features">
+      {/* 4) Verification and 5) Promotions: real rows with live status. */}
+      <section className="hub-section" aria-label="Platform">
         <h3 className="hub-section-label">Platform</h3>
         <div className="hub-card">
-          <button type="button" className="hub-row" onClick={props.onOpenDashboard}>
-            <span className="hub-row-icon" aria-hidden>
-              ★
-            </span>
-            <span className="hub-row-text">
-              <span className="hub-row-title">NearbyOrders Plan</span>
-              <span className="hub-row-sub">Subscription and manual payments</span>
-            </span>
-            <span className="hub-row-chevron" aria-hidden>
-              ›
-            </span>
-          </button>
-          <button type="button" className="hub-row hub-row-disabled">
-            <span className="hub-row-icon" aria-hidden>
-              ✓
-            </span>
-            <span className="hub-row-text">
-              <span className="hub-row-title">Verification</span>
-              <span className="hub-row-sub">{active.isVerified ? 'Your business is verified' : 'Get a verified badge'}</span>
-            </span>
-            <span className="hub-row-soon">Soon</span>
-          </button>
-          <button type="button" className="hub-row hub-row-disabled">
+          <VerificationRow businessId={active.id} onOpen={() => open('verification')} />
+          <button type="button" className="hub-row" onClick={() => open('promotions')}>
             <span className="hub-row-icon" aria-hidden>
               ◆
             </span>
@@ -133,11 +122,14 @@ export function OwnerBusinessProfile(props: {
               <span className="hub-row-title">Promotions</span>
               <span className="hub-row-sub">Featured listing and platform perks</span>
             </span>
-            <span className="hub-row-soon">Soon</span>
+            <span className="hub-row-chevron" aria-hidden>
+              ›
+            </span>
           </button>
         </div>
       </section>
 
+      {/* 6) Account. */}
       <section className="hub-section" aria-label="Account">
         <h3 className="hub-section-label">Account</h3>
         <div className="hub-card">
@@ -197,10 +189,42 @@ export function OwnerBusinessProfile(props: {
       </section>
 
       <div className="card">
-        <Button full variant="ghost" onClick={logout}>
+        <Button full variant="ghost" onClick={() => void logout()}>
           Sign out
         </Button>
       </div>
     </div>
+  );
+}
+
+/** Verification hub row with the live application status (never "Soon"). */
+function VerificationRow(props: { businessId: string; onOpen: () => void }) {
+  const verification = useAsyncData(() => getVerification(props.businessId), [props.businessId]);
+  const status = verification.data?.application?.status ?? null;
+  const sub = status === 'APPROVED'
+    ? 'Your business is verified'
+    : status === 'SUBMITTED' || status === 'UNDER_REVIEW'
+      ? 'Under review by the NearbyOrders team'
+      : status === 'CHANGES_REQUESTED'
+        ? 'The review team asked for changes'
+        : status === 'REJECTED'
+          ? 'Not approved: update and resubmit'
+          : status === 'DRAFT'
+            ? 'Continue your application'
+            : 'Get a verified badge';
+  return (
+    <button type="button" className="hub-row" onClick={props.onOpen}>
+      <span className="hub-row-icon" aria-hidden>
+        ✓
+      </span>
+      <span className="hub-row-text">
+        <span className="hub-row-title">Verification</span>
+        <span className="hub-row-sub">{sub}</span>
+      </span>
+      {status === 'APPROVED' ? <span className="badge badge-verified">✓ Verified</span> : null}
+      <span className="hub-row-chevron" aria-hidden>
+        ›
+      </span>
+    </button>
   );
 }

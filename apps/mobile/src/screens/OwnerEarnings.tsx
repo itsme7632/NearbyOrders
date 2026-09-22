@@ -103,7 +103,7 @@ function EarningsForBusiness(props: { businessId: string; switcher?: React.React
           </>
         ) : null}
         <p className="hint">
-          Collected counts only completed orders and bookings, at their frozen totals. Cancelled, rejected and unpaid amounts are never counted. Customers pay you directly — NearbyOrders never holds customer money and takes no cut of these amounts.
+          Collected counts only completed orders and bookings, at their frozen totals. Cancelled, rejected and unpaid amounts are never counted. Customers pay you directly. NearbyOrders never holds customer money and takes no cut of these amounts.
         </p>
       </section>
     </div>

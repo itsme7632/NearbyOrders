@@ -11,6 +11,9 @@ import { OwnerBookingsList } from './OwnerBookingsList.js';
 import { OwnerOrders } from './OwnerOrders.js';
 import { OwnerCustomerPayments } from './OwnerCustomerPayments.js';
 import { OwnerSubscription } from './OwnerSubscriptionScreen.js';
+import { OwnerChoosePlan } from './OwnerChoosePlanScreen.js';
+import { OwnerVerification } from './OwnerVerificationScreen.js';
+import { OwnerPromotions } from './OwnerPromotionsScreen.js';
 import { OwnerReviews } from './OwnerReviews.js';
 
 /** Page titles for each dedicated management screen. */
@@ -28,6 +31,9 @@ const TITLE: Record<string, string> = {
   payments: 'Customer Payments',
   'payment-methods': 'Business Payment Methods',
   subscription: 'Business Subscription',
+  'choose-plan': 'Choose Your Plan',
+  verification: 'Business Verification',
+  promotions: 'Promotions',
   reviews: 'Business Reviews',
 };
 
@@ -79,6 +85,15 @@ export function OwnerScreen(props: { screen: string; businessId: string; onBack:
       break;
     case 'subscription':
       body = <OwnerSubscription businessId={businessId} />;
+      break;
+    case 'choose-plan':
+      body = <OwnerChoosePlan businessId={businessId} />;
+      break;
+    case 'verification':
+      body = <OwnerVerification businessId={businessId} />;
+      break;
+    case 'promotions':
+      body = <OwnerPromotions businessId={businessId} />;
       break;
     case 'reviews':
       body = <OwnerReviews businessId={businessId} />;

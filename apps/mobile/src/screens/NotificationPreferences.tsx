@@ -74,7 +74,7 @@ export function NotificationPreferencesScreen(props: { onBack: () => void }) {
       setPrefs(prev);
       const row = ROWS.find((r) => r.key === key);
       setActionError(`Could not update “${row?.title ?? key}”. Please try again.`);
-      error('Preference not saved — please try again.');
+      error('Preference not saved. Please try again.');
     } finally {
       setSavingKey(null);
     }

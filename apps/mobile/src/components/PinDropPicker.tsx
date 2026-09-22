@@ -121,7 +121,7 @@ export function PinDropPicker(props: { value: PinCoords; onChange: (v: PinCoords
       <MapCanvas handle={handle} height={240} ariaLabel="Map to place a pin for this address" />
       <p className="hint" style={{ marginTop: 6 }}>
         {value
-          ? 'Pin placed. Drag it or tap the map to adjust — couriers use it to find you.'
+          ? 'Pin placed. Drag it or tap the map to adjust. Couriers use it to find you.'
           : 'Tap the map to drop a pin at your entrance, or search below. The pin is optional.'}
       </p>
 

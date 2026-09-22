@@ -277,7 +277,7 @@ export function OwnerLocation(props: { businessId: string }) {
     <div>
       {configured ? (
         <p className="location-configured-note" role="status">
-          <PinIcon size={16} /> Your location is set — nearby customers see your real distance.
+          <PinIcon size={16} /> Your location is set. Nearby customers see your real distance.
         </p>
       ) : (
         <p className="hint">
@@ -300,7 +300,7 @@ export function OwnerLocation(props: { businessId: string }) {
         </button>
       </div>
       <p className="hint" style={{ marginTop: 6 }}>
-        Drag the pin to your exact entrance. {hasPin ? 'Your pin is placed — review it below.' : 'Then save your location.'}
+        Drag the pin to your exact entrance. {hasPin ? 'Your pin is placed. Review it below.' : 'Then save your location.'}
       </p>
 
       {/* Address search (OpenStreetMap/Nominatim via the provider abstraction). */}

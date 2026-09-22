@@ -187,7 +187,7 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
         <h1 className="home-greeting-title" style={{ fontSize: 'clamp(22px, 6vw, 26px)' }}>
           Search <em>NearbyOrders</em>
         </h1>
-        <p className="home-greeting-sub">Businesses, services, and products — in one place.</p>
+        <p className="home-greeting-sub">Businesses, services, and products, in one place.</p>
       </section>
 
       <form
@@ -362,14 +362,14 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
             body={
               hasFilters
                 ? 'Try removing a filter, checking the spelling, or searching a shorter phrase.'
-                : 'Try a different phrase — service and product names count too.'
+                : 'Try a different phrase. Service and product names count too.'
             }
           />
         ) : (
           <EmptyState
             icon={<ExploreIcon size={28} />}
             title="Search NearbyOrders"
-            body="Find businesses by what they do, bookable services, or orderable products — all in one search."
+            body="Find businesses by what they do, bookable services, or orderable products, all in one search."
           />
         )
       ) : (

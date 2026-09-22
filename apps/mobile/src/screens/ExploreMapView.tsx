@@ -111,7 +111,7 @@ export function ExploreMapView(props: {
           style={{ position: 'absolute', left: 12, right: 12, bottom: 12, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '10px 14px' }}
         >
           <p className="hint" style={{ margin: 0 }}>
-            Businesses in this list haven&apos;t set map locations yet — browse the list view instead.
+            Businesses in this list haven&apos;t set map locations yet. Browse the list view instead.
           </p>
         </div>
       ) : null}

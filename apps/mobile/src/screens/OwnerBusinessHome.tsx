@@ -292,7 +292,7 @@ function OverviewAttention(props: {
           </div>
         ) : (
           <p className="calm-note" role="status">
-            <CheckIcon size={16} /> All caught up — nothing needs your action right now.
+            <CheckIcon size={16} /> All caught up. Nothing needs your action right now.
           </p>
         )}
       </section>

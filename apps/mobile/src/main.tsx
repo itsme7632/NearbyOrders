@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { businessTabs, navigationTabs, resolveTab, type BusinessTab, type Tab } from './navigation.js';
-import { getSession, onSessionChange, type Session } from './api.js';
+import { getSession, onSessionChange, bootstrapSession, type Session } from './api.js';
 import { useRoute } from './hooks.js';
 import { applyDefaultModeForSession, initModeSessionSync, setAppMode, useAppMode } from './mode.js';
 import { BellIcon, ExploreIcon, HeartIcon, HomeIcon, ActivityIcon, OrdersIcon, BookingsIcon, PinIcon, ProfileIcon, StoreIcon } from './components/icons.js';
@@ -51,6 +51,19 @@ initModeSessionSync();
 // design — web/iOS skip it, and the env() fallbacks still apply.
 void applyNativeStatusBarInset();
 
+/**
+ * Edge-to-edge scroll clipping boundary: fixed opaque gutter covering
+ * exactly the Android status-bar region (0..--sat). Scrolled content slides
+ * underneath it instead of rendering behind the system status bar.
+ * position: fixed takes no layout space, so at-rest spacing is untouched.
+ * See .statusbar-gutter in styles.css. Rendered once per app-root branch —
+ * the bootstrap gate and the main tree are mutually exclusive, so exactly
+ * one gutter is ever in the DOM.
+ */
+function StatusbarGutter() {
+  return <div className="statusbar-gutter" aria-hidden="true" />;
+}
+
 /** Exported (besides self-mounting below) so tests can render the full app shell. */
 export function App() {
   const [tab, setTab] = useState<Tab>('Home');
@@ -62,6 +75,24 @@ export function App() {
   const [justCreatedStatus, setJustCreatedStatus] = useState<string | null>(null);
   const { mode } = useAppMode();
   useEffect(() => onSessionChange(setSession), []);
+
+  // Persistent login: on startup, a securely stored refresh token is
+  // exchanged for a fresh session (POST /auth/refresh, then GET /auth/me).
+  // Expired/revoked tokens are cleared and the login screen shows instead.
+  // The app renders nothing else until this resolves — no session, no fetch
+  // that could act on a stale identity.
+  const [authReady, setAuthReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    bootstrapSession()
+      .catch(() => false)
+      .then(() => {
+        if (!cancelled) setAuthReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Session bootstrap: each new session resolves its default mode (does this
   // owner still own businesses?) before any mode-sensitive content paints, so
@@ -340,6 +371,7 @@ export function App() {
       content = (
         <OwnerBusinessProfile
           onOpenDashboard={() => push('/owner')}
+          onOpenBusinessScreen={(businessId, screen) => push(`/owner/${businessId}/${screen}`)}
           onEditProfile={() => push('/edit-profile')}
           onChangePassword={() => push('/change-password')}
           onOpenNotifications={() => push('/notifications')}
@@ -407,15 +439,25 @@ export function App() {
       route.name === 'notifications');
   if (authFlow && content === null) content = session ? profileHubScreen : profileAuthScreen;
 
+  // Session restore gate: nothing else renders until the refresh-token
+  // exchange has resolved, so the app never paints on a stale identity.
+  // The status-bar gutter stays mounted — the Android inset guarantee is
+  // structural, not content-dependent.
+  if (!authReady) {
+    return (
+      <main>
+        <StatusbarGutter />
+        <div className="screen">
+          <Loading label="Signing you in…" />
+        </div>
+      </main>
+    );
+  }
+
   return (
     <ToastProvider>
     <main className={authFlow ? 'auth-mode' : undefined}>
-      {/* Edge-to-edge scroll clipping boundary: fixed opaque gutter covering
-          exactly the Android status-bar region (0..--sat). Scrolled content
-          slides underneath it instead of rendering behind the system status
-          bar. position: fixed takes no layout space, so at-rest spacing is
-          untouched. See .statusbar-gutter in styles.css. */}
-      <div className="statusbar-gutter" aria-hidden="true" />
+      <StatusbarGutter />
       {/* Phase 3I: keyboard / screen-reader users can jump past the header. */}
       {/* Skip link: jumps keyboard users past the header/nav to the main
           content. tabIndex={-1} lets the target receive programmatic focus so

@@ -66,7 +66,7 @@ describe('status-bar scroll clipping (Xiaomi scroll-underlap regression)', () =>
     expect(decl(block, 'right')).toBe('0');
   });
 
-  it('the gutter is exactly the system inset tall — never a hardcoded pixel value', () => {
+  it('the gutter is exactly the system inset tall, never a hardcoded pixel value', () => {
     const block = classBlock('.statusbar-gutter')!;
     const height = decl(block, 'height');
     expect(height).toBe('var(--sat)');

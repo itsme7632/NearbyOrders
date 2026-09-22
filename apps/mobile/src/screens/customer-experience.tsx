@@ -93,7 +93,7 @@ export function SavedBusinessesScreen(props: { onBack: () => void; onOpenBusines
         <EmptyState
           icon={<HeartIcon size={30} />}
           title="Nothing saved yet"
-          body="Tap the heart on any business to keep it here for quick access — then file your favorites into little collections like “Weekend food” or “Places to try”."
+          body="Tap the heart on any business to keep it here for quick access, then file your favorites into little collections like “Weekend food” or “Places to try”."
           action={
             <Button variant="ghost" onClick={props.onBack}>
               Explore businesses
@@ -342,7 +342,7 @@ function AddressForm(props: {
           onClick={() => setShowPin((s) => !s)}
         >
           {showPin ? '▾ Hide map pin' : '▸ Pin on map (optional)'}
-          {hasPin && !showPin ? ' — pin placed ✓' : null}
+          {hasPin && !showPin ? ' (pin placed ✓)' : null}
         </button>
         {showPin ? (
           <div style={{ marginTop: 8 }}>
@@ -526,7 +526,7 @@ export function AddressesScreen(props: { onBack: () => void }) {
               <p className="addr-text">{a.addressText}</p>
               {a.phone ? <p className="addr-phone">{a.phone}</p> : null}
               {a.latitude !== null && a.longitude !== null ? (
-                <p className="addr-pin-hint">📍 Map pin set — couriers can find you</p>
+                <p className="addr-pin-hint">📍 Map pin set. Couriers can find you</p>
               ) : null}
               <div className="addr-card-actions">
                 {!a.isDefault ? (
@@ -577,7 +577,7 @@ export function HelpScreen(props: { onBack: () => void }) {
     <InfoPage title="Help & support" onBack={props.onBack}>
       <p>
         NearbyOrders connects you with nearby local businesses for bookings and orders. If something went wrong with an
-        order or booking, contact the business directly first — their phone number and address are on their profile.
+        order or booking, contact the business directly first. Their phone number and address are on their profile.
       </p>
       <p>For account problems (sign-in, wrong charges shown, deleted listings), reach the platform team at the support
         address published with your app release. This page will grow into full self-service support.</p>
@@ -605,7 +605,7 @@ export function PrivacyScreen(props: { onBack: () => void }) {
   return (
     <InfoPage title="Privacy policy" onBack={props.onBack}>
       <p>
-        NearbyOrders stores your account details (name, email, phone), your bookings and orders, and — if you add them —
+        NearbyOrders stores your account details (name, email, phone), your bookings and orders, and (if you add them)
         your saved businesses and delivery addresses. Businesses you transact with see only the information needed to
         serve you (your name and the order/booking details).
       </p>
