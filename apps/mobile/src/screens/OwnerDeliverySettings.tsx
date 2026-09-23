@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { getDeliverySettings, putDeliverySettings, type DeliverySettings } from '../api.js';
 import { useAsyncData } from '../hooks.js';
-import { Button, ErrorState, Field, Loading, Toggle } from '../components/ui.js';
+import { Button, ErrorState, Loading, Toggle } from '../components/ui.js';
+import { OwnerHubRow } from './owner-ui.js';
+import { AlertIcon, BookingsIcon, CheckIcon, InfoIcon, StoreIcon } from '../components/icons.js';
 import { parsePriceToMinor } from './OwnerCatalog.js';
 
 export function DeliverySettingsSection(props: { businessId: string }) {
@@ -60,45 +62,93 @@ export function DeliverySettingsSection(props: { businessId: string }) {
         <>
           {error ? <ErrorState message={error} /> : null}
           {saved ? <p className="save-ok">Saved ✓</p> : null}
-          <Toggle
-            checked={model.deliveryEnabled}
-            onChange={(v) => {
-              setSaved(false);
-              setDeliveryEnabled(v);
-              if (!v) setCodEnabled(false);
-            }}
-            label="Offer delivery (own rider)"
-          />
+          <div className="set-row">
+            <div className="set-text">
+              <span className="set-title">Offer delivery</span>
+              <span className="set-body">Let customers choose delivery by your rider.</span>
+            </div>
+            <Toggle
+              checked={model.deliveryEnabled}
+              onChange={(v) => {
+                setSaved(false);
+                setDeliveryEnabled(v);
+                if (!v) setCodEnabled(false);
+              }}
+              label="Offer delivery"
+            />
+          </div>
           {model.deliveryEnabled ? (
             <>
-              <Toggle
-                checked={model.codEnabled}
-                onChange={(v) => {
-                  setSaved(false);
-                  setCodEnabled(v);
-                }}
-                label="Cash on delivery"
-              />
-              <Field label="Delivery fee (PKR)" hint="Added to the order total for delivery orders only.">
-                <input
-                  value={model.fee}
-                  onChange={(e) => {
+              <div className="set-row">
+                <div className="set-text">
+                  <span className="set-title">Cash on delivery</span>
+                  <span className="set-body">Accept cash when your rider hands over the order.</span>
+                </div>
+                <Toggle
+                  checked={model.codEnabled}
+                  onChange={(v) => {
                     setSaved(false);
-                    setFee(e.target.value);
+                    setCodEnabled(v);
                   }}
-                  inputMode="decimal"
-                  placeholder={current ? String(current.deliveryFeeMinor / 100) : 'e.g. 200'}
-                  aria-invalid={feeInvalid}
+                  label="Cash on delivery"
                 />
-              </Field>
-              {feeInvalid ? <p className="form-error">Enter a valid fee in rupees, e.g. 200 or 200.50.</p> : null}
+              </div>
+              <div className="set-field">
+                <div className="set-text">
+                  <span className="set-title">Delivery fee (PKR)</span>
+                  <span className="set-body">Added to the order total for delivery orders only. Leave empty to keep the current fee.</span>
+                </div>
+                <div className="field">
+                  <input
+                    value={model.fee}
+                    onChange={(e) => {
+                      setSaved(false);
+                      setFee(e.target.value);
+                    }}
+                    inputMode="decimal"
+                    placeholder={current ? String(current.deliveryFeeMinor / 100) : 'e.g. 200'}
+                    aria-invalid={feeInvalid}
+                    aria-label="Delivery fee in rupees"
+                  />
+                </div>
+                {feeInvalid ? <p className="form-error">Enter a valid fee in rupees, e.g. 200 or 200.50.</p> : null}
+              </div>
             </>
           ) : null}
-          <Button full onClick={save} disabled={busy || feeInvalid}>
-            {busy ? 'Saving…' : 'Save delivery settings'}
-          </Button>
+          <div className="set-actions">
+            <Button full onClick={save} disabled={busy || feeInvalid}>
+              {busy ? 'Saving…' : 'Save delivery settings'}
+            </Button>
+          </div>
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * Business Settings screen (the 'settings' route). Delivery and COD are the
+ * only business-wide settings that exist, so this screen hosts the delivery
+ * section plus links to every other configuration area — visibly different
+ * from the focused 'delivery' route, which shows the delivery form alone.
+ * Customer payment channels live in OwnerCustomerPayments ('payments' /
+ * 'payment-methods' routes); this screen links to them rather than
+ * duplicating them.
+ */
+export function BusinessSettingsScreen(props: { businessId: string; onOpen: (path: string) => void }) {
+  const base = `/owner/${props.businessId}`;
+  return (
+    <>
+      <DeliverySettingsSection businessId={props.businessId} />
+      <section className="card" aria-label="More settings" style={{ marginTop: 12 }}>
+        <h2>More settings</h2>
+        <p className="hint">Everything else you can configure for this business.</p>
+        <OwnerHubRow icon={<StoreIcon size={18} />} title="Business profile" subtitle="Name, address, contact, category" onClick={() => props.onOpen(`${base}/profile`)} />
+        <OwnerHubRow icon={<BookingsIcon size={18} />} title="Business hours" subtitle="Set your operating hours" onClick={() => props.onOpen(`${base}/hours`)} />
+        <OwnerHubRow icon={<InfoIcon size={18} />} title="Service advance settings" subtitle="Per-service advance requirements" onClick={() => props.onOpen(`${base}/advances`)} />
+        <OwnerHubRow icon={<AlertIcon size={18} />} title="Customer payments" subtitle="Verify customer payment proofs" onClick={() => props.onOpen(`${base}/payments`)} />
+        <OwnerHubRow icon={<CheckIcon size={18} />} title="Business payment methods" subtitle="Channels customers pay you through" onClick={() => props.onOpen(`${base}/payment-methods`)} />
+      </section>
+    </>
   );
 }

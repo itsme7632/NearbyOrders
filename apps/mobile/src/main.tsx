@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { businessTabs, navigationTabs, resolveTab, type BusinessTab, type Tab } from './navigation.js';
-import { getSession, onSessionChange, bootstrapSession, type Session } from './api.js';
-import { useRoute } from './hooks.js';
+import { getMyBusinesses, getSession, onSessionChange, bootstrapSession, type Business, type Session } from './api.js';
+import { useRoute, useAsyncData } from './hooks.js';
 import { applyDefaultModeForSession, initModeSessionSync, setAppMode, useAppMode } from './mode.js';
 import { BellIcon, ExploreIcon, HeartIcon, HomeIcon, ActivityIcon, OrdersIcon, BookingsIcon, PinIcon, ProfileIcon, StoreIcon } from './components/icons.js';
 import { EmptyState, Loading } from './components/ui.js';
@@ -62,6 +62,65 @@ void applyNativeStatusBarInset();
  */
 function StatusbarGutter() {
   return <div className="statusbar-gutter" aria-hidden="true" />;
+}
+
+/**
+ * Business-mode app header, rendered once at the shell level: NearbyOrders
+ * wordmark, the Owner mode badge, the notifications bell (same unread-badge
+ * behavior as the customer header), and the business avatar. There is no
+ * business context at shell level, so the avatar lands on the business
+ * Profile tab — the identity hub for the owner's businesses.
+ */
+function OwnerAppHeader(props: {
+  onHome: () => void;
+  onNotifications: () => void;
+  onAvatar: () => void;
+  unreadCount: number;
+}) {
+  // First owned business only, for the avatar; errors stay silent — the
+  // header never breaks on a failed side fetch.
+  const businesses = useAsyncData<Business[]>(() => getMyBusinesses().catch(() => []), []);
+  const first = businesses.data?.[0] ?? null;
+  const initial = first?.name?.[0]?.toUpperCase() ?? null;
+  return (
+    <header className="app-header owner-app-header">
+      <button className="logo" onClick={props.onHome} aria-label="NearbyOrders business overview">
+        <span className="brand-mark" aria-hidden>
+          <PinIcon size={16} />
+        </span>
+        <span className="logo-word">
+          Nearby<b>Orders</b>
+        </span>
+      </button>
+      <span className="owner-mode-badge">Owner</span>
+      <span className="header-spacer" aria-hidden />
+      <button
+        type="button"
+        className="bell-btn"
+        onClick={props.onNotifications}
+        aria-label={props.unreadCount > 0 ? `Notifications, ${props.unreadCount} unread` : 'Notifications'}
+      >
+        <BellIcon size={21} />
+        {props.unreadCount > 0 ? (
+          <span className="bell-badge">{props.unreadCount > 99 ? '99+' : props.unreadCount}</span>
+        ) : null}
+      </button>
+      <button
+        type="button"
+        className="owner-header-avatar"
+        aria-label={first ? `${first.name} business profile` : 'Business profile'}
+        onClick={props.onAvatar}
+      >
+        {first?.imageUrl ? (
+          <img src={first.imageUrl} alt="" />
+        ) : initial ? (
+          <span aria-hidden>{initial}</span>
+        ) : (
+          <StoreIcon size={20} />
+        )}
+      </button>
+    </header>
+  );
 }
 
 /** Exported (besides self-mounting below) so tests can render the full app shell. */
@@ -328,6 +387,7 @@ export function App() {
         screen={route.screen}
         businessId={route.businessId}
         onBack={() => push('/owner')}
+        onOpen={(path) => push(path)}
         onOpenBooking={(id) => push(`/booking/${id}`)}
       />
     ) : (
@@ -471,41 +531,58 @@ export function App() {
         Skip to content
       </a>
       {!authFlow ? (
-        <header className="app-header">
-          <button className="logo" onClick={() => { setTab('Home'); setBusinessTab('Overview'); push('/'); }} aria-label="NearbyOrders home">
-            <span className="brand-mark" aria-hidden>
-              <PinIcon size={16} />
-            </span>
-            <span className="logo-word">
-              Nearby<b>Orders</b>
-            </span>
-          </button>
-          {isOwner ? (
-            <button
-              className="header-link"
-              onClick={() => {
-                // Enters Business mode (idempotent) and shows the Overview.
-                setAppMode('BUSINESS');
-                setBusinessTab('Overview');
-                push('/owner');
-              }}
-            >
-              {businessMode ? 'Overview' : 'My business'}
+        businessMode ? (
+          // Business mode renders ONE dedicated owner app header at shell
+          // level (owner screens never render their own app header).
+          <OwnerAppHeader
+            onHome={() => {
+              setBusinessTab('Overview');
+              push('/');
+            }}
+            onNotifications={() => push('/notifications')}
+            onAvatar={() => {
+              setBusinessTab('Profile');
+              push('/');
+            }}
+            unreadCount={unread.count}
+          />
+        ) : (
+          <header className="app-header">
+            <button className="logo" onClick={() => { setTab('Home'); setBusinessTab('Overview'); push('/'); }} aria-label="NearbyOrders home">
+              <span className="brand-mark" aria-hidden>
+                <PinIcon size={16} />
+              </span>
+              <span className="logo-word">
+                Nearby<b>Orders</b>
+              </span>
             </button>
-          ) : null}
-          <span className="header-spacer" aria-hidden />
-          {session ? (
-            <button
-              type="button"
-              className="bell-btn"
-              onClick={() => push('/notifications')}
-              aria-label={unread.count > 0 ? `Notifications, ${unread.count} unread` : 'Notifications'}
-            >
-              <BellIcon size={21} />
-              {unread.count > 0 ? <span className="bell-badge">{unread.count > 99 ? '99+' : unread.count}</span> : null}
-            </button>
-          ) : null}
-        </header>
+            {isOwner ? (
+              <button
+                className="header-link"
+                onClick={() => {
+                  // Enters Business mode (idempotent) and shows the Overview.
+                  setAppMode('BUSINESS');
+                  setBusinessTab('Overview');
+                  push('/owner');
+                }}
+              >
+                {businessMode ? 'Overview' : 'My business'}
+              </button>
+            ) : null}
+            <span className="header-spacer" aria-hidden />
+            {session ? (
+              <button
+                type="button"
+                className="bell-btn"
+                onClick={() => push('/notifications')}
+                aria-label={unread.count > 0 ? `Notifications, ${unread.count} unread` : 'Notifications'}
+              >
+                <BellIcon size={21} />
+                {unread.count > 0 ? <span className="bell-badge">{unread.count > 99 ? '99+' : unread.count}</span> : null}
+              </button>
+            ) : null}
+          </header>
+        )
       ) : null}
       <div id="app-content" tabIndex={-1}>{content}</div>
       {/* Phase 3J floating-action hierarchy (mutually exclusive by route):

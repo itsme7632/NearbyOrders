@@ -100,6 +100,24 @@ describe('OwnerBusinessProfile section order', () => {
 });
 
 describe('OwnerBusinessProfile verification and promotions rows', () => {
+  it('offers a compact "Add another business" action in Manage my business', async () => {
+    const onListBusiness = vi.fn();
+    render(<OwnerBusinessProfile {...props} onListBusiness={onListBusiness} />);
+    const manage = await screen.findByRole('region', { name: 'Manage my business' });
+    const row = within(manage).getByRole('button', { name: /Add another business/ });
+    // A subtle secondary action, not a full-width card.
+    expect(row.className).toContain('hub-row');
+    fireEvent.click(row);
+    expect(onListBusiness).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides the "Add another business" row when no list-business handler is wired', async () => {
+    const { onListBusiness: _ignored, ...withoutList } = { ...props, onListBusiness: undefined };
+    render(<OwnerBusinessProfile {...withoutList} />);
+    const manage = await screen.findByRole('region', { name: 'Manage my business' });
+    expect(within(manage).queryByRole('button', { name: /Add another business/ })).toBeNull();
+  });
+
   it('shows the live verification status, never a "Soon" placeholder', async () => {
     verificationSpy.mockResolvedValue({
       application: { status: 'UNDER_REVIEW' },

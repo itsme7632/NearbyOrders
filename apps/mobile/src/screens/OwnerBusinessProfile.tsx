@@ -106,6 +106,20 @@ export function OwnerBusinessProfile(props: {
               ›
             </span>
           </button>
+          {props.onListBusiness ? (
+            <button type="button" className="hub-row hub-row-quiet" onClick={props.onListBusiness}>
+              <span className="hub-row-icon" aria-hidden>
+                <StoreIcon size={19} />
+              </span>
+              <span className="hub-row-text">
+                <span className="hub-row-title">Add another business</span>
+                <span className="hub-row-sub">List a second location or brand</span>
+              </span>
+              <span className="hub-row-chevron" aria-hidden>
+                ›
+              </span>
+            </button>
+          ) : null}
         </div>
       </section>
 

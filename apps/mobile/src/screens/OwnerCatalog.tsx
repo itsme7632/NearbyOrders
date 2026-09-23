@@ -64,11 +64,15 @@ export function OwnerServices(props: { businessId: string }) {
                 <Money minor={s.priceMinor} currency={s.currency} />
               </div>
               {s.description ? <p className="item-desc">{s.description}</p> : null}
-              {s.durationMinutes ? <span className="pill">{s.durationMinutes} min</span> : null}
-              {s.advanceType && s.advanceType !== 'NONE' ? (
-                <span className="pill">
-                  Advance: {s.advanceType === 'FIXED' ? `Rs ${(s.advanceAmountMinor ?? 0) / 100}` : `${s.advancePercent ?? 0}%`}
-                </span>
+              {s.durationMinutes || (s.advanceType && s.advanceType !== 'NONE') ? (
+                <div className="item-meta">
+                  {s.durationMinutes ? <span className="pill">{s.durationMinutes} min</span> : null}
+                  {s.advanceType && s.advanceType !== 'NONE' ? (
+                    <span className="pill">
+                      Advance: {s.advanceType === 'FIXED' ? `Rs ${(s.advanceAmountMinor ?? 0) / 100}` : `${s.advancePercent ?? 0}%`}
+                    </span>
+                  ) : null}
+                </div>
               ) : null}
               <ServiceRow service={s} onSaved={services.reload} />
             </li>
@@ -182,14 +186,16 @@ function ServiceRow(props: { service: Service; onSaved: () => void }) {
   return (
     <div>
       {error && !editing ? <ErrorState message={error} /> : null}
-      <div className="btn-row">
+      <div className="item-controls">
         <Toggle checked={props.service.isActive} onChange={(v) => toggle(v)} label={props.service.isActive ? 'Active' : 'Inactive'} disabled={busy} />
-        <Button sm variant="secondary" onClick={() => setEditing(true)}>
-          Edit
-        </Button>
-        <Button sm variant="danger" onClick={remove} disabled={busy}>
-          Delete
-        </Button>
+        <span className="item-controls-actions">
+          <Button sm variant="secondary" onClick={() => setEditing(true)}>
+            Edit
+          </Button>
+          <Button sm variant="danger" onClick={remove} disabled={busy}>
+            Delete
+          </Button>
+        </span>
       </div>
     </div>
   );
@@ -584,27 +590,31 @@ function ProductRow(props: { product: Product; onSaved: () => void }) {
   }
 
   return (
-    <div className="btn-row">
-      <Toggle checked={props.product.isActive} onChange={(v) => void toggle(v)} label={props.product.isActive ? 'Available' : 'Unavailable'} disabled={busy} />
-      <Button sm variant="secondary" onClick={() => setEditing(true)}>
-        Edit
-      </Button>
+    <div>
       {error && !editing ? <p className="auth-error" role="alert"><AlertIcon size={14} /> {error}</p> : null}
-      {confirmingDelete ? (
-        <>
-          <span className="confirm-delete-text" role="alert">Delete this product?</span>
-          <Button sm variant="danger" onClick={() => void remove()} disabled={busy}>
-            {busy ? 'Deleting…' : 'Yes, delete'}
+      <div className="item-controls">
+        <Toggle checked={props.product.isActive} onChange={(v) => void toggle(v)} label={props.product.isActive ? 'Available' : 'Unavailable'} disabled={busy} />
+        <span className="item-controls-actions">
+          <Button sm variant="secondary" onClick={() => setEditing(true)}>
+            Edit
           </Button>
-          <Button sm variant="ghost" onClick={() => setConfirmingDelete(false)} disabled={busy}>
-            Keep
-          </Button>
-        </>
-      ) : (
-        <Button sm variant="danger" onClick={() => setConfirmingDelete(true)} disabled={busy}>
-          Delete
-        </Button>
-      )}
+          {confirmingDelete ? (
+            <>
+              <span className="confirm-delete-text" role="alert">Delete this product?</span>
+              <Button sm variant="danger" onClick={() => void remove()} disabled={busy}>
+                {busy ? 'Deleting…' : 'Yes, delete'}
+              </Button>
+              <Button sm variant="ghost" onClick={() => setConfirmingDelete(false)} disabled={busy}>
+                Keep
+              </Button>
+            </>
+          ) : (
+            <Button sm variant="danger" onClick={() => setConfirmingDelete(true)} disabled={busy}>
+              Delete
+            </Button>
+          )}
+        </span>
+      </div>
     </div>
   );
 }

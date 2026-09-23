@@ -67,7 +67,10 @@ const booking = (patch: Partial<Booking> = {}): Booking => ({
   serviceName: 'Hair Consultation',
   priceMinor: 250000,
   currency: 'PKR',
-  bookingDate: '2026-09-22',
+  // Relative to "now": the Home screen treats a booking as upcoming when
+  // bookingDate >= today (UTC), so a hardcoded calendar date rots as soon
+  // as it passes. Tomorrow keeps the fixture upcoming on every run.
+  bookingDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
   startTime: '09:00',
   endTime: '09:30',
   status: 'CONFIRMED',

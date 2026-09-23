@@ -5,7 +5,7 @@ import { OwnerScreen as OwnerScreenChrome } from './owner-ui.js';
 import { OwnerProfile } from './OwnerProfile.js';
 import { OwnerHours } from './OwnerHours.js';
 import { OwnerLocation } from './OwnerLocation.js';
-import { DeliverySettingsSection } from './OwnerDeliverySettings.js';
+import { DeliverySettingsSection, BusinessSettingsScreen } from './OwnerDeliverySettings.js';
 import { OwnerServices, OwnerProducts } from './OwnerCatalog.js';
 import { OwnerBookingsList } from './OwnerBookingsList.js';
 import { OwnerOrders } from './OwnerOrders.js';
@@ -48,6 +48,8 @@ export function OwnerScreen(props: {
   onBack: () => void;
   /** Opens a booking detail — the bookings list is a management screen, not a detail, so it needs a real opener. */
   onOpenBooking: (id: string) => void;
+  /** Opens another owner management route (used by the Business Settings screen). Optional so deep links without a router still render. */
+  onOpen?: (path: string) => void;
 }) {
   const { screen, businessId, onBack, onOpenBooking } = props;
 
@@ -62,11 +64,20 @@ export function OwnerScreen(props: {
     case 'location':
       body = <OwnerLocation businessId={businessId} />;
       break;
-    // Delivery and Business Settings expose the same server-authoritative
-    // delivery/COD configuration; the hub lists both entry points.
+    // The 'delivery' route is the focused Delivery & COD screen. The
+    // 'settings' route is a genuine Business Settings screen: the delivery
+    // section (the only business-wide settings that exist) plus links to
+    // every other configuration area — visibly different from 'delivery',
+    // and both route names keep working.
     case 'delivery':
-    case 'settings':
       body = <DeliverySettingsSection businessId={businessId} />;
+      break;
+    case 'settings':
+      body = props.onOpen ? (
+        <BusinessSettingsScreen businessId={businessId} onOpen={props.onOpen} />
+      ) : (
+        <DeliverySettingsSection businessId={businessId} />
+      );
       break;
     // Advance settings live on the service forms (NONE/FIXED/PERCENTAGE),
     // so the dedicated screen shows the same per-service management.

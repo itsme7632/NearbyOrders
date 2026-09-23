@@ -108,15 +108,15 @@ describe('business overview (redesigned hub)', () => {
     vi.mocked(api.listPaymentRequests).mockResolvedValue([]);
   });
 
-  it('shows the top bar: wordmark, Owner badge, notifications bell, avatar', async () => {
+  it('renders no in-screen app header: the shell owns the owner header', async () => {
     const onOpen = vi.fn();
-    await renderHome({ onOpen });
+    const { container } = await renderHome({ onOpen });
     await screen.findByText('Total bookings'); // page loaded
-    expect(screen.getByText('Owner')).toBeTruthy(); // business-mode indicator
-    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }));
-    expect(onOpen).toHaveBeenCalledWith('notifications');
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Butt Spices profile' }));
-    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/profile');
+    // The shell (main.tsx) renders the single owner app header; the screen
+    // must not render its own top bar or a second bell.
+    expect(container.querySelector('.owner-topbar')).toBeNull();
+    expect(container.querySelector('.app-header')).toBeNull();
+    expect(container.querySelector('.bell-btn')).toBeNull();
   });
 
   it('greets the owner and names the operating business', async () => {
@@ -245,13 +245,14 @@ describe('business overview (redesigned hub)', () => {
     click('Orders', '/owner/biz-1/orders');
   });
 
-  it('groups management into Manage, Grow, and Account & settings', async () => {
+  it('groups management into Manage, Catalog, Grow, and Account & settings', async () => {
     const onOpen = vi.fn();
     await renderHome({ onOpen });
     await screen.findByText('Total bookings'); // page loaded
 
-    const manage = screen.getByRole('region', { name: 'Manage your business' });
-    const grow = screen.getByRole('region', { name: 'Grow your business' });
+    const manage = screen.getByRole('region', { name: 'Manage' });
+    const catalog = screen.getByRole('region', { name: 'Catalog' });
+    const grow = screen.getByRole('region', { name: 'Grow' });
     const account = screen.getByRole('region', { name: 'Account & settings' });
 
     const clickIn = (region: HTMLElement, name: string | RegExp, path: string) => {
@@ -262,8 +263,9 @@ describe('business overview (redesigned hub)', () => {
     clickIn(manage, /Business profile/, '/owner/biz-1/profile');
     clickIn(manage, /Location/, '/owner/biz-1/location');
     clickIn(manage, /Business hours/, '/owner/biz-1/hours');
-    clickIn(manage, /Services/, '/owner/biz-1/services');
-    clickIn(manage, /Products \/ Menu/, '/owner/biz-1/products');
+
+    clickIn(catalog, /Services/, '/owner/biz-1/services');
+    clickIn(catalog, /Products \/ Menu/, '/owner/biz-1/products');
 
     clickIn(grow, /Verification/, '/owner/biz-1/verification');
     clickIn(grow, /Promotions/, '/owner/biz-1/promotions');

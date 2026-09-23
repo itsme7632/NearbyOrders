@@ -1219,6 +1219,32 @@ nav.business-nav .nav-item.active {
   .product-thumb { width: 34px; height: 34px; }
 }
 
+/* Worker B: catalog item layouts (services + products). The name wraps with
+   min-width 0, the price stays right-aligned, meta pills wrap on their own
+   row, and the toggle / Edit / Delete controls sit on a dedicated row with
+   ~44px touch targets so nothing collides on small Android screens. */
+.item-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.item-controls { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.item-controls .toggle { min-height: 44px; padding: 10px 0; }
+.item-controls .btn-sm { min-height: 44px; }
+.item-controls-actions { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+
+/* Worker B: settings rows (vertical toggle layout). Each setting is a row
+   with a clear title, a supporting description, and the switch pinned to the
+   right edge in the same column — no squeezed horizontal text. The switch's
+   own text label is visually hidden to avoid duplicating the title; it stays
+   in the accessibility tree so the checkbox keeps its name. */
+.set-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.set-row:last-child { border-bottom: 0; }
+.set-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.set-title { font-weight: 600; font-size: 14.5px; overflow-wrap: anywhere; }
+.set-body { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
+.set-row .toggle { flex: none; padding: 10px 0; }
+.set-row .toggle-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.set-field { padding: 12px 0; }
+.set-field .field { margin-top: 8px; }
+.set-actions { margin-top: 16px; }
+
 /* ---------------- cart / orders (Phase 4B) ---------------- */
 .cart-notice {
   display: flex;
@@ -1714,6 +1740,20 @@ button.hub-row:active { background: var(--bg); }
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+/* Owner forms render the uploader inside a .field label, so .field input
+   (higher specificity) also matches this visually-hidden file input and
+   would stretch it to width:100%. An absolutely-positioned 100%-wide input
+   takes the viewport as its containing block and pushes the document ~30px
+   past the viewport edge — on a real device the whole page renders
+   shifted/cropped (NearbyOrders / Back / Business Verification cut off).
+   This higher-specificity rule keeps the input a true 1px box. */
+.field input.image-input-hidden {
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+}
 .image-preview {
   display: flex;
   align-items: center;
@@ -1767,8 +1807,10 @@ button.hub-row:active { background: var(--bg); }
 .owner-biz-name { font-weight: 700; font-size: 15px; min-width: 0; overflow-wrap: anywhere; }
 
 @media (min-width: 480px) {
-  /* Same cascade-warning as the base shell rule: preserve --sat. */
-  main { padding: calc(20px + var(--sat)) 20px 96px; }
+  /* Same cascade-warning as the base shell rule: preserve --sat, and keep
+     the systematic bottom safe-area inset so the floating bottom nav
+     (8px + inset + ~62px tall) never covers the last form controls. */
+  main { padding: calc(20px + var(--sat)) 20px calc(96px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))); }
   .form-grid { grid-template-columns: 1fr 1fr; gap: 0 10px; }
 }
 
@@ -3001,8 +3043,12 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 /* WARNING: this rule wins the cascade over the base `main` rule (equal
    specificity, later in the file), so it MUST preserve the --sat top inset.
    A flat padding-top here was the actual cause of the Android status bar
-   covering the app header: it silently discarded the systematic inset. */
-main { padding: calc(12px + var(--sat)) clamp(14px, 4vw, 20px) 88px; }
+   covering the app header: it silently discarded the systematic inset.
+   The bottom inset is equally load-bearing: the floating bottom nav sits at
+   8px + safe-area-inset-bottom with ~62px of its own height, so a flat
+   bottom padding lets the nav cover the last form controls on devices with
+   a gesture bar. Keep the systematic inset, like the base rule did. */
+main { padding: calc(12px + var(--sat)) clamp(14px, 4vw, 20px) calc(88px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))); }
 .header-spacer { flex: 1 1 auto; }
 
 /* ---- Compact brand header ---- */
@@ -4730,19 +4776,32 @@ nav.nav-v3, nav.business-nav-v3 {
    come from the app's warm editorial theme: burgundy primary, burnt-orange
    action accent, cream surfaces. No glassmorphism, gradients, or neon. */
 
-.owner-topbar {
-  display: flex;
+/* Business-mode app header, rendered once at the shell level (main.tsx):
+   wordmark, Owner mode badge, notifications bell, business avatar. Owner
+   screens never render their own app header, so there are no duplicates. */
+.owner-app-header { align-items: center; }
+.owner-app-header .logo { flex: 0 0 auto; }
+.owner-app-header .owner-mode-badge { margin-left: 2px; }
+.owner-header-avatar {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--brand-soft);
+  color: var(--brand-strong);
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  margin: 2px 0 10px;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
 }
-.owner-wordmark {
-  font-size: 19px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: var(--ink);
-}
-.owner-wordmark b { color: var(--brand); }
+.owner-header-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.owner-header-avatar span { font-size: 18px; font-weight: 800; }
+.owner-header-avatar:active { transform: scale(0.95); }
+
+/* The Owner badge is shared by the shell header; keep it exactly as is. */
 .owner-mode-badge {
   font-size: 11px;
   font-weight: 800;
@@ -4754,10 +4813,6 @@ nav.nav-v3, nav.business-nav-v3 {
   padding: 4px 10px;
   border-radius: 999px;
 }
-.owner-topbar-spacer { flex: 1; }
-.owner-topbar-bell { flex: 0 0 auto; }
-button.owner-avatar-btn { padding: 0; cursor: pointer; }
-button.owner-avatar-btn:active { transform: scale(0.95); }
 
 /* Greeting: page-title scale (28px) with a calm 16px hello line. */
 .owner-greet { margin-top: 6px; }
@@ -4768,7 +4823,9 @@ button.owner-avatar-btn:active { transform: scale(0.95); }
 .biz-status-title { font-size: 15px; }
 .biz-status-sub { font-size: 13px; }
 
-/* Overview sections: readable 17px section titles, generous rhythm. */
+/* Overview sections: readable 17px section titles, generous rhythm.
+   Optional .ov-section-sub sits directly under the title for a calm
+   one-line description. */
 .ov-section { margin-top: 22px; }
 .ov-section-title {
   margin: 0 0 10px;
@@ -4776,6 +4833,11 @@ button.owner-avatar-btn:active { transform: scale(0.95); }
   font-weight: 800;
   letter-spacing: -0.01em;
   color: var(--ink);
+}
+.ov-section-sub {
+  margin: -6px 0 10px;
+  font-size: 13px;
+  color: var(--muted);
 }
 
 /* Quick actions: four compact tappable shortcuts, not a giant grid. */
@@ -4825,11 +4887,26 @@ button.owner-avatar-btn:active { transform: scale(0.95); }
 .metric-tile-label { font-size: 12.5px; }
 .metric-tile-sub { font-size: 11.5px; }
 
-/* Overview list typography: 16px list titles, 13.5px supporting text.
-   Scoped to .ov-section so other screens reusing hub rows are untouched. */
-.ov-section .hub-row-title { font-size: 16px; }
+/* Overview list typography: stronger 16px list titles, lighter 13.5px
+   supporting text. Scoped to .ov-section so other screens reusing hub rows
+   are untouched. */
+.ov-section .hub-row-title { font-size: 16px; font-weight: 700; }
 .ov-section .hub-row-sub { font-size: 13.5px; }
 .ov-section .hub-card { border-radius: 18px; }
+
+/* Catalog: reads as management destinations, not quick shortcuts — a warm
+   tinted card that separates it from the quick-action grid above. */
+.ov-section-catalog .hub-card {
+  background: var(--brand-soft);
+  border-color: var(--brand-soft);
+}
+.ov-section-catalog .hub-row { border-bottom-color: var(--brand-softer); }
+.ov-section-catalog .hub-row-icon { background: var(--card); }
+
+/* "Add another business" on the Profile tab: a compact secondary action —
+   the same row shape, visually quieter. */
+.hub-row-quiet .hub-row-icon { background: var(--bg); color: var(--muted); }
+.hub-row-quiet .hub-row-title { font-weight: 600; font-size: 14.5px; }
 
 /* ============================================================================
    Subscription experience redesign (2026-09-22)

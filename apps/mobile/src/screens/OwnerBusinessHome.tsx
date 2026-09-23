@@ -12,7 +12,6 @@ import { Button, EmptyState, ErrorState, ListSkeleton, Money } from '../componen
 import {
   ActivityIcon,
   AlertIcon,
-  BellIcon,
   BookingsIcon,
   CheckIcon,
   ExploreIcon,
@@ -27,16 +26,16 @@ import {
 } from '../components/icons.js';
 import { OwnerHubRow } from './owner-ui.js';
 import { OwnerPlanCard } from './subscription-badge.js';
-import { OrderThumb } from './Orders.js';
 
 /**
  * Business-mode Overview: "How is my business doing?" at a glance.
  *
- * Hierarchy: top bar (wordmark, Owner mode badge, notifications, avatar) →
- * greeting → business status → plan → monthly snapshot → needs attention →
- * quick actions → calmly grouped management sections (Manage, Grow,
- * Account & settings). Every old dashboard destination is still one tap
- * away; the Overview restructures presentation, never destinations.
+ * Hierarchy: greeting → business status → plan → monthly snapshot →
+ * needs attention → quick actions → calmly grouped management sections
+ * (Manage, Catalog, Grow, Account & settings). The app header is rendered
+ * once at the shell level (main.tsx) — this screen renders no app header.
+ * Every old dashboard destination is still one tap away; the Overview
+ * restructures presentation, never destinations.
  */
 export function OwnerBusinessHome(props: {
   onOpen: (path: string) => void;
@@ -70,7 +69,6 @@ export function OwnerBusinessHome(props: {
       selectedId={selectedId}
       onSelectBusiness={setSelectedId}
       onOpen={props.onOpen}
-      onListBusiness={props.onListBusiness}
       onOpenOrder={props.onOpenOrder}
       onOpenBooking={props.onOpenBooking}
       justCreatedName={props.justCreatedName}
@@ -85,7 +83,6 @@ function OverviewBody(props: {
   selectedId: string | undefined;
   onSelectBusiness: (id: string) => void;
   onOpen: (path: string) => void;
-  onListBusiness?: () => void;
   onOpenOrder: (id: string) => void;
   onOpenBooking: (id: string) => void;
   justCreatedName?: string | null;
@@ -118,14 +115,6 @@ function OverviewBody(props: {
           </span>
         </div>
       ) : null}
-
-      {/* Top bar: wordmark, Owner mode badge, notifications, business avatar. */}
-      <OwnerTopBar
-        businessName={active.name}
-        imageUrl={active.imageUrl}
-        onNotifications={() => onOpen('notifications')}
-        onEditProfile={() => onOpen(`${base}/profile`)}
-      />
 
       {/* Greeting: who is operating, with one useful data-driven line. */}
       <header className="owner-greet">
@@ -175,15 +164,21 @@ function OverviewBody(props: {
 
       <QuickActions base={base} onOpen={onOpen} />
 
-      <OvSection label="Manage your business">
+      <OvSection label="Manage">
         <OwnerHubRow icon={<StoreIcon size={18} />} title="Business profile" subtitle="Name, address, contact, category" onClick={() => onOpen(`${base}/profile`)} />
         <OwnerHubRow icon={<PinIcon size={18} />} title="Location" subtitle="Set your address and pin on map" onClick={() => onOpen(`${base}/location`)} />
         <OwnerHubRow icon={<BookingsIcon size={18} />} title="Business hours" subtitle="Set your operating hours" onClick={() => onOpen(`${base}/hours`)} />
+      </OvSection>
+
+      {/* Catalog: the full management destinations for what the business
+          sells. Kept visually distinct from the quick-action shortcuts
+          above so Services/Products never feel tripled. */}
+      <OvSection label="Catalog" sub="Manage everything you sell" className="ov-section-catalog">
         <OwnerHubRow icon={<ActivityIcon size={18} />} title="Services" subtitle="Add and manage your services" onClick={() => onOpen(`${base}/services`)} />
         <OwnerHubRow icon={<OrdersIcon size={18} />} title="Products / Menu" subtitle="Add products or menu items" onClick={() => onOpen(`${base}/products`)} />
       </OvSection>
 
-      <OvSection label="Grow your business">
+      <OvSection label="Grow">
         <OwnerHubRow icon={<CheckIcon size={18} />} title="Verification" subtitle="Get the verified badge on your listing" onClick={() => onOpen(`${base}/verification`)} />
         <OwnerHubRow icon={<StarIcon size={18} />} title="Promotions" subtitle="Deals and offers to attract customers" onClick={() => onOpen(`${base}/promotions`)} />
       </OvSection>
@@ -196,50 +191,18 @@ function OverviewBody(props: {
         <OwnerHubRow icon={<InfoIcon size={18} />} title="Service advance settings" subtitle="Per-service advance requirements" onClick={() => onOpen(`${base}/advances`)} />
         <OwnerHubRow icon={<HelpIcon size={18} />} title="Business settings" subtitle="Delivery, COD and payment channels" onClick={() => onOpen(`${base}/settings`)} />
       </OvSection>
-
-      {props.onListBusiness ? (
-        <div className="card" style={{ marginTop: 16 }}>
-          <Button full variant="ghost" onClick={props.onListBusiness}>
-            List another business
-          </Button>
-        </div>
-      ) : null}
     </div>
   );
 }
 
-/**
- * Top bar: NearbyOrders wordmark, the Owner mode badge, the notifications
- * bell, and the business avatar (opens business profile).
- */
-function OwnerTopBar(props: {
-  businessName: string;
-  imageUrl: string | null | undefined;
-  onNotifications: () => void;
-  onEditProfile: () => void;
-}) {
+/** A labelled section of hub rows: the card treatment, but a readable h2. */
+function OvSection(props: { label: string; sub?: string; className?: string; children: React.ReactNode }) {
   return (
-    <div className="owner-topbar">
-      <span className="brand-mark" aria-hidden>
-        <PinIcon size={16} />
-      </span>
-      <span className="owner-wordmark">
-        Nearby<b>Orders</b>
-      </span>
-      <span className="owner-mode-badge">Owner</span>
-      <span className="owner-topbar-spacer" aria-hidden />
-      <button type="button" className="bell-btn owner-topbar-bell" aria-label="Notifications" onClick={props.onNotifications}>
-        <BellIcon size={20} />
-      </button>
-      <button
-        type="button"
-        className="owner-avatar owner-avatar-btn"
-        aria-label={`Edit ${props.businessName} profile`}
-        onClick={props.onEditProfile}
-      >
-        <OrderThumb name={props.businessName} imageUrl={props.imageUrl} />
-      </button>
-    </div>
+    <section className={`ov-section${props.className ? ` ${props.className}` : ''}`} aria-label={props.label}>
+      <h2 className="ov-section-title">{props.label}</h2>
+      {props.sub ? <p className="ov-section-sub">{props.sub}</p> : null}
+      <div className="hub-card">{props.children}</div>
+    </section>
   );
 }
 
@@ -470,16 +433,6 @@ function QuickActions(props: { base: string; onOpen: (path: string) => void }) {
           </button>
         ))}
       </div>
-    </section>
-  );
-}
-
-/** A labelled section of hub rows: the card treatment, but a readable h2. */
-function OvSection(props: { label: string; children: React.ReactNode }) {
-  return (
-    <section className="ov-section" aria-label={props.label}>
-      <h2 className="ov-section-title">{props.label}</h2>
-      <div className="hub-card">{props.children}</div>
     </section>
   );
 }
