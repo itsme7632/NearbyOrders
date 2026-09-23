@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getBusiness, listBusinessReviews, getSession, type Business, type Product, type PublicReview, type ReviewPage } from '../api.js';
+import { getBusiness, listBusinessReviews, listFeaturedBusinesses, getSession, type Business, type FeaturedPlacement, type Product, type PublicReview, type ReviewPage } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, ListSkeleton, Loading, Money, OpenBadge, VerifiedBadge } from '../components/ui.js';
 import { useToast } from '../components/primitives.js';
@@ -32,6 +32,11 @@ export function BusinessDetailScreen(props: {
   onOpenCart?: () => void;
 }) {
   const business = useAsyncData<Business>(() => getBusiness(props.idOrSlug), [props.idOrSlug]);
+  // Featured placement check: fully server-driven — the endpoint only returns
+  // currently-active placements, so list membership means this business is
+  // featured right now. A failed fetch quietly hides the badge; it never
+  // errors the whole screen.
+  const featured = useAsyncData<FeaturedPlacement[]>(() => listFeaturedBusinesses().catch((): FeaturedPlacement[] => []), [props.idOrSlug]);
   const cartCount = useCartCount();
   const [tab, setTab] = useState<DetailTab>('overview');
   const [cartNotice, setCartNotice] = useState<string | null>(null);
@@ -65,6 +70,10 @@ export function BusinessDetailScreen(props: {
 
   const b = business.data;
   const place = [b.locality, b.city].filter(Boolean).join(', ');
+  // Server-authoritative featured membership: match by business id, falling
+  // back to slug for deep-linked routes that resolve by slug.
+  const featuredPlacement =
+    featured.data?.find((f) => f.business.id === b.id || f.business.slug === props.idOrSlug) ?? null;
   const bookableServices = (b.services ?? []).filter((s) => s.isActive && s.durationMinutes);
   const bookable = bookableServices.length > 0;
   const orderable = (b.products?.length ?? 0) > 0;
@@ -137,6 +146,11 @@ export function BusinessDetailScreen(props: {
         <header className="biz-hero-overlay">
           <div className="biz-hero-overlay-badges">
             <VerifiedBadge verified={b.isVerified} />
+            {featuredPlacement ? (
+              <span className="biz-hero-featured" aria-label={`Featured business: ${featuredPlacement.placementLabel}`}>
+                {featuredPlacement.placementLabel}
+              </span>
+            ) : null}
             {b.isOpenNow !== undefined ? <OpenBadge open={b.isOpenNow} /> : null}
             {closingNote && b.isOpenNow ? <span className="biz-hero-close">{closingNote}</span> : null}
           </div>

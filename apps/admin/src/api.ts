@@ -567,7 +567,8 @@ export type AdminPromotionPayment = {
   reviewedByUserId: string | null;
   business: { id: string; name: string };
   promotionRequest: { id: string };
-  promotion: { id: string; name: string; slug: string };
+  /** priceMinor/durationDays come from the server DTO (current catalog values for amount-vs-price review). */
+  promotion: { id: string; name: string; slug: string; priceMinor?: number | null; durationDays?: number | null };
   paymentMethod: { id: string; name: string; type: string };
 };
 
@@ -602,6 +603,70 @@ export const rejectPromotionPayment = (id: string, reason?: string) =>
   request<{ data: AdminPromotionPayment }>(`/admin/promotion-payment-requests/${id}/reject`, { method: 'POST', body: { reason } }).then(
     (r) => r.data,
   );
+
+/* ------------------------- featured & editorial ------------------------- */
+/* Unified "Featured" admin view (GET /admin/featured): paid promotion
+   placements and admin-curated editorial features in one list. Editorial
+   features are structurally separate from paid promotions: they are always
+   free, and creating one can never activate a paid promotion. Paid
+   activation happens exclusively through promotion-payment approval. */
+
+export type FeaturedSource = 'paid' | 'editorial';
+export type FeaturedState = 'active' | 'scheduled' | 'expired';
+export type FeaturedListState = 'active' | 'expired' | 'all';
+
+export type FeaturedItem = {
+  id: string;
+  source: FeaturedSource;
+  state: FeaturedState;
+  business: { id: string; name: string; slug: string };
+  placementType: string;
+  label: string;
+  promotion: { id: string; name: string; slug: string } | null;
+  /** Verifying payment; always present for paid placements, never for editorial. */
+  payment: { id: string; status: string; amountMinor: number; currency: string } | null;
+  startsAt: string | null;
+  endsAt: string | null;
+};
+
+export const listFeatured = (state: FeaturedListState = 'active') =>
+  request<{ data: FeaturedItem[] }>(`/admin/featured?state=${state}`).then((r) => r.data);
+
+export type EditorialFeature = {
+  id: string;
+  placementType: string;
+  label: string;
+  startsAt: string;
+  endsAt: string;
+  state: FeaturedState;
+  createdAt: string;
+  business: { id: string; name: string; slug: string };
+  createdBy: { id: string; email: string };
+};
+
+export type EditorialFeatureInput = {
+  businessId: string;
+  placementType: string;
+  label?: string;
+  startAt?: string;
+  endAt: string;
+};
+
+/** Creates a FREE editorial feature. Never touches PromotionRequest or payments. */
+export const createEditorialFeature = (input: EditorialFeatureInput) =>
+  request<{ data: EditorialFeature }>('/admin/editorial-features', { method: 'POST', body: input }).then((r) => r.data);
+
+/** PATCH is extend-only for the end date: endAt must move further out. */
+export const updateEditorialFeature = (id: string, input: { placementType?: string; label?: string; endAt?: string }) =>
+  request<{ data: EditorialFeature }>(`/admin/editorial-features/${id}`, { method: 'PATCH', body: input }).then((r) => r.data);
+
+/** Ends an editorial feature early (endAt becomes now). */
+export const endEditorialFeature = (id: string) =>
+  request<{ data: EditorialFeature }>(`/admin/editorial-features/${id}/end`, { method: 'POST', body: {} }).then((r) => r.data);
+
+/** Removes an editorial feature entirely. */
+export const deleteEditorialFeature = (id: string) =>
+  request<void>(`/admin/editorial-features/${id}`, { method: 'DELETE' });
 
 /* ------------------------- authorized blob viewing ---------------------- */
 /* Verification documents are viewed through the same authorized receipt

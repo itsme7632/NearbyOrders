@@ -1,5 +1,6 @@
 import { PrismaClient, Role, type BookingStatus, type SubscriptionStatus } from '@prisma/client';
 import { z } from 'zod';
+import { RECEIPT_KEY_PATTERN } from './receiptStorage.js';
 
 export const prisma = new PrismaClient();
 
@@ -725,7 +726,10 @@ export const promotionPaymentRequestCreateSchema = z.object({
     .string()
     .transform((v) => v.trim())
     .refine((v) => v.length >= 1, { message: 'A payment receipt image is required' })
-    .refine((v) => v.length <= 512, { message: 'Receipt reference is too long' }),
+    .refine((v) => v.length <= 512, { message: 'Receipt reference is too long' })
+    .refine((v) => RECEIPT_KEY_PATTERN.test(v), {
+      message: 'Receipt must be uploaded through the receipt upload endpoint',
+    }),
   paidAt: z
     .string()
     .datetime({ offset: true, message: 'paidAt must be an ISO date' })
@@ -743,6 +747,35 @@ export const promotionPaymentRequestCreateSchema = z.object({
 export const promotionPaymentReviewSchema = z.object({
   reason: optionalText(1000),
 });
+
+/**
+ * Admin creation of a FREE editorial feature. Deliberately strict: no
+ * promotion/payment fields are accepted here, so an admin can never attach a
+ * paid promotion request or a payment to an editorial feature — editorial
+ * features must never claim a payment.
+ */
+export const editorialFeatureCreateSchema = z
+  .object({
+    businessId: z.string().uuid(),
+    placementType: z.string().trim().min(2).max(60),
+    label: z.string().trim().min(2).max(120).optional(),
+    startAt: z.string().datetime({ offset: true, message: 'startAt must be an ISO date' }).optional(),
+    endAt: z.string().datetime({ offset: true, message: 'endAt must be an ISO date' }),
+  })
+  .strict()
+  .refine((v) => Date.parse(v.endAt) > Date.parse(v.startAt ?? new Date().toISOString()), {
+    message: 'endAt must be after startAt',
+  });
+
+/** Admin update of an editorial feature: label/type edits and end-date extension. Strict for the same reason. */
+export const editorialFeatureUpdateSchema = z
+  .object({
+    placementType: z.string().trim().min(2).max(60).optional(),
+    label: z.string().trim().min(2).max(120).optional(),
+    endAt: z.string().datetime({ offset: true, message: 'endAt must be an ISO date' }).optional(),
+  })
+  .strict()
+  .refine((data) => Object.keys(data).length > 0, { message: 'No changes provided' });
 
 /* ------------------------------------------------------------------ */
 /* Customer → business payments (Phase 7C)                             */

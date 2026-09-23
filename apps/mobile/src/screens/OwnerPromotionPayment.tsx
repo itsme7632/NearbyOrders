@@ -13,7 +13,7 @@ import {
 import { useAsyncData } from '../hooks.js';
 import { Button, ErrorState, Field, Loading, Money } from '../components/ui.js';
 import { ImageUploader, type PendingImage } from '../components/ImageUploader.js';
-import { validatePaymentForm } from './OwnerSubscriptionPayments.js';
+import { validatePaymentForm } from './OwnerSubscriptionShared.js';
 
 /** Owner-facing labels for promotion payment-proof states. */
 const PAYMENT_STATUS_LABEL: Record<PromotionPaymentRequest['status'], string> = {
@@ -251,9 +251,13 @@ export function PromotionPaymentFlow(props: {
                 />
               </Field>
               <Field label="Payment receipt">
+                {/* The receipt is genuinely persisted through the API's
+                    multipart endpoint — the generic "image storage is not
+                    connected" notice is about business/product images. */}
                 <ImageUploader
                   currentUrl={null}
                   label="Payment receipt"
+                  hideStorageNotice
                   onChange={(state) => setPendingReceipt(state.pending)}
                 />
               </Field>

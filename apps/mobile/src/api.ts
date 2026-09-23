@@ -986,6 +986,36 @@ export function listNearbyBusinesses(query: NearbyQuery): Promise<Business[]> {
   return request<Business[]>(`/businesses/nearby?${params}`);
 }
 
+/* ------------------- featured businesses (Phase 20) ------------------- */
+
+/**
+ * One server-authoritative "Featured" placement from
+ * GET /api/v1/featured-businesses. The server returns only currently-active
+ * placements: paid ones need an APPROVED payment and a non-expired ACTIVE
+ * request; editorial ones need a live date window; businesses must be
+ * APPROVED and non-archived. The client never filters or invents entries —
+ * what the server returns is what renders.
+ */
+export type FeaturedPlacement = {
+  source: 'paid' | 'editorial';
+  placementId: string;
+  business: { id: string; name: string; slug: string; categoryNames: string[] };
+  placementType: string;
+  /** Display label: "Featured" for paid promotions, the admin-set label for editorial. */
+  placementLabel: string;
+  promotionName: string | null;
+  promotionSlug: string | null;
+  /** Catalog marketing copy (paid only). Display copy — not functional placements. */
+  benefits: string[];
+  startsAt: string;
+  endsAt: string;
+};
+
+/** Currently featured businesses, server-authoritative. Public endpoint, no auth needed. */
+export function listFeaturedBusinesses(): Promise<FeaturedPlacement[]> {
+  return request<FeaturedPlacement[]>('/featured-businesses');
+}
+
 /* --------------------- unified marketplace search (Phase 14) --------------------- */
 
 /** Mirrors the shared search contract — re-exported here for screen imports. */

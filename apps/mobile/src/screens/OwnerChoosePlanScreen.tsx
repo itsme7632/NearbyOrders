@@ -14,9 +14,15 @@ import { CheckIcon, StarIcon } from '../components/icons.js';
  *
  * Rendered inside the OwnerScreen chrome by its route case, or inline in
  * the subscription screen's "Change plan" row; props carry the back handler
- * and the optional selection callback.
+ * and the optional selection callback. currentPlanSlug (optional) marks the
+ * plan the subscription already uses with a "Current plan" badge.
  */
-export function OwnerChoosePlan(props: { businessId: string; onBack?: () => void; onSelect?: (plan: SubscriptionPlan) => void }) {
+export function OwnerChoosePlan(props: {
+  businessId: string;
+  onBack?: () => void;
+  onSelect?: (plan: SubscriptionPlan) => void;
+  currentPlanSlug?: string | null;
+}) {
   const plans = useAsyncData<SubscriptionPlan[]>(() => listSubscriptionPlans(), []);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
 
@@ -43,6 +49,7 @@ export function OwnerChoosePlan(props: { businessId: string; onBack?: () => void
       <div className="plan-option-list" role="radiogroup" aria-label="Subscription plans">
         {list.map((plan) => {
           const isSelected = plan.slug === selectedSlug;
+          const isCurrent = props.currentPlanSlug != null && plan.slug === props.currentPlanSlug;
           return (
             <button
               key={plan.id}
@@ -55,6 +62,7 @@ export function OwnerChoosePlan(props: { businessId: string; onBack?: () => void
               <span className="plan-option-top">
                 <span className="plan-option-name">{plan.name}</span>
                 {plan.isHighlighted ? <span className="badge-rec">Recommended</span> : null}
+                {isCurrent ? <span className="badge badge-open">Current plan</span> : null}
               </span>
               {plan.description ? <span className="plan-option-desc">{plan.description}</span> : null}
               <span className="plan-option-price">

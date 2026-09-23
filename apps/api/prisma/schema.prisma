@@ -147,6 +147,7 @@ model User {
   reviewedPromotionPayments PromotionPaymentRequest[]  @relation("PromotionPaymentReviewer")
   reviewedVerifications     VerificationApplication[]    @relation("VerificationReviewer")
   reviewedPromotionRequests PromotionRequest[]           @relation("PromotionReviewer")
+  createdEditorialFeatures EditorialFeature[]           @relation("EditorialFeatureCreator")
   bookingPayments           BookingPayment[]             @relation("BookingPaymentCustomer")
   orderPayments             OrderPayment[]               @relation("OrderPaymentCustomer")
   verifiedBookingPays       BookingPayment[]             @relation("BookingPaymentVerifier")
@@ -215,6 +216,8 @@ model Business {
   verificationApplication VerificationApplication?
   /// Promotional campaigns the business asked to join (admin-reviewed).
   promotionRequests       PromotionRequest[]
+  /// Admin-curated free editorial features of this business.
+  editorialFeatures       EditorialFeature[]
   /// Server-authoritative trial state. Set to NOT_ELIGIBLE / not eligible on
   /// business creation; only the admin verification-approval flow grants
   /// eligibility. Trial snapshots stay on the BusinessSubscription rows.
@@ -964,4 +967,31 @@ model PromotionPaymentRequest {
   @@index([businessId, submittedAt])
   @@index([status, submittedAt])
   @@index([transactionReference])
+}
+
+/// An admin-curated, FREE editorial feature of a business (e.g. a staff
+/// pick). This is NOT a paid promotion: it has no price, no payment, and no
+/// PromotionRequest — it can never activate, extend, or stand in for a paid
+/// promotion. It only exists so the customer-facing "Featured" placement has
+/// an editorial source distinct from paid campaigns. Visibility is
+/// date-driven: a feature shows while startAt <= now < endAt.
+model EditorialFeature {
+  id              String   @id @default(uuid())
+  businessId      String
+  /// Placement kind (e.g. "staff_pick", "editors_choice"). Free text so the
+  /// editorial team can name new placements without a migration.
+  placementType   String
+  /// Owner-visible label (e.g. "Staff pick"). Displayed as the feature's
+  /// placement label; never presented as a paid promotion.
+  label           String
+  startAt         DateTime @default(now())
+  endAt           DateTime
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  business        Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdBy       User     @relation("EditorialFeatureCreator", fields: [createdByUserId], references: [id])
+
+  @@index([businessId, endAt])
+  @@index([endAt, startAt])
 }

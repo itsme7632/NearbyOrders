@@ -5126,3 +5126,96 @@ nav.nav-v3, nav.business-nav-v3 {
 .opc-sub { font-size: 13.5px; color: var(--ink-2); margin: 10px 0 0; }
 .opc-pay { margin-top: 10px; }
 .opc-actions { margin-top: 12px; }
+
+/* Subscription sub-screens: sectioned Make-a-payment flow. */
+.pay-step-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.pay-step-head .pay-block-title { margin: 0; }
+.step-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+/* Featured placements (Phase 20): a clearly labeled sponsored/curated rail
+   on Home. Never part of organic ranking; omitted when the server returns
+   nothing. */
+.featured-note { font-size: 12px; color: var(--muted); margin: -6px 0 8px; }
+.featured-rail {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 2px 2px 8px;
+  margin: 0 -2px;
+  scrollbar-width: none;
+}
+.featured-rail::-webkit-scrollbar { display: none; }
+.featured-card {
+  flex: 0 0 auto;
+  min-width: 210px;
+  max-width: 260px;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  text-align: left;
+  cursor: pointer;
+}
+.featured-chip {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--brand);
+  border-radius: 999px;
+  padding: 3px 9px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.featured-name {
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.featured-cats {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* Featured badge on the Business Detail hero — shown only when the server
+   lists an active placement for this business. Small by design. */
+.biz-hero-featured {
+  background: var(--brand);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  border-radius: 999px;
+  padding: 3px 10px;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -11,7 +11,11 @@ import { OwnerBookingsList } from './OwnerBookingsList.js';
 import { OwnerOrders } from './OwnerOrders.js';
 import { OwnerCustomerPayments } from './OwnerCustomerPayments.js';
 import { OwnerSubscription } from './OwnerSubscriptionScreen.js';
-import { OwnerChoosePlan } from './OwnerChoosePlanScreen.js';
+import { OwnerSubscriptionPlanDetails } from './OwnerSubscriptionPlanScreen.js';
+import { OwnerSubscriptionChangePlan } from './OwnerSubscriptionChangePlanScreen.js';
+import { OwnerSubscriptionPaymentMethods } from './OwnerSubscriptionPaymentMethodsScreen.js';
+import { OwnerSubscriptionMakePayment } from './OwnerSubscriptionMakePaymentScreen.js';
+import { OwnerSubscriptionPaymentHistory } from './OwnerSubscriptionPaymentHistoryScreen.js';
 import { OwnerVerification } from './OwnerVerificationScreen.js';
 import { OwnerPromotions } from './OwnerPromotionsScreen.js';
 import { OwnerReviews } from './OwnerReviews.js';
@@ -31,6 +35,11 @@ const TITLE: Record<string, string> = {
   payments: 'Customer Payments',
   'payment-methods': 'Business Payment Methods',
   subscription: 'Business Subscription',
+  'subscription-plan': 'Plan Details',
+  'subscription-change-plan': 'Change Plan',
+  'subscription-payment-methods': 'Payment Methods',
+  'subscription-make-payment': 'Make a Payment',
+  'subscription-payment-history': 'Payment History',
   'choose-plan': 'Choose Your Plan',
   verification: 'Business Verification',
   promotions: 'Promotions',
@@ -52,6 +61,20 @@ export function OwnerScreen(props: {
   onOpen?: (path: string) => void;
 }) {
   const { screen, businessId, onBack, onOpenBooking } = props;
+
+  // Back target for the subscription sub-screens: the subscription hub,
+  // explicitly (history.back() is unsafe on cold-launch deep links, and the
+  // hub is the only sensible parent). Without a router, fall back to the
+  // dashboard back target.
+  const hubBack = props.onOpen ? () => props.onOpen!(`/owner/${businessId}/subscription`) : onBack;
+  const isSubscriptionSubScreen = [
+    'subscription-plan',
+    'subscription-change-plan',
+    'subscription-payment-methods',
+    'subscription-make-payment',
+    'subscription-payment-history',
+    'choose-plan',
+  ].includes(screen);
 
   let body: React.ReactNode;
   switch (screen) {
@@ -101,10 +124,30 @@ export function OwnerScreen(props: {
       body = <OwnerCustomerPayments businessId={businessId} />;
       break;
     case 'subscription':
-      body = <OwnerSubscription businessId={businessId} />;
+      body = <OwnerSubscription businessId={businessId} onOpen={props.onOpen} />;
       break;
+    // Subscription sub-screens: each its own route, each with a working
+    // back button to the subscription hub. With a router, back goes to the
+    // hub explicitly (never history.back(), which is unsafe on cold-launch
+    // deep links); without one, it falls back to the dashboard back target.
+    case 'subscription-plan':
+      body = <OwnerSubscriptionPlanDetails businessId={businessId} />;
+      break;
+    case 'subscription-change-plan':
+      body = <OwnerSubscriptionChangePlan businessId={businessId} onBack={hubBack} />;
+      break;
+    // 'choose-plan' is the legacy route name for the change-plan screen.
     case 'choose-plan':
-      body = <OwnerChoosePlan businessId={businessId} />;
+      body = <OwnerSubscriptionChangePlan businessId={businessId} onBack={hubBack} />;
+      break;
+    case 'subscription-payment-methods':
+      body = <OwnerSubscriptionPaymentMethods />;
+      break;
+    case 'subscription-make-payment':
+      body = <OwnerSubscriptionMakePayment businessId={businessId} onOpen={props.onOpen} />;
+      break;
+    case 'subscription-payment-history':
+      body = <OwnerSubscriptionPaymentHistory businessId={businessId} />;
       break;
     case 'verification':
       body = <OwnerVerification businessId={businessId} />;
@@ -120,7 +163,7 @@ export function OwnerScreen(props: {
   }
 
   return (
-    <OwnerScreenChrome title={TITLE[screen] ?? 'Business'} onBack={onBack}>
+    <OwnerScreenChrome title={TITLE[screen] ?? 'Business'} onBack={isSubscriptionSubScreen ? hubBack : onBack}>
       {body}
     </OwnerScreenChrome>
   );

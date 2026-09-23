@@ -7,10 +7,10 @@ import {
   BusinessDetailModal,
   PaymentMethods,
   PaymentRequests,
-  PromotionCenter,
   SubscriptionPlans,
   VerificationReview,
 } from './sections.js';
+import { PromotionCenter } from './promotion-center.js';
 
 /** Same map-pin brand glyph the mobile app uses (single inline copy). */
 function PinIcon({ size = 16 }: { size?: number }) {

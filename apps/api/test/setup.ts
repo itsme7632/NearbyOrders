@@ -78,6 +78,10 @@ async function runMigrations(url: string): Promise<void> {
  */
 function acquireBootLock(dataDir: string, timeoutMs = 120_000): boolean {
   const lockDir = `${dataDir}.lock`;
+  // The lock dir's own mkdir must stay non-recursive so a held lock (EEXIST)
+  // still throws; but the parent may not exist on a cold boot (fresh clone),
+  // which would turn every attempt into ENOENT and silently skip the PG boot.
+  mkdirSync(path.dirname(lockDir), { recursive: true });
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     try {

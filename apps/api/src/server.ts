@@ -29,6 +29,8 @@ import {
   promotionRequestReviewSchema,
   promotionPaymentRequestCreateSchema,
   promotionPaymentReviewSchema,
+  editorialFeatureCreateSchema,
+  editorialFeatureUpdateSchema,
   paymentMethodSchema,
   paymentMethodUpdateSchema,
   paymentRejectSchema,
@@ -1469,6 +1471,132 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   /**
+   * Customer-facing "Featured" placement (Phase 20). Server-authoritative:
+   * every placement comes from a real row — an ACTIVE paid promotion request
+   * or an active editorial feature — and businesses that are not approved or
+   * are archived never appear.
+   *
+   * Two sources, merged deterministically (startsAt, business name, id):
+   * - PAID: PromotionRequest status ACTIVE with expiresAt in the future,
+   *   whose catalog promotion isActive. activation dates are server-computed
+   *   at payment approval; an expired request drops out on its own.
+   * - EDITORIAL: EditorialFeature with startAt <= now < endAt. Clearly
+   *   marked source 'editorial' and never presented as a paid promotion.
+   *
+   * Placement info: paid placements carry the promotion's catalog benefits
+   * (display copy); editorial placements carry their admin-set label and
+   * placement type. placementLabel is the display label ("Featured" for paid
+   * promotions, the curated label for editorial).
+   *
+   * On catalog benefits: a Promotion's `benefits` is admin-authored free-text
+   * marketing copy — it does NOT map 1:1 to implemented surfaces. This
+   * endpoint is the ONLY implemented surface for promotion benefits; a
+   * benefit string naming any other surface (e.g. "homepage banner",
+   * "search boost") has no implementing code and is returned as display
+   * copy only, never as a functional placement.
+   */
+  app.get('/api/v1/featured-businesses', async () => {
+    const now = new Date();
+    const visibleBusiness = { status: 'APPROVED' as const, archivedAt: null };
+    const businessSelect = {
+      id: true,
+      name: true,
+      slug: true,
+      categories: { select: { category: { select: { name: true } } } },
+    } as const;
+
+    const paid = await prisma.promotionRequest.findMany({
+      where: {
+        status: 'ACTIVE',
+        expiresAt: { gt: now },
+        promotion: { isActive: true },
+        business: visibleBusiness,
+        // "Paid" placements only: the request must have an approved payment.
+        // A free (zero-price) promotion can be ACTIVE without any payment and
+        // must never appear as a paid placement.
+        payments: { some: { status: 'APPROVED' } },
+      },
+      select: {
+        id: true,
+        activatedAt: true,
+        expiresAt: true,
+        createdAt: true,
+        business: { select: businessSelect },
+        promotion: { select: { id: true, name: true, slug: true, benefits: true } },
+      },
+    });
+
+    const editorial = await prisma.editorialFeature.findMany({
+      where: { startAt: { lte: now }, endAt: { gt: now }, business: visibleBusiness },
+      select: {
+        id: true,
+        placementType: true,
+        label: true,
+        startAt: true,
+        endAt: true,
+        business: { select: businessSelect },
+      },
+    });
+
+    type FeaturedItem = {
+      source: 'paid' | 'editorial';
+      placementId: string;
+      business: { id: string; name: string; slug: string; categoryNames: string[] };
+      placementType: string;
+      placementLabel: string;
+      promotionName: string | null;
+      promotionSlug: string | null;
+      benefits: string[];
+      startsAt: string;
+      endsAt: string;
+    };
+
+    const items: FeaturedItem[] = [
+      ...paid.map((p) => ({
+        source: 'paid' as const,
+        placementId: p.id,
+        business: {
+          id: p.business.id,
+          name: p.business.name,
+          slug: p.business.slug,
+          categoryNames: p.business.categories.map((c) => c.category.name).sort(),
+        },
+        placementType: 'promotion',
+        placementLabel: 'Featured',
+        promotionName: p.promotion.name,
+        promotionSlug: p.promotion.slug,
+        benefits: p.promotion.benefits,
+        // activatedAt is set at activation; createdAt is a defensive fallback.
+        startsAt: (p.activatedAt ?? p.createdAt).toISOString(),
+        endsAt: p.expiresAt!.toISOString(),
+      })),
+      ...editorial.map((f) => ({
+        source: 'editorial' as const,
+        placementId: f.id,
+        business: {
+          id: f.business.id,
+          name: f.business.name,
+          slug: f.business.slug,
+          categoryNames: f.business.categories.map((c) => c.category.name).sort(),
+        },
+        placementType: f.placementType,
+        placementLabel: f.label,
+        promotionName: null,
+        promotionSlug: null,
+        benefits: [],
+        startsAt: f.startAt.toISOString(),
+        endsAt: f.endAt.toISOString(),
+      })),
+    ];
+    items.sort((a, b) =>
+      a.startsAt.localeCompare(b.startsAt) ||
+      a.business.name.localeCompare(b.business.name) ||
+      a.placementId.localeCompare(b.placementId),
+    );
+    return { data: items };
+  });
+
+  /**
    * Promotion monetization lifecycle (Phase 19).
    *
    *   PENDING (application) -> APPROVED (payment required, paid promotions)
@@ -1607,7 +1735,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     paidAt: Date | null; note: string | null; rejectionReason: string | null;
     submittedAt: Date; reviewedAt: Date | null; reviewedByUserId: string | null;
     business: { id: string; name: string };
-    promotionRequest: { id: string; status: string; promotion: { id: string; name: string; slug: string } };
+    promotionRequest: { id: string; status: string; promotion: { id: string; name: string; slug: string; priceMinor: number | null; durationDays: number | null } };
     paymentMethod: { id: string; name: string; type: string };
   }) => ({
     id: p.id,
@@ -1634,7 +1762,9 @@ export async function buildApp(): Promise<FastifyInstance> {
       select: {
         id: true,
         status: true,
-        promotion: { select: { id: true, name: true, slug: true } },
+        // priceMinor/durationDays let the reviewer verify the paid amount
+        // against the CURRENT catalog price and the activation length.
+        promotion: { select: { id: true, name: true, slug: true, priceMinor: true, durationDays: true } },
       },
     },
     paymentMethod: { select: { id: true, name: true, type: true } },
@@ -1725,6 +1855,12 @@ export async function buildApp(): Promise<FastifyInstance> {
 
     const method = await prisma.paymentMethod.findFirst({ where: { id: body.paymentMethodId, isActive: true } });
     if (!method) return r.status(400).send({ error: { code: 'INVALID_PAYMENT_METHOD', message: 'Choose a valid payment method' } });
+
+    // The receipt key must reference bytes the owner actually uploaded: a
+    // well-formed but nonexistent key would persist a dangling reference.
+    const receiptBytes = await readReceipt(body.receiptStorageKey);
+    if (!receiptBytes)
+      return r.status(400).send({ error: { code: 'RECEIPT_NOT_FOUND', message: 'The receipt file was not found. Upload the receipt again and retry.' } });
 
     const now = new Date();
     const pending = await prisma.promotionPaymentRequest.findFirst({
@@ -5563,6 +5699,246 @@ export async function buildApp(): Promise<FastifyInstance> {
       },
     ]).catch(() => undefined);
     return { data: adminPromotionPayment(rejected) };
+  });
+
+  /* ------------------- Featured Businesses (Phase 20) ----------------- */
+
+  /**
+   * Admin DTO for an editorial feature: business identity, placement type and
+   * label, derived state (active/scheduled/expired), and the curating admin.
+   * Editorial features are FREE — there is no promotion, no request, and no
+   * payment anywhere in this shape, by design.
+   */
+  const adminEditorialFeature = (f: {
+    id: string; placementType: string; label: string;
+    startAt: Date; endAt: Date; createdAt: Date;
+    business: { id: string; name: string; slug: string };
+    createdBy: { id: string; email: string };
+  }) => {
+    const now = new Date();
+    return {
+      id: f.id,
+      placementType: f.placementType,
+      label: f.label,
+      startsAt: f.startAt.toISOString(),
+      endsAt: f.endAt.toISOString(),
+      state: (f.endAt <= now ? 'expired' : f.startAt > now ? 'scheduled' : 'active') as 'active' | 'scheduled' | 'expired',
+      createdAt: f.createdAt.toISOString(),
+      business: f.business,
+      createdBy: f.createdBy,
+    };
+  };
+
+  const EDITORIAL_FEATURE_INCLUDE = {
+    business: { select: { id: true, name: true, slug: true } },
+    createdBy: { select: { id: true, email: true } },
+  } as const;
+
+  /** Default label when the admin only names a placement type. */
+  const humanizePlacementType = (t: string) =>
+    t.split('_').map((w) => (w ? w[0]!.toUpperCase() + w.slice(1) : w)).join(' ');
+
+  /**
+   * Unified "Featured Businesses" admin view: ACTIVE paid promotions and
+   * active editorial features in one list. Each item carries its source
+   * ('paid' | 'editorial'), business identity, placement type/label, state,
+   * start/end, and — for paid placements only — the verifying payment. The
+   * list is read-only: nothing here can activate a promotion; paid
+   * activation happens exclusively through promotion-payment approval.
+   */
+  app.get('/api/v1/admin/featured', { preHandler: roles('ADMIN') }, async (q) => {
+    const query = z
+      .object({
+        state: z.enum(['active', 'expired', 'all']).default('active'),
+        limit: z.coerce.number().int().min(1).max(100).default(50),
+      })
+      .parse(q.query ?? {});
+    await expireOverduePromotionRequests(prisma);
+    const now = new Date();
+
+    const paidWhere: Record<string, unknown> =
+      query.state === 'active'
+        ? { status: 'ACTIVE', expiresAt: { gt: now } }
+        : query.state === 'expired'
+          ? { status: 'EXPIRED' }
+          : { status: { in: ['ACTIVE', 'EXPIRED'] } };
+    const paid = await prisma.promotionRequest.findMany({
+      // Paid source only: the request must have an approved payment, so a
+      // paid entry always carries verifying payment information.
+      where: { ...paidWhere, promotion: { isActive: true }, payments: { some: { status: 'APPROVED' } } },
+      select: {
+        id: true,
+        status: true,
+        activatedAt: true,
+        expiresAt: true,
+        business: { select: { id: true, name: true, slug: true } },
+        promotion: { select: { id: true, name: true, slug: true } },
+        payments: { select: { id: true, status: true, amountMinor: true, currency: true }, orderBy: { submittedAt: 'desc' as const }, take: 1 },
+      },
+      take: query.limit,
+    });
+
+    const featureWhere: Record<string, unknown> =
+      query.state === 'active'
+        ? { startAt: { lte: now }, endAt: { gt: now } }
+        : query.state === 'expired'
+          ? { endAt: { lte: now } }
+          : {};
+    const editorial = await prisma.editorialFeature.findMany({
+      where: featureWhere,
+      include: EDITORIAL_FEATURE_INCLUDE,
+      orderBy: [{ endAt: 'asc' }, { id: 'asc' }],
+      take: query.limit,
+    });
+
+    const items = [
+      ...paid.map((p) => ({
+        id: p.id,
+        source: 'paid' as const,
+        state: (p.status === 'ACTIVE' && p.expiresAt && p.expiresAt > now ? 'active' : 'expired') as 'active' | 'expired',
+        business: p.business,
+        placementType: 'promotion',
+        label: 'Featured',
+        promotion: p.promotion,
+        // Editorial features never carry payment info; paid ones always do.
+        payment: p.payments[0] ? { id: p.payments[0].id, status: p.payments[0].status, amountMinor: p.payments[0].amountMinor, currency: p.payments[0].currency } : null,
+        startsAt: p.activatedAt?.toISOString() ?? null,
+        endsAt: p.expiresAt?.toISOString() ?? null,
+      })),
+      ...editorial.map((f) => ({
+        id: f.id,
+        source: 'editorial' as const,
+        state: (f.endAt <= now ? 'expired' : f.startAt > now ? 'scheduled' : 'active') as 'active' | 'scheduled' | 'expired',
+        business: f.business,
+        placementType: f.placementType,
+        label: f.label,
+        promotion: null,
+        payment: null,
+        startsAt: f.startAt.toISOString(),
+        endsAt: f.endAt.toISOString(),
+      })),
+    ];
+    items.sort((a, b) => (a.endsAt ?? '').localeCompare(b.endsAt ?? '') || a.id.localeCompare(b.id));
+    return { data: items.slice(0, query.limit) };
+  });
+
+  /**
+   * Creates a free editorial feature. Never touches PromotionRequest or any
+   * payment: a paid promotion can only become ACTIVE through the
+   * promotion-payment approval flow. The strict body schema rejects any
+   * promotion/payment fields outright.
+   */
+  app.post('/api/v1/admin/editorial-features', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const admin = currentUser(q);
+    const body = editorialFeatureCreateSchema.parse(q.body ?? {});
+    const business = await prisma.business.findUnique({ where: { id: body.businessId }, select: { id: true } });
+    if (!business) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Business not found' } });
+
+    const startAt = body.startAt ? new Date(body.startAt) : new Date();
+    const endAt = new Date(body.endAt);
+    const overlap = await prisma.editorialFeature.findFirst({
+      where: {
+        businessId: business.id,
+        placementType: body.placementType,
+        startAt: { lt: endAt },
+        endAt: { gt: startAt },
+      },
+      select: { id: true },
+    });
+    if (overlap)
+      return r.status(409).send({ error: { code: 'FEATURE_OVERLAPS', message: 'This business already has an overlapping feature of this placement type' } });
+
+    const created = await prisma.editorialFeature.create({
+      data: {
+        businessId: business.id,
+        placementType: body.placementType,
+        label: body.label ?? humanizePlacementType(body.placementType),
+        startAt,
+        endAt,
+        createdByUserId: admin.id,
+      },
+      include: EDITORIAL_FEATURE_INCLUDE,
+    });
+    await prisma.auditLog.create({
+      data: { actorId: admin.id, action: 'EDITORIAL_FEATURE_CREATED', entityType: 'EditorialFeature', entityId: created.id, metadata: { businessId: business.id } },
+    });
+    return r.status(201).send({ data: adminEditorialFeature(created) });
+  });
+
+  /** Updates an editorial feature: label/type edits or end-date extension. */
+  app.patch('/api/v1/admin/editorial-features/:id', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const admin = currentUser(q);
+    const body = editorialFeatureUpdateSchema.parse(q.body ?? {});
+    const existing = await prisma.editorialFeature.findUnique({ where: { id } });
+    if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Editorial feature not found' } });
+
+    const now = new Date();
+    const placementType = body.placementType ?? existing.placementType;
+    const endAt = body.endAt ? new Date(body.endAt) : existing.endAt;
+    // PATCH is extend-only: a supplied endAt must move the feature further out.
+    if (body.endAt && endAt <= existing.endAt)
+      return r.status(400).send({ error: { code: 'END_DATE_NOT_EXTENDED', message: 'endAt must be later than the current end date' } });
+    if (endAt <= now || endAt <= existing.startAt)
+      return r.status(400).send({ error: { code: 'INVALID_END_DATE', message: 'endAt must be after both now and the feature start' } });
+    const overlap = await prisma.editorialFeature.findFirst({
+      where: {
+        businessId: existing.businessId,
+        placementType,
+        id: { not: id },
+        startAt: { lt: endAt },
+        endAt: { gt: existing.startAt },
+      },
+      select: { id: true },
+    });
+    if (overlap)
+      return r.status(409).send({ error: { code: 'FEATURE_OVERLAPS', message: 'This business already has an overlapping feature of this placement type' } });
+
+    const updated = await prisma.editorialFeature.update({
+      where: { id },
+      data: {
+        placementType: body.placementType ?? undefined,
+        label: body.label ?? undefined,
+        endAt: body.endAt ? endAt : undefined,
+      },
+      include: EDITORIAL_FEATURE_INCLUDE,
+    });
+    await prisma.auditLog.create({
+      data: { actorId: admin.id, action: 'EDITORIAL_FEATURE_UPDATED', entityType: 'EditorialFeature', entityId: id },
+    });
+    return { data: adminEditorialFeature(updated) };
+  });
+
+  /** Ends an editorial feature early: endAt becomes now. */
+  app.post('/api/v1/admin/editorial-features/:id/end', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const admin = currentUser(q);
+    const existing = await prisma.editorialFeature.findUnique({ where: { id } });
+    if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Editorial feature not found' } });
+    if (existing.endAt <= new Date())
+      return r.status(409).send({ error: { code: 'FEATURE_ALREADY_ENDED', message: 'This feature has already ended' } });
+    const ended = await prisma.editorialFeature.update({
+      where: { id },
+      data: { endAt: new Date() },
+      include: EDITORIAL_FEATURE_INCLUDE,
+    });
+    await prisma.auditLog.create({
+      data: { actorId: admin.id, action: 'EDITORIAL_FEATURE_ENDED', entityType: 'EditorialFeature', entityId: id },
+    });
+    return { data: adminEditorialFeature(ended) };
+  });
+
+  /** Removes an editorial feature entirely. */
+  app.delete('/api/v1/admin/editorial-features/:id', { preHandler: roles('ADMIN') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const admin = currentUser(q);
+    const existing = await prisma.editorialFeature.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Editorial feature not found' } });
+    await prisma.editorialFeature.delete({ where: { id } });
+    await prisma.auditLog.create({
+      data: { actorId: admin.id, action: 'EDITORIAL_FEATURE_DELETED', entityType: 'EditorialFeature', entityId: id },
+    });
+    return r.status(204).send();
   });
 
   /** Orders across all businesses with business + customer identity. */

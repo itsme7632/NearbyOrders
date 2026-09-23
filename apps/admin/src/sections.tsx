@@ -1072,7 +1072,7 @@ function PromotionDialog(props: { promotion: AdminPromotion | null; onClose: () 
   );
 }
 
-function PromotionCatalog() {
+export function PromotionCatalog() {
   const [promos, setPromos] = useState<AdminPromotion[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1440,7 +1440,7 @@ function PromotionRequestDetail(props: { request: AdminPromotionRequest; onChang
   );
 }
 
-function PromotionRequestQueue() {
+export function PromotionRequestQueue() {
   const [status, setStatus] = useState('PENDING');
   const [reqs, setReqs] = useState<AdminPromotionRequest[] | null>(null);
   const [loading, setLoading] = useState(true);

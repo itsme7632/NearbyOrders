@@ -4,6 +4,7 @@ import {
   listBusinesses,
   listCategories,
   listFavorites,
+  listFeaturedBusinesses,
   listMyBookings,
   listMyOrders,
   listNearbyBusinesses,
@@ -12,6 +13,7 @@ import {
   type Business,
   type Category,
   type FavoriteEntry,
+  type FeaturedPlacement,
   type MyProfile,
   type Order,
 } from '../api.js';
@@ -348,6 +350,11 @@ export function HomeScreen(props: {
         )}
       </section>
 
+      {/* Featured placements: clearly labeled as sponsored/curated — never
+          part of organic ranking. The section is omitted entirely when the
+          server returns nothing. */}
+      <FeaturedSection onOpenBusiness={props.onOpenBusiness} />
+
       {/* Contextual card: at most one, only from real customer data. */}
       {context ? (
         <section aria-label="For you" className="rail-section">
@@ -435,6 +442,57 @@ export function HomeScreen(props: {
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Featured placements from GET /api/v1/featured-businesses — the only
+ * promotion surface on the customer app. Server-authoritative: the endpoint
+ * returns only currently-active placements, so the client filters nothing
+ * and invents nothing. Labeled honestly as "Featured" with the server's own
+ * placement label per entry; a failure degrades to an empty list so the
+ * section is omitted instead of showing an error banner.
+ */
+function FeaturedSection(props: { onOpenBusiness: (id: string) => void }) {
+  const featured = useAsyncData<FeaturedPlacement[]>(() => listFeaturedBusinesses().catch((): FeaturedPlacement[] => []), []);
+  if (featured.loading) {
+    return (
+      <section aria-label="Featured businesses" className="rail-section">
+        <SectionHeader title="Featured" />
+        <div className="featured-rail" aria-hidden>
+          {Array.from({ length: 3 }, (_, i) => (
+            <div key={i} className="featured-card">
+              <span className="skeleton skeleton-line w-40" />
+              <span className="skeleton skeleton-line w-60" style={{ marginTop: 8 }} />
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+  if (!featured.data?.length) return null;
+  return (
+    <section aria-label="Featured businesses" className="rail-section">
+      <SectionHeader title="Featured" />
+      <p className="featured-note">Sponsored placements and curated picks</p>
+      <div className="featured-rail">
+        {featured.data.map((f) => (
+          <button
+            type="button"
+            key={f.placementId}
+            className="featured-card"
+            onClick={() => props.onOpenBusiness(f.business.id)}
+            aria-label={`${f.business.name}, featured business`}
+          >
+            <span className="featured-chip">{f.placementLabel}</span>
+            <span className="featured-name">{f.business.name}</span>
+            {f.business.categoryNames.length ? (
+              <span className="featured-cats">{f.business.categoryNames.join(' • ')}</span>
+            ) : null}
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 

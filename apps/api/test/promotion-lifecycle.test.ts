@@ -1,6 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { makeApp, registerAndLogin, registerAdminAndLogin, createBusiness, authed, type TestApp } from './helpers.js';
 import { prisma } from '../src/lib.js';
+import { saveReceipt } from '../src/receiptStorage.js';
 
 let app: TestApp;
 
@@ -67,10 +69,12 @@ const submitPayment = (owner: { token: string; businessId: string }, requestId: 
     payload: body,
   });
 
-const paymentBody = (methodId: string, ref: string) => ({
+const paymentBody = async (methodId: string, ref: string) => ({
   paymentMethodId: methodId,
   transactionReference: ref,
-  receiptStorageKey: `receipts/${ref}.jpg`,
+  // Receipt keys must reference bytes actually stored via the upload path;
+  // well-formed but nonexistent keys are rejected by the server.
+  receiptStorageKey: await saveReceipt(Buffer.from(`fake-receipt-bytes-${randomUUID()}`), 'image/jpeg'),
 });
 
 describe('promotion monetization: full paid lifecycle', () => {
@@ -114,7 +118,7 @@ describe('promotion monetization: full paid lifecycle', () => {
     expect(mineData.paymentStatus).toBeNull();
 
     // 4. Business submits payment. There is no amount field to tamper with.
-    const submitted = await submitPayment(owner, request.id, paymentBody(method.id, `TX-LC-${Date.now()}`));
+    const submitted = await submitPayment(owner, request.id, (await paymentBody(method.id, `TX-LC-${Date.now()}`)));
     expect(submitted.statusCode).toBe(201);
     const payment = submitted.json().data;
     expect(payment.status).toBe('PENDING');
@@ -186,7 +190,7 @@ describe('promotion monetization: full paid lifecycle', () => {
     const promo = await makePromotion(admin.token);
     const request = (await applyFor(owner, promo.id)).json().data;
     await app.inject({ method: 'POST', url: `/api/v1/admin/promotion-requests/${request.id}/approve`, headers: authed(admin.token), payload: {} });
-    const payment = (await submitPayment(owner, request.id, paymentBody(method.id, `TX-DUP-${Date.now()}`))).json().data;
+    const payment = (await submitPayment(owner, request.id, (await paymentBody(method.id, `TX-DUP-${Date.now()}`)))).json().data;
     const first = await app.inject({ method: 'POST', url: `/api/v1/admin/promotion-payment-requests/${payment.id}/approve`, headers: authed(admin.token), payload: {} });
     expect(first.statusCode).toBe(200);
     const second = await app.inject({ method: 'POST', url: `/api/v1/admin/promotion-payment-requests/${payment.id}/approve`, headers: authed(admin.token), payload: {} });
@@ -228,7 +232,7 @@ describe('promotion monetization: rejections', () => {
     const promo = await makePromotion(admin.token);
     const request = (await applyFor(owner, promo.id)).json().data;
     await app.inject({ method: 'POST', url: `/api/v1/admin/promotion-requests/${request.id}/approve`, headers: authed(admin.token), payload: {} });
-    const payment = (await submitPayment(owner, request.id, paymentBody(method.id, `TX-REJ-${Date.now()}`))).json().data;
+    const payment = (await submitPayment(owner, request.id, (await paymentBody(method.id, `TX-REJ-${Date.now()}`)))).json().data;
 
     const rejected = await app.inject({
       method: 'POST',
@@ -251,7 +255,7 @@ describe('promotion monetization: rejections', () => {
     expect(mine.lifecycleState).toBe('PAYMENT_REQUIRED');
     expect(mine.lastPaymentRejected).toBe(true);
 
-    const resubmit = await submitPayment(owner, request.id, paymentBody(method.id, `TX-REJ2-${Date.now()}`));
+    const resubmit = await submitPayment(owner, request.id, (await paymentBody(method.id, `TX-REJ2-${Date.now()}`)));
     expect(resubmit.statusCode).toBe(201);
   });
 });
@@ -279,7 +283,7 @@ describe('promotion monetization: free promotions', () => {
     expect(expiresAt.getTime() - activatedAt.getTime()).toBe(14 * 24 * 60 * 60 * 1000);
 
     // No payment screen for a free promotion: submission is refused.
-    const pay = await submitPayment(owner, request.id, paymentBody(method.id, `TX-FREE-${Date.now()}`));
+    const pay = await submitPayment(owner, request.id, (await paymentBody(method.id, `TX-FREE-${Date.now()}`)));
     expect(pay.statusCode).toBe(400);
     expect(pay.json().error.code).toBe('PAYMENT_NOT_REQUIRED');
   });
@@ -308,9 +312,9 @@ describe('promotion monetization: guards', () => {
     const promo = await makePromotion(admin.token);
     const request = (await applyFor(owner, promo.id)).json().data;
     await app.inject({ method: 'POST', url: `/api/v1/admin/promotion-requests/${request.id}/approve`, headers: authed(admin.token), payload: {} });
-    const first = await submitPayment(owner, request.id, paymentBody(method.id, `TX-P1-${Date.now()}`));
+    const first = await submitPayment(owner, request.id, (await paymentBody(method.id, `TX-P1-${Date.now()}`)));
     expect(first.statusCode).toBe(201);
-    const second = await submitPayment(owner, request.id, paymentBody(method.id, `TX-P2-${Date.now()}`));
+    const second = await submitPayment(owner, request.id, (await paymentBody(method.id, `TX-P2-${Date.now()}`)));
     expect(second.statusCode).toBe(409);
     expect(second.json().error.code).toBe('PAYMENT_ALREADY_PENDING');
   });
@@ -321,7 +325,7 @@ describe('promotion monetization: guards', () => {
     const method = await makeMethod();
     const promo = await makePromotion(admin.token);
     const request = (await applyFor(owner, promo.id)).json().data;
-    const res = await submitPayment(owner, request.id, paymentBody(method.id, `TX-EARLY-${Date.now()}`));
+    const res = await submitPayment(owner, request.id, (await paymentBody(method.id, `TX-EARLY-${Date.now()}`)));
     expect(res.statusCode).toBe(409);
     expect(res.json().error.code).toBe('NOT_PAYABLE');
   });
@@ -333,7 +337,7 @@ describe('promotion monetization: guards', () => {
     const promo = await makePromotion(admin.token);
     const request = (await applyFor(owner, promo.id)).json().data;
     await app.inject({ method: 'POST', url: `/api/v1/admin/promotion-requests/${request.id}/approve`, headers: authed(admin.token), payload: {} });
-    const payment = (await submitPayment(owner, request.id, paymentBody(method.id, `TX-STALE-${Date.now()}`))).json().data;
+    const payment = (await submitPayment(owner, request.id, (await paymentBody(method.id, `TX-STALE-${Date.now()}`)))).json().data;
     // Application gets rejected out-of-band; the payment must not activate it.
     await prisma.promotionRequest.update({ where: { id: request.id }, data: { status: 'REJECTED' } });
     const res = await app.inject({ method: 'POST', url: `/api/v1/admin/promotion-payment-requests/${payment.id}/approve`, headers: authed(admin.token), payload: {} });
@@ -353,11 +357,11 @@ describe('promotion monetization: guards', () => {
 
     const reqA = (await applyFor(ownerA, promo.id)).json().data;
     await app.inject({ method: 'POST', url: `/api/v1/admin/promotion-requests/${reqA.id}/approve`, headers: authed(admin.token), payload: {} });
-    const payA = (await submitPayment(ownerA, reqA.id, paymentBody(method.id, ref))).json().data;
+    const payA = (await submitPayment(ownerA, reqA.id, (await paymentBody(method.id, ref)))).json().data;
 
     const reqB = (await applyFor(ownerB, promo.id)).json().data;
     await app.inject({ method: 'POST', url: `/api/v1/admin/promotion-requests/${reqB.id}/approve`, headers: authed(admin.token), payload: {} });
-    const payB = (await submitPayment(ownerB, reqB.id, paymentBody(method.id, ref))).json().data;
+    const payB = (await submitPayment(ownerB, reqB.id, (await paymentBody(method.id, ref)))).json().data;
 
     expect((await app.inject({ method: 'POST', url: `/api/v1/admin/promotion-payment-requests/${payA.id}/approve`, headers: authed(admin.token), payload: {} })).statusCode).toBe(200);
     const clash = await app.inject({ method: 'POST', url: `/api/v1/admin/promotion-payment-requests/${payB.id}/approve`, headers: authed(admin.token), payload: {} });
@@ -377,7 +381,7 @@ describe('promotion monetization: authorization', () => {
     await app.inject({ method: 'POST', url: `/api/v1/admin/promotion-requests/${request.id}/approve`, headers: authed(admin.token), payload: {} });
 
     // Owner B cannot submit a payment against A's request.
-    const foreign = await submitPayment(ownerB, request.id, paymentBody(method.id, `TX-F-${Date.now()}`));
+    const foreign = await submitPayment(ownerB, request.id, (await paymentBody(method.id, `TX-F-${Date.now()}`)));
     expect(foreign.statusCode).toBe(404);
 
     // Owner B cannot list A's payments (scoped lookup -> 404, no existence leak).
@@ -404,7 +408,7 @@ describe('promotion monetization: authorization', () => {
     const promo = await makePromotion(admin.token);
     const request = (await applyFor(owner, promo.id)).json().data;
     await app.inject({ method: 'POST', url: `/api/v1/admin/promotion-requests/${request.id}/approve`, headers: authed(admin.token), payload: {} });
-    const payment = (await submitPayment(owner, request.id, paymentBody(method.id, `TX-NA-${Date.now()}`))).json().data;
+    const payment = (await submitPayment(owner, request.id, (await paymentBody(method.id, `TX-NA-${Date.now()}`)))).json().data;
 
     expect((await app.inject({ method: 'GET', url: '/api/v1/admin/promotion-payment-requests', headers: authed(owner.token) })).statusCode).toBe(403);
     expect((await app.inject({ method: 'POST', url: `/api/v1/admin/promotion-payment-requests/${payment.id}/approve`, headers: authed(owner.token), payload: {} })).statusCode).toBe(403);
