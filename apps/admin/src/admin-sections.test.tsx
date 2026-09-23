@@ -418,14 +418,15 @@ describe('admin business review', () => {
 
     expect(vi.mocked(api.listBusinesses)).toHaveBeenCalledWith({ status: undefined, q: undefined, verificationStatus: undefined });
     expect(c.textContent).toContain('Food & Drink');
-    expect(c.textContent).toContain('Main Blvd 12');
-    expect(c.textContent).toContain('ELIGIBLE');
+    expect(c.textContent).toContain('Lahore');
+    expect(c.textContent).toContain('Eligible');
 
     const reviewBtn = Array.from(c.querySelectorAll('button')).find((b) => b.textContent === 'Review')!;
     await act(async () => {
       reviewBtn.click();
     });
-    expect(c.textContent).toContain('Business: Cafe Aroma');
+    expect(c.textContent).toContain('Cafe Aroma');
+    expect(c.textContent).toContain('Main Blvd 12');
     expect(c.textContent).toContain('View payment history');
 
     const payBtn = Array.from(c.querySelectorAll('button')).find((b) => b.textContent === 'View payment history')!;
@@ -442,7 +443,7 @@ describe('admin business review', () => {
     const c = await renderInto(<Businesses onOpenPayments={vi.fn()} />);
     await flush();
 
-    const select = c.querySelector('select[aria-label="Filter by verification status"]') as HTMLSelectElement;
+    const select = c.querySelector('select[aria-label="Verification status"]') as HTMLSelectElement;
     await act(async () => {
       select.value = 'UNDER_REVIEW';
       select.dispatchEvent(new Event('change', { bubbles: true }));

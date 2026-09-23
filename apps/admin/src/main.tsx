@@ -2,15 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import * as api from './api.js';
-import type { AdminBusiness, AdminUser } from './api.js';
-import {
-  BusinessDetailModal,
-  PaymentMethods,
-  PaymentRequests,
-  SubscriptionPlans,
-  VerificationReview,
-} from './sections.js';
+import { Avatar, Field, FormActions, FormError, useAsync } from './ds.js';
+import { Dashboard } from './screen-dashboard.js';
+import { Businesses, Categories, Reviews, Users } from './screen-marketplace.js';
+import { Bookings, Orders, VerificationReview } from './screen-operations.js';
+import { PaymentMethods, PaymentRequests, Subscriptions, SubscriptionPlans } from './screen-billing.js';
 import { PromotionCenter } from './promotion-center.js';
+import { AuditLog } from './screen-system.js';
 
 /** Same map-pin brand glyph the mobile app uses (single inline copy). */
 function PinIcon({ size = 16 }: { size?: number }) {
@@ -22,7 +20,7 @@ function PinIcon({ size = 16 }: { size?: number }) {
   );
 }
 
-type Section =
+export type Section =
   | 'dashboard'
   | 'users'
   | 'businesses'
@@ -55,56 +53,35 @@ const SECTION_ICONS: Record<Section, string> = {
   audit: '☰',
 };
 
-const SECTIONS: { key: Section; label: string }[] = [
-  { key: 'dashboard', label: 'Dashboard' },
-  { key: 'users', label: 'Users' },
-  { key: 'businesses', label: 'Businesses' },
-  { key: 'verifications', label: 'Verification' },
-  { key: 'orders', label: 'Orders' },
-  { key: 'bookings', label: 'Bookings' },
-  { key: 'reviews', label: 'Reviews' },
-  { key: 'categories', label: 'Categories' },
-  { key: 'subscriptions', label: 'Subscriptions' },
-  { key: 'plans', label: 'Plans' },
-  { key: 'payments', label: 'Payment requests' },
-  { key: 'paymentMethods', label: 'Payment methods' },
-  { key: 'promotions', label: 'Promotions' },
-  { key: 'audit', label: 'Audit log' },
-];
-
-const fmtMoney = (minor: number, currency: string) =>
-  new Intl.NumberFormat('en-PK', { style: 'currency', currency, maximumFractionDigits: 0 }).format(minor / 100);
-
-const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' });
-
-const StatusBadge = (props: { value: string }) => {
-  const v = props.value;
-  const cls =
-    v === 'APPROVED' || v === 'ACTIVE' || v === 'COMPLETED' || v === 'PAID' || v === 'APPROVED_PAY'
-      ? 'badge-open'
-      : v === 'PENDING' || v === 'PENDING_VERIFICATION' || v === 'TRIAL'
-        ? 'badge-warn'
-        : v === 'SUSPENDED' || v === 'REJECTED' || v === 'CANCELLED' || v === 'FAILED' || v === 'EXPIRED'
-          ? 'badge-closed'
-          : 'badge-info';
-  return <span className={`badge ${cls}`}>{v.replace(/_/g, ' ')}</span>;
+const SECTION_LABELS: Record<Section, string> = {
+  dashboard: 'Dashboard',
+  users: 'Users',
+  businesses: 'Businesses',
+  verifications: 'Verification',
+  orders: 'Orders',
+  bookings: 'Bookings',
+  reviews: 'Reviews',
+  categories: 'Categories',
+  subscriptions: 'Subscriptions',
+  plans: 'Plans',
+  payments: 'Payment requests',
+  paymentMethods: 'Payment methods',
+  promotions: 'Promotions',
+  audit: 'Audit log',
 };
 
-function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) {
-  const [state, setState] = useState<{ data: T | null; loading: boolean; error: string | null }>({ data: null, loading: true, error: null });
-  const [nonce, setNonce] = useState(0);
-  useEffect(() => {
-    let alive = true;
-    setState((s) => ({ ...s, loading: true, error: null }));
-    fn()
-      .then((data) => alive && setState({ data, loading: false, error: null }))
-      .catch((e: unknown) => alive && setState({ data: null, loading: false, error: e instanceof Error ? e.message : 'Something went wrong.' }));
-    return () => {
-      alive = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, nonce]);
-  return { ...state, reload: () => setNonce((n) => n + 1) };
+/** Navigation groups. Every route is preserved; grouping is visual only. */
+const NAV_GROUPS: { label: string; sections: Section[] }[] = [
+  { label: 'Overview', sections: ['dashboard'] },
+  { label: 'Marketplace', sections: ['businesses', 'categories', 'reviews'] },
+  { label: 'Operations', sections: ['orders', 'bookings', 'verifications'] },
+  { label: 'Billing', sections: ['subscriptions', 'plans', 'payments', 'paymentMethods'] },
+  { label: 'Growth', sections: ['promotions'] },
+  { label: 'System', sections: ['users', 'audit'] },
+];
+
+function groupOf(section: Section): string {
+  return NAV_GROUPS.find((g) => g.sections.includes(section))?.label ?? '';
 }
 
 /* --------------------------------- auth --------------------------------- */
@@ -129,827 +106,94 @@ function LoginScreen() {
   };
 
   return (
-    <div className="auth-wrap">
-      <form className="auth-card" onSubmit={submit}>
-        <h1>NearbyOrders Admin</h1>
+    <div className="nb-auth-wrap">
+      <form className="nb-auth-card" onSubmit={submit}>
+        <div className="nb-auth-brand">
+          <span className="nb-brand-mark" aria-hidden>
+            <PinIcon size={16} />
+          </span>
+          NearbyOrders
+        </div>
+        <h1>Control Center</h1>
         <p className="sub">Platform administration. Administrator accounts only.</p>
         <p className="sub">Admin accounts are created with the secure provisioning script. See apps/api/ADMIN_ACCESS.md.</p>
-        {error ? <div className="form-error" role="alert">{error}</div> : null}
-        <label className="field">
-          <span className="label">Email</span>
+        {error ? <FormError message={error} /> : null}
+        <Field label="Email">
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required />
-        </label>
-        <label className="field">
-          <span className="label">Password</span>
+        </Field>
+        <Field label="Password">
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
-        </label>
-        <button className="btn" style={{ width: '100%' }} disabled={busy}>
-          {busy ? 'Signing in…' : 'Sign in'}
-        </button>
+        </Field>
+        <FormActions>
+          <button type="submit" className="nb-btn" disabled={busy}>
+            {busy ? 'Signing in…' : 'Sign in'}
+          </button>
+        </FormActions>
       </form>
     </div>
   );
 }
 
-/* ------------------------------- dashboard ------------------------------ */
+/* ------------------------------ navigation ---------------------------- */
 
-/** Exported for the triage test; the shell renders it internally. */
-export function Dashboard(props: { onTriage: (section: Section, status?: string) => void }) {
-  const stats = useAsync(() => api.getDashboard(), []);
-  if (stats.loading) return <div className="loading">Loading platform metrics…</div>;
-  if (stats.error) return <div className="form-error">{stats.error}</div>;
-  const d = stats.data!;
-  // Phase 3G: attention cards are triage shortcuts. One click opens the
-  // matching section pre-filtered to the queue that needs work.
-  const cards: { label: string; value: number | string; triage?: { section: Section; status?: string } }[] = [
-    { label: 'Users', value: d.users },
-    { label: 'Customers', value: d.customers },
-    { label: 'Business owners', value: d.businessOwners },
-    { label: 'Businesses', value: d.businesses },
-    { label: 'Active businesses', value: d.activeBusinesses },
-    { label: 'Pending businesses', value: d.pendingBusinesses, triage: { section: 'businesses', status: 'PENDING' } },
-    { label: 'Suspended', value: d.suspendedBusinesses, triage: { section: 'businesses', status: 'SUSPENDED' } },
-    { label: 'Orders', value: d.orders },
-    { label: 'Pending orders', value: d.pendingOrders, triage: { section: 'orders', status: 'PENDING' } },
-    { label: 'Bookings', value: d.bookings },
-    { label: 'Pending bookings', value: d.pendingBookings, triage: { section: 'bookings', status: 'PENDING' } },
-    { label: 'Payment requests', value: d.pendingSubscriptionPayments, triage: { section: 'payments', status: 'PENDING' } },
-    { label: 'Reviews', value: d.reviews },
-    { label: 'Hidden reviews', value: d.hiddenReviews, triage: { section: 'reviews', status: 'hidden' } },
-    { label: 'Push devices', value: d.pushDevices.total },
-    { label: 'Active push devices', value: d.pushDevices.active },
-  ];
+function SideNav(props: { section: Section; onGo: (s: Section) => void }) {
   return (
     <>
-      <div className="stat-grid">
-        {cards.map((c) => {
-          // Attention is a property of the queue (triage shortcut with a
-          // nonzero count), not of the label text.
-          const attention = Boolean(c.triage) && Number(c.value) > 0;
-          const inner = (
-            <>
-              <span className="stat-num">{c.value}</span>
-              <span className="stat-label">{c.label}</span>
-            </>
-          );
-          return c.triage ? (
-            <button
-              key={c.label}
-              type="button"
-              className={`stat-card stat-triage${attention ? ' stat-attention' : ''}`}
-              onClick={() => props.onTriage(c.triage!.section, c.triage!.status)}
-              aria-label={`${c.label}: ${c.value} - open queue`}
-            >
-              {inner}
-            </button>
-          ) : (
-            <div key={c.label} className={`stat-card${attention ? ' stat-attention' : ''}`}>
-              {inner}
-            </div>
-          );
-        })}
+      <div className="nb-brand">
+        <span className="nb-brand-mark" aria-hidden>
+          <PinIcon size={16} />
+        </span>
+        <span className="nb-brand-name">
+          Nearby<b>Orders</b>
+        </span>
       </div>
-      <div className="panel">
-        <h2>Push fleet by platform</h2>
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>Android</th>
-              <th>iOS</th>
-              <th>Web</th>
-              <th>Total</th>
-              <th>Active</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>{d.pushDevices.android}</td>
-              <td>{d.pushDevices.ios}</td>
-              <td>{d.pushDevices.web}</td>
-              <td>{d.pushDevices.total}</td>
-              <td>{d.pushDevices.active}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </>
-  );
-}
-
-/* --------------------------------- users -------------------------------- */
-
-function Users() {
-  const [q, setQ] = useState('');
-  const [query, setQuery] = useState('');
-  const users = useAsync(() => api.listUsers(query), [query]);
-  const [detail, setDetail] = useState<AdminUser | null>(null);
-
-  const toggleSuspend = async (u: AdminUser) => {
-    await api.setUserSuspended(u.id, !u.isSuspended);
-    users.reload();
-    if (detail?.id === u.id) setDetail(await api.getUser(u.id));
-  };
-
-  return (
-    <>
-      <form
-        className="toolbar"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setQuery(q.trim());
-        }}
-      >
-        <input className="admin-input" placeholder="Search email or name" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search users" />
-        <button className="btn">Search</button>
-      </form>
-      {users.loading ? (
-        <div className="loading">Loading users…</div>
-      ) : users.error ? (
-        <div className="form-error">{users.error}</div>
-      ) : (
-        <div className="panel">
-          <h2>Users ({users.data!.length})</h2>
-          {users.data!.length === 0 ? (
-            <div className="empty">No users match this search.</div>
-          ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Email</th>
-                  <th>Name</th>
-                  <th>Role</th>
-                  <th>Status</th>
-                  <th>Joined</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.data!.map((u) => (
-                  <tr key={u.id}>
-                    <td>{u.email}</td>
-                    <td>{[u.firstName, u.lastName].filter(Boolean).join(' ') || <span className="muted">N/A</span>}</td>
-                    <td>{u.role.replace(/_/g, ' ')}</td>
-                    <td>{u.isSuspended ? <span className="badge badge-closed">Suspended</span> : <span className="badge badge-open">Active</span>}</td>
-                    <td>{fmtDate(u.createdAt)}</td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      <button className="btn btn-ghost btn-sm" onClick={() => void api.getUser(u.id).then(setDetail)}>
-                        View
-                      </button>{' '}
-                      {u.role !== 'ADMIN' ? (
-                        <button className={`btn btn-sm ${u.isSuspended ? '' : 'btn-danger'}`} onClick={() => void toggleSuspend(u)}>
-                          {u.isSuspended ? 'Reinstate' : 'Suspend'}
-                        </button>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-      {detail ? (
-        <div className="panel">
-          <h2>
-            {detail.email} {detail.isSuspended ? <span className="badge badge-closed">Suspended</span> : null}
-          </h2>
-          <table className="admin-table">
-            <tbody>
-              <tr>
-                <th>Role</th>
-                <td>{detail.role.replace(/_/g, ' ')}</td>
-              </tr>
-              <tr>
-                <th>Phone</th>
-                <td>{detail.phone ?? <span className="muted">Not provided</span>}</td>
-              </tr>
-              <tr>
-                <th>Businesses</th>
-                <td>{detail.counts?.businesses ?? 0}</td>
-              </tr>
-              <tr>
-                <th>Bookings placed</th>
-                <td>{detail.counts?.bookings ?? 0}</td>
-              </tr>
-              <tr>
-                <th>Orders placed</th>
-                <td>{detail.counts?.orders ?? 0}</td>
-              </tr>
-              <tr>
-                <th>Reviews written</th>
-                <td>{detail.counts?.reviews ?? 0}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-    </>
-  );
-}
-
-/* ------------------------------ businesses ------------------------------ */
-
-/** Exported for the business-review test; the shell renders it internally. */
-export function Businesses(props: { initialStatus?: string; onOpenPayments: (businessId: string) => void }) {
-  const [status, setStatus] = useState(props.initialStatus ?? '');
-  const [verificationStatus, setVerificationStatus] = useState('');
-  const [q, setQ] = useState('');
-  const [query, setQuery] = useState('');
-  const [selected, setSelected] = useState<AdminBusiness | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const businesses = useAsync(
-    () => api.listBusinesses({ status: status || undefined, q: query || undefined, verificationStatus: verificationStatus || undefined }),
-    [status, query, verificationStatus],
-  );
-
-  const mutate = async (id: string, fn: () => Promise<unknown>) => {
-    setBusyId(id);
-    setActionError(null);
-    try {
-      await fn();
-      businesses.reload();
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : 'Action failed.');
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const change = (b: AdminBusiness, next: AdminBusiness['status']) => {
-    if ((next === 'SUSPENDED' || next === 'REJECTED') && !window.confirm(`Set "${b.name}" to ${next}? It will leave customer discovery.`)) return;
-    void mutate(b.id, () => api.setBusinessStatus(b.id, next));
-  };
-  const toggleVerify = (b: AdminBusiness) => void mutate(b.id, () => api.setBusinessVerified(b.id, !b.isVerified));
-
-  return (
-    <>
-      <div className="toolbar">
-        <input
-          className="admin-input"
-          placeholder="Search name, city or owner email"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          aria-label="Search businesses"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') setQuery(q.trim());
-          }}
-        />
-        <select className="admin-select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filter by approval status">
-          <option value="">All approval statuses</option>
-          {['PENDING', 'APPROVED', 'REJECTED', 'SUSPENDED', 'ARCHIVED'].map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-        <select
-          className="admin-select"
-          value={verificationStatus}
-          onChange={(e) => setVerificationStatus(e.target.value)}
-          aria-label="Filter by verification status"
-        >
-          <option value="">All verification statuses</option>
-          {['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'CHANGES_REQUESTED', 'DRAFT'].map((s) => (
-            <option key={s} value={s}>
-              {s.replace(/_/g, ' ')}
-            </option>
-          ))}
-        </select>
-        <button className="btn" onClick={() => setQuery(q.trim())}>
-          Search
-        </button>
-      </div>
-      {actionError ? <div className="form-error" role="alert">{actionError}</div> : null}
-      {businesses.loading ? (
-        <div className="loading">Loading businesses…</div>
-      ) : businesses.error ? (
-        <div className="form-error">{businesses.error}</div>
-      ) : (
-        <div className="panel">
-          <h2>Businesses ({businesses.data!.length})</h2>
-          {businesses.data!.length === 0 ? (
-            <div className="empty">No businesses match these filters.</div>
-          ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Business</th>
-                  <th>Owner</th>
-                  <th>Category</th>
-                  <th>Location</th>
-                  <th>Submitted</th>
-                  <th>Approval</th>
-                  <th>Verification</th>
-                  <th>Subscription / trial</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {businesses.data!.map((b) => (
-                  <tr key={b.id}>
-                    <td>
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        style={{ padding: '2px 6px', fontSize: 13 }}
-                        onClick={() => setSelected(b)}
-                        title="Open business review"
-                      >
-                        <strong>{b.name}</strong>
-                      </button>
-                      <div className="muted mono">{b.slug}</div>
-                    </td>
-                    <td>
-                      <span className="mono">{b.owner.email}</span>
-                      <div className="muted">{[b.owner.firstName, b.owner.lastName].filter(Boolean).join(' ') || 'No name'}</div>
-                    </td>
-                    <td>{b.category?.name ?? <span className="muted">N/A</span>}</td>
-                    <td>
-                      {b.city}
-                      {b.address ? <div className="muted">{b.address}</div> : null}
-                    </td>
-                    <td>{fmtDate(b.createdAt)}</td>
-                    <td>
-                      <StatusBadge value={b.status} />
-                    </td>
-                    <td>
-                      {b.verificationStatus ? (
-                        <StatusBadge value={b.verificationStatus} />
-                      ) : b.isVerified ? (
-                        <span className="badge badge-info">Verified</span>
-                      ) : (
-                        <span className="muted">None</span>
-                      )}
-                    </td>
-                    <td>
-                      {b.subscriptionStatus ? (
-                        <StatusBadge value={b.subscriptionStatus} />
-                      ) : b.trialStatus ? (
-                        <StatusBadge value={b.trialStatus} />
-                      ) : (
-                        <span className="muted">None</span>
-                      )}
-                    </td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      <button className="btn btn-ghost btn-sm" disabled={busyId === b.id} onClick={() => setSelected(b)}>
-                        Review
-                      </button>{' '}
-                      {b.status !== 'APPROVED' ? (
-                        <button className="btn btn-sm" disabled={busyId === b.id} onClick={() => change(b, 'APPROVED')}>
-                          Approve
-                        </button>
-                      ) : null}{' '}
-                      {b.status !== 'SUSPENDED' && b.status !== 'ARCHIVED' ? (
-                        <button className="btn btn-danger btn-sm" disabled={busyId === b.id} onClick={() => change(b, 'SUSPENDED')}>
-                          Suspend
-                        </button>
-                      ) : null}{' '}
-                      <button className="btn btn-ghost btn-sm" disabled={busyId === b.id} onClick={() => toggleVerify(b)}>
-                        {b.isVerified ? 'Unverify' : 'Verify'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-      {selected ? (
-        <BusinessDetailModal
-          business={selected}
-          onClose={() => setSelected(null)}
-          onChanged={() => businesses.reload()}
-          onOpenPayments={(businessId) => {
-            setSelected(null);
-            props.onOpenPayments(businessId);
-          }}
-        />
-      ) : null}
-    </>
-  );
-}
-
-/* ---------------------------- orders / bookings -------------------------- */
-
-function Orders(props: { initialStatus?: string }) {
-  const [status, setStatus] = useState(props.initialStatus ?? '');
-  const orders = useAsync(() => api.listOrders(status), [status]);
-  return (
-    <>
-      <div className="toolbar">
-        <select className="admin-select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filter orders by status">
-          <option value="">All statuses</option>
-          {['PENDING', 'ACCEPTED', 'PREPARING', 'READY', 'COMPLETED', 'REJECTED', 'CANCELLED'].map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </div>
-      {orders.loading ? (
-        <div className="loading">Loading orders…</div>
-      ) : orders.error ? (
-        <div className="form-error">{orders.error}</div>
-      ) : (
-        <div className="panel">
-          <h2>Orders ({orders.data!.length})</h2>
-          {orders.data!.length === 0 ? (
-            <div className="empty">No orders match this filter.</div>
-          ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Placed</th>
-                  <th>Business</th>
-                  <th>Customer</th>
-                  <th>Total</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.data!.map((o) => (
-                  <tr key={o.id}>
-                    <td>{fmtDate(o.createdAt)}</td>
-                    <td>{o.business.name}</td>
-                    <td>{o.customer?.email}</td>
-                    <td>{fmtMoney(o.totalMinor ?? o.subtotalMinor, o.currency)}</td>
-                    <td>
-                      <StatusBadge value={o.status} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-    </>
-  );
-}
-
-function Bookings(props: { initialStatus?: string }) {
-  const [status, setStatus] = useState(props.initialStatus ?? '');
-  const bookings = useAsync(() => api.listBookings(status), [status]);
-  return (
-    <>
-      <div className="toolbar">
-        <select className="admin-select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filter bookings by status">
-          <option value="">All statuses</option>
-          {['PENDING', 'CONFIRMED', 'COMPLETED', 'REJECTED', 'CANCELLED'].map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </div>
-      {bookings.loading ? (
-        <div className="loading">Loading bookings…</div>
-      ) : bookings.error ? (
-        <div className="form-error">{bookings.error}</div>
-      ) : (
-        <div className="panel">
-          <h2>Bookings ({bookings.data!.length})</h2>
-          {bookings.data!.length === 0 ? (
-            <div className="empty">No bookings match this filter.</div>
-          ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Created</th>
-                  <th>Business</th>
-                  <th>Service</th>
-                  <th>Customer</th>
-                  <th>When</th>
-                  <th>Amount due</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bookings.data!.map((b) => (
-                  <tr key={b.id}>
-                    <td>{fmtDate(b.createdAt)}</td>
-                    <td>{b.business.name}</td>
-                    <td>{b.service?.name ?? <span className="muted">N/A</span>}</td>
-                    <td>{b.customer?.email}</td>
-                    <td>{fmtDate(b.startAt)}</td>
-                    <td>{b.amountDueMinor === null ? 'N/A' : fmtMoney(b.amountDueMinor, b.currency)}</td>
-                    <td>
-                      <StatusBadge value={b.status} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-    </>
-  );
-}
-
-/* -------------------------------- reviews ------------------------------- */
-
-function Reviews(props: { initialStatus?: '' | 'visible' | 'hidden' }) {
-  const [status, setStatus] = useState<'' | 'visible' | 'hidden'>(props.initialStatus ?? '');
-  const reviews = useAsync(() => api.listReviews(status), [status]);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-
-  const toggle = async (r: api.AdminReview) => {
-    setBusyId(r.id);
-    setActionError(null);
-    try {
-      await api.setReviewVisibility(r.id, !r.isHidden);
-      reviews.reload();
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : 'Action failed.');
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  return (
-    <>
-      <div className="toolbar">
-        <select
-          className="admin-select"
-          value={status}
-          onChange={(e) => setStatus(e.target.value as '' | 'visible' | 'hidden')}
-          aria-label="Filter reviews by visibility"
-        >
-          <option value="">All reviews</option>
-          <option value="visible">Visible only</option>
-          <option value="hidden">Hidden only</option>
-        </select>
-      </div>
-      {actionError ? <div className="form-error" role="alert">{actionError}</div> : null}
-      {reviews.loading ? (
-        <div className="loading">Loading reviews…</div>
-      ) : reviews.error ? (
-        <div className="form-error">{reviews.error}</div>
-      ) : (
-        <div className="panel">
-          <h2>Reviews ({reviews.data!.length})</h2>
-          {reviews.data!.length === 0 ? (
-            <div className="empty">No reviews match this filter.</div>
-          ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Business</th>
-                  <th>Customer</th>
-                  <th>Rating</th>
-                  <th>Comment</th>
-                  <th>Visibility</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reviews.data!.map((r) => (
-                  <tr key={r.id} className={r.isHidden ? 'row-hidden' : undefined}>
-                    <td>{fmtDate(r.createdAt)}</td>
-                    <td>{r.business.name}</td>
-                    <td>{r.customer?.email}</td>
-                    <td>{'★'.repeat(r.rating)}</td>
-                    <td className="review-comment">{r.comment ?? <span className="muted">No comment</span>}</td>
-                    <td>{r.isHidden ? <span className="badge badge-closed">Hidden</span> : <span className="badge badge-open">Public</span>}</td>
-                    <td>
-                      <button className={`btn btn-sm ${r.isHidden ? '' : 'btn-danger'}`} disabled={busyId === r.id} onClick={() => void toggle(r)}>
-                        {busyId === r.id ? 'Working…' : r.isHidden ? 'Restore' : 'Hide'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-    </>
-  );
-}
-
-/* ------------------------------ categories ------------------------------ */
-
-function Categories() {
-  const categories = useAsync(() => api.listCategories(), []);
-  const [name, setName] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const create = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await api.createCategory(name.trim());
-      setName('');
-      categories.reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create the category.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const toggle = async (c: api.AdminCategory) => {
-    setBusy(true);
-    setError(null);
-    try {
-      await api.setCategoryActive(c.id, !c.isActive);
-      categories.reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Action failed.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <>
-      <form
-        className="toolbar"
-        onSubmit={(e) => void create(e)}
-      >
-        <input
-          className="admin-input"
-          placeholder="New category name (e.g. Home Services)"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          aria-label="New category name"
-          minLength={2}
-          maxLength={60}
-          required
-        />
-        <button className="btn" disabled={busy || name.trim().length < 2}>
-          Add category
-        </button>
-      </form>
-      {error ? <div className="form-error" role="alert">{error}</div> : null}
-      {categories.loading ? (
-        <div className="loading">Loading categories…</div>
-      ) : categories.error ? (
-        <div className="form-error">{categories.error}</div>
-      ) : (
-        <div className="panel">
-          <h2>Categories ({categories.data!.length})</h2>
-          {categories.data!.length === 0 ? (
-            <div className="empty">No categories yet.</div>
-          ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Slug</th>
-                  <th>Businesses</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {categories.data!.map((c) => (
-                  <tr key={c.id} className={c.isActive ? undefined : 'row-hidden'}>
-                    <td>
-                      <strong>{c.name}</strong>
-                    </td>
-                    <td className="mono">{c.slug}</td>
-                    <td>{c.businessCount}</td>
-                    <td>{c.isActive ? <span className="badge badge-open">Active</span> : <span className="badge badge-closed">Inactive</span>}</td>
-                    <td>
-                      <button className={`btn btn-sm ${c.isActive ? 'btn-danger' : ''}`} disabled={busy} onClick={() => void toggle(c)}>
-                        {c.isActive ? 'Deactivate' : 'Activate'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          <p className="hint">Inactive categories disappear from customer discovery; existing businesses keep their links.</p>
-        </div>
-      )}
-    </>
-  );
-}
-
-/* ----------------------------- subscriptions ---------------------------- */
-
-function Subscriptions() {
-  const [status, setStatus] = useState('');
-  const subs = useAsync(() => api.listSubscriptions(status), [status]);
-  return (
-    <>
-      <div className="toolbar">
-        <select className="admin-select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filter subscriptions by status">
-          <option value="">All statuses</option>
-          {['TRIAL', 'ACTIVE', 'EXPIRED', 'CANCELLED', 'SUSPENDED'].map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </div>
-      {subs.loading ? (
-        <div className="loading">Loading subscriptions…</div>
-      ) : subs.error ? (
-        <div className="form-error">{subs.error}</div>
-      ) : (
-        <div className="panel">
-          <h2>Subscriptions ({subs.data!.length})</h2>
-          {subs.data!.length === 0 ? (
-            <div className="empty">No subscriptions match this filter.</div>
-          ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Business</th>
-                  <th>Plan</th>
-                  <th>Price</th>
-                  <th>Renews / ended</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {subs.data!.map((s) => (
-                  <tr key={s.id}>
-                    <td>{s.business.name}</td>
-                    <td>{s.plan?.name ?? <span className="muted">N/A</span>}</td>
-                    <td>{s.plan ? fmtMoney(s.plan.monthlyPriceMinor, s.plan.currency) : 'N/A'}</td>
-                    <td>{fmtDate(s.currentPeriodEndAt)}</td>
-                    <td>
-                      <StatusBadge value={s.status} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-    </>
-  );
-}
-
-/* ------------------------------- audit log ------------------------------ */
-
-function AuditLog() {
-  const entries = useAsync(() => api.listAuditLog(''), []);
-  if (entries.loading) return <div className="loading">Loading audit log…</div>;
-  if (entries.error) return <div className="form-error">{entries.error}</div>;
-  return (
-    <div className="panel">
-      <h2>Recent admin activity ({entries.data!.length})</h2>
-      {entries.data!.length === 0 ? (
-        <div className="empty">No audit entries yet.</div>
-      ) : (
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>When</th>
-              <th>Actor</th>
-              <th>Action</th>
-              <th>Target</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.data!.map((e) => (
-              <tr key={e.id}>
-                <td>{new Date(e.createdAt).toLocaleString('en-PK')}</td>
-                <td>{e.actor?.email ?? 'system'}</td>
-                <td>
-                  <span className="badge badge-info">{e.action}</span>
-                </td>
-                <td className="mono">
-                  {e.entityType}/{e.entityId.slice(0, 8)}
-                </td>
-              </tr>
+      <p className="nb-brand-sub">Control Center</p>
+      <nav className="nb-nav" aria-label="Admin sections">
+        {NAV_GROUPS.map((g) => (
+          <div key={g.label}>
+            <p className="nb-nav-group-label">{g.label}</p>
+            {g.sections.map((key) => (
+              <button
+                key={key}
+                type="button"
+                className={`nb-nav-item${props.section === key ? ' active' : ''}`}
+                aria-current={props.section === key ? 'page' : undefined}
+                onClick={() => props.onGo(key)}
+              >
+                <span className="nb-nav-glyph" aria-hidden>
+                  {SECTION_ICONS[key]}
+                </span>
+                {SECTION_LABELS[key]}
+              </button>
             ))}
-          </tbody>
-        </table>
-      )}
-    </div>
+          </div>
+        ))}
+      </nav>
+      <div className="nb-side-foot">Marketplace operations</div>
+    </>
   );
 }
 
-/* --------------------------------- shell -------------------------------- */
+/* --------------------------------- app --------------------------------- */
 
-function AdminApp() {
+export function AdminApp() {
   const [session, setSessionState] = useState<api.Session | null>(api.getSession());
   const [section, setSection] = useState<Section>('dashboard');
-  // Phase 3G: dashboard triage carries a pre-applied filter into the target
-  // section. Manual nav clears it so filters never leak between visits.
-  // Payment triage can also carry a businessId (from the business review
-  // drawer) to pre-filter the payment request queue.
+  const [navOpen, setNavOpen] = useState(false);
+  // Dashboard triage carries a pre-applied filter into the target section.
+  // Manual nav clears it so filters never leak between visits. Payment
+  // triage can also carry a businessId to pre-filter the payment queue.
   const [triage, setTriage] = useState<{ section: Section; status?: string; businessId?: string } | null>(null);
+
   const goSection = (s: Section) => {
     setTriage(null);
     setSection(s);
+    setNavOpen(false);
   };
   const triageTo = (s: Section, status?: string, businessId?: string) => {
     setTriage({ section: s, status, businessId });
     setSection(s);
+    setNavOpen(false);
   };
   // Remounts a section when a triage shortcut targets it (including when it
   // is already open) so the pre-applied filter takes effect. Manual nav
@@ -968,35 +212,33 @@ function AdminApp() {
   if (!session) return <LoginScreen />;
 
   return (
-    <div className="admin-shell">
-      <aside className="admin-side">
-        <p className="admin-logo">
-          <span className="admin-logo-mark" aria-hidden>
-            <PinIcon size={15} />
-          </span>
-          <span>
-            Nearby<b>Orders</b>
-          </span>
-        </p>
-        <p className="admin-side-sub">Admin panel</p>
-        <nav aria-label="Admin sections">
-          {SECTIONS.map((s) => (
-            <button key={s.key} className={`admin-nav-item${section === s.key ? ' active' : ''}`} onClick={() => goSection(s.key)}>
-              <span className="admin-nav-glyph" aria-hidden>
-                {SECTION_ICONS[s.key]}
-              </span>
-              {s.label}
-            </button>
-          ))}
-        </nav>
+    <div className={`nb-shell${navOpen ? ' nb-nav-open' : ''}`}>
+      {navOpen ? <div className="nb-nav-scrim" onClick={() => setNavOpen(false)} aria-hidden /> : null}
+      <aside className="nb-side" aria-label="Admin navigation">
+        <SideNav section={section} onGo={goSection} />
       </aside>
-      <main className="admin-main">
-        <div className="admin-head">
-          <h1>{SECTIONS.find((s) => s.key === section)!.label}</h1>
-          <div className="admin-who">
-            <span>{session.user.email}</span>
+      <div className="nb-main">
+        <header className="nb-topbar">
+          <button
+            type="button"
+            className="nb-iconbtn nb-menu-btn"
+            onClick={() => setNavOpen((v) => !v)}
+            aria-label={navOpen ? 'Close navigation' : 'Open navigation'}
+            aria-expanded={navOpen}
+          >
+            ☰
+          </button>
+          <div className="nb-crumb" aria-live="polite">
+            <span>{groupOf(section)}</span>
+            <strong>{SECTION_LABELS[section]}</strong>
+          </div>
+          <div className="nb-topbar-spacer" />
+          <div className="nb-admin-id">
+            <Avatar name={session.user.email} size={32} />
+            <span className="nb-admin-email">{session.user.email}</span>
             <button
-              className="btn btn-ghost btn-sm"
+              type="button"
+              className="nb-btn nb-btn-secondary nb-btn-sm"
               onClick={() => {
                 api.logout();
                 setSessionState(null);
@@ -1005,40 +247,44 @@ function AdminApp() {
               Sign out
             </button>
           </div>
-        </div>
-        {/* Phase 3G: keying on the triage target forces a remount when a
-            dashboard shortcut jumps into an already-open section, so the
-            pre-applied filter actually takes effect. */}
-        {section === 'dashboard' ? <Dashboard onTriage={(s, status) => triageTo(s, status)} /> : null}
-        {section === 'users' ? <Users /> : null}
-        {section === 'businesses' ? (
-          <Businesses
-            key={triageKey('businesses')}
-            initialStatus={triage?.section === 'businesses' ? triage.status : undefined}
-            onOpenPayments={(businessId) => triageTo('payments', undefined, businessId)}
-          />
-        ) : null}
-        {section === 'verifications' ? <VerificationReview /> : null}
-        {section === 'orders' ? <Orders key={triageKey('orders')} initialStatus={triage?.section === 'orders' ? triage.status : undefined} /> : null}
-        {section === 'bookings' ? <Bookings key={triageKey('bookings')} initialStatus={triage?.section === 'bookings' ? triage.status : undefined} /> : null}
-        {section === 'reviews' ? <Reviews key={triageKey('reviews')} initialStatus={triage?.section === 'reviews' ? (triage.status as '' | 'visible' | 'hidden' | undefined) : undefined} /> : null}
-        {section === 'categories' ? <Categories /> : null}
-        {section === 'subscriptions' ? <Subscriptions /> : null}
-        {section === 'plans' ? <SubscriptionPlans /> : null}
-        {section === 'payments' ? (
-          <PaymentRequests
-            key={triageKey('payments')}
-            initialStatus={triage?.section === 'payments' ? triage.status : undefined}
-            initialBusinessId={triage?.section === 'payments' ? triage.businessId : undefined}
-          />
-        ) : null}
-        {section === 'paymentMethods' ? <PaymentMethods /> : null}
-        {section === 'promotions' ? <PromotionCenter /> : null}
-        {section === 'audit' ? <AuditLog /> : null}
-      </main>
+        </header>
+        <main className="nb-content">
+          {section === 'dashboard' ? <Dashboard onTriage={(s: string, status?: string) => triageTo(s as Section, status)} /> : null}
+          {section === 'users' ? <Users /> : null}
+          {section === 'businesses' ? (
+            <Businesses
+              key={triageKey('businesses')}
+              initialStatus={triage?.section === 'businesses' ? triage.status : undefined}
+              onOpenPayments={(businessId) => triageTo('payments', undefined, businessId)}
+            />
+          ) : null}
+          {section === 'verifications' ? <VerificationReview /> : null}
+          {section === 'orders' ? <Orders key={triageKey('orders')} initialStatus={triage?.section === 'orders' ? triage.status : undefined} /> : null}
+          {section === 'bookings' ? <Bookings key={triageKey('bookings')} initialStatus={triage?.section === 'bookings' ? triage.status : undefined} /> : null}
+          {section === 'reviews' ? <Reviews key={triageKey('reviews')} initialStatus={triage?.section === 'reviews' ? (triage.status as '' | 'visible' | 'hidden' | undefined) : undefined} /> : null}
+          {section === 'categories' ? <Categories /> : null}
+          {section === 'subscriptions' ? <Subscriptions /> : null}
+          {section === 'plans' ? <SubscriptionPlans /> : null}
+          {section === 'payments' ? (
+            <PaymentRequests
+              key={triageKey('payments')}
+              initialStatus={triage?.section === 'payments' ? triage.status : undefined}
+              initialBusinessId={triage?.section === 'payments' ? triage.businessId : undefined}
+            />
+          ) : null}
+          {section === 'paymentMethods' ? <PaymentMethods /> : null}
+          {section === 'promotions' ? <PromotionCenter /> : null}
+          {section === 'audit' ? <AuditLog /> : null}
+        </main>
+      </div>
     </div>
   );
 }
 
 const mount = document.getElementById('root');
 if (mount) createRoot(mount).render(<AdminApp />);
+
+/* Keep the previous module surface used by tests. */
+export { useAsync };
+export { Dashboard } from './screen-dashboard.js';
+export { Businesses } from './screen-marketplace.js';

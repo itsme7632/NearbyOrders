@@ -1,59 +1,107 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import * as api from './api.js';
-import type { AdminPromotionPayment, EditorialFeature, FeaturedItem, FeaturedListState } from './api.js';
+import type {
+  AdminPromotion,
+  AdminPromotionPayment,
+  AdminPromotionRequest,
+  EditorialFeature,
+  FeaturedItem,
+  FeaturedListState,
+  PromotionInput,
+} from './api.js';
 import {
-  BlobViewerModal,
+  Badge,
+  Card,
+  DataTable,
+  DefinitionList,
+  Drawer,
+  EmptyState,
+  ErrorState,
+  Field,
+  FilterSelect,
+  FormActions,
+  FormError,
+  LoadingState,
   Modal,
-  PromotionCatalog,
-  PromotionRequestQueue,
-  StatusBadge,
+  PageHeader,
+  SearchInput,
+  SectionTitle,
+  Tabs,
+  Toolbar,
   fmtDate,
+  fmtDateTime,
   fmtMoney,
-  useBlobViewer,
-} from './sections.js';
+  statusLabel,
+  useAsync,
+} from './ds.js';
+import type { Column } from './ds.js';
 
-/* Rebuilt promotions center: Catalog | Requests queue | Payments | Active |
-   Featured. Catalog CRUD and the requests queue are reused untouched from
-   sections.tsx. Paid promotions can only go live through payment approval
-   in the Payments tab; the UI repeats that rule wherever activation could
-   be misunderstood. */
+/* Rebuilt promotions center on the shared ds primitives:
+   Catalog | Requests | Payments | Active | Featured.
 
-/* --------------------------------- drawer ------------------------------- */
+   Paid promotions can only go live through payment approval in the
+   Payments tab; the UI repeats that rule wherever activation could be
+   misunderstood. Editorial features are free admin curation and never
+   touch promotions or payments. */
 
-function Drawer(props: { title: string; onClose: () => void; children: React.ReactNode }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') props.onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [props.onClose]);
+/* ------------------------------ drawer -------------------------------- */
+/* The legacy `.drawer` class is kept alongside `nb-drawer` so existing
+   selectors and tests keep matching. */
+
+function GrowthDrawer(props: {
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  actions?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
-    <>
-      <div className="drawer-backdrop" onClick={props.onClose} />
-      <aside className="drawer" role="dialog" aria-modal="true" aria-label={props.title}>
-        <div className="drawer-head">
-          <h2>{props.title}</h2>
-          <button className="btn btn-ghost btn-sm" onClick={props.onClose}>
-            Close
-          </button>
-        </div>
-        <div className="drawer-body">{props.children}</div>
-      </aside>
-    </>
+    <div className="nb-drawer drawer">
+      <Drawer title={props.title} subtitle={props.subtitle} onClose={props.onClose} actions={props.actions}>
+        {props.children}
+      </Drawer>
+    </div>
   );
 }
 
-/* ------------------------------ payments tab ---------------------------- */
+/* --------------------------- receipt viewer ---------------------------- */
 
-const PAYMENT_FILTERS = [
-  { value: 'PENDING', label: 'Pending review' },
-  { value: 'APPROVED', label: 'Approved' },
-  { value: 'REJECTED', label: 'Rejected' },
-  { value: '', label: 'All' },
-] as const;
+function ReceiptViewer(props: { storageKey: string; onClose: () => void }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-function PaymentReviewDrawer(props: { paymentId: string; onClose: () => void; onChanged: () => void }) {
+  useEffect(() => {
+    let alive = true;
+    api.fetchReceiptObjectUrl(props.storageKey).then(
+      (u) => {
+        if (alive) setUrl(u);
+      },
+      (e) => {
+        if (alive) setError(e instanceof Error ? e.message : 'Could not load the receipt.');
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [props.storageKey]);
+
+  return (
+    <Modal title="Payment receipt" onClose={props.onClose}>
+      {error ? (
+        <FormError message={error} />
+      ) : url ? (
+        <img className="nb-receipt receipt-img" src={url} alt="Payment receipt" />
+      ) : (
+        <LoadingState label="Loading receipt…" />
+      )}
+    </Modal>
+  );
+}
+
+/* ------------------------- payment review panel ------------------------ */
+/* Shared by the Payments tab drawer and the Requests queue drawer. */
+
+function PaymentReviewPanel(props: { paymentId: string; onDecided: () => void }) {
   const [payment, setPayment] = useState<AdminPromotionPayment | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,39 +109,34 @@ function PaymentReviewDrawer(props: { paymentId: string; onClose: () => void; on
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  // Promotion payment receipts are served by the same authorized receipt
-  // endpoint as subscription payments.
-  const blob = useBlobViewer(api.fetchReceiptObjectUrl);
+  const [receiptOpen, setReceiptOpen] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
+    let alive = true;
     setLoading(true);
     setError(null);
     api
       .getPromotionPaymentRequest(props.paymentId)
       .then((p) => {
-        if (!cancelled) setPayment(p);
+        if (alive) setPayment(p);
       })
       .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Could not load the payment.');
+        if (alive) setError(e instanceof Error ? e.message : 'Could not load the payment.');
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (alive) setLoading(false);
       });
     return () => {
-      cancelled = true;
+      alive = false;
     };
   }, [props.paymentId]);
 
-  const act = async (fn: () => Promise<unknown>) => {
+  const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
     setActionError(null);
     try {
       await fn();
-      setRejecting(false);
-      setReason('');
-      props.onChanged();
-      props.onClose();
+      props.onDecided();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Action failed.');
     } finally {
@@ -108,353 +151,766 @@ function PaymentReviewDrawer(props: { paymentId: string; onClose: () => void; on
       )
     )
       return;
-    void act(() => api.approvePromotionPayment(p.id));
+    void run(() => api.approvePromotionPayment(p.id));
   };
+
+  if (loading) return <LoadingState label="Loading payment…" />;
+  if (error || !payment) return <ErrorState message={error ?? 'Payment not found.'} />;
+  const p = payment;
+
+  const catalogPrice =
+    p.promotion.priceMinor == null ? (
+      <span className="nb-muted">Not available</span>
+    ) : (
+      <>
+        {fmtMoney(p.promotion.priceMinor, p.currency)}
+        {p.promotion.priceMinor === p.amountMinor ? (
+          <div className="nb-hint">Matches the catalog price.</div>
+        ) : (
+          <FormError message="Does not match the catalog price. Verify with the business before approving." />
+        )}
+      </>
+    );
 
   return (
     <>
-      <Drawer title="Promotion payment review" onClose={props.onClose}>
-        {loading ? (
-          <div className="loading">Loading payment…</div>
-        ) : error || !payment ? (
-          <div className="form-error">{error ?? 'Payment not found.'}</div>
-        ) : (
+      {actionError ? <FormError message={actionError} /> : null}
+      <DefinitionList
+        items={[
+          { label: 'Business', value: <strong>{p.business.name}</strong> },
+          {
+            label: 'Promotion',
+            value: (
+              <>
+                <strong>{p.promotion.name}</strong>
+                <div className="nb-muted nb-mono">
+                  {p.promotion.slug}
+                  {p.promotion.durationDays ? ` · ${p.promotion.durationDays} days` : ''}
+                </div>
+              </>
+            ),
+          },
+          { label: 'Amount paid', value: fmtMoney(p.amountMinor, p.currency) },
+          { label: 'Catalog price', value: catalogPrice },
+          {
+            label: 'Payment method',
+            value: (
+              <>
+                {p.paymentMethod.name} <span className="nb-muted">({statusLabel(p.paymentMethod.type)})</span>
+              </>
+            ),
+          },
+          { label: 'Transaction reference', value: <span className="nb-mono">{p.transactionReference || 'N/A'}</span> },
+          { label: 'Paid date', value: p.paidAt ? fmtDate(p.paidAt) : <span className="nb-muted">Not provided</span> },
+          { label: 'Submitted', value: fmtDateTime(p.submittedAt) },
+          ...(p.note ? [{ label: 'Business note', value: p.note }] : []),
+          {
+            label: 'Receipt / proof',
+            value: p.receiptStorageKey ? (
+              <button type="button" className="nb-btn nb-btn-sm nb-btn-secondary" onClick={() => setReceiptOpen(true)}>
+                View receipt
+              </button>
+            ) : (
+              <span className="nb-muted">No receipt uploaded</span>
+            ),
+          },
+          { label: 'Status', value: <Badge value={p.status} /> },
+          ...(p.reviewedAt
+            ? [
+                {
+                  label: 'Decision',
+                  value: (
+                    <>
+                      <div>Decided {fmtDate(p.reviewedAt)}</div>
+                      {p.rejectionReason ? <div className="nb-hint">{p.rejectionReason}</div> : null}
+                    </>
+                  ),
+                },
+              ]
+            : []),
+        ]}
+      />
+      <p className="nb-hint">
+        Approving a payment is the only action that puts a paid promotion live. The promotion activates with server-set start and end
+        dates. Rejecting keeps the application approved so the business can resubmit.
+      </p>
+      {p.status === 'PENDING' ? (
+        rejecting ? (
           <>
-            {actionError ? (
-              <div className="form-error" role="alert">
-                {actionError}
-              </div>
-            ) : null}
-            <table className="admin-table">
-              <tbody>
-                <tr>
-                  <th style={{ width: 170 }}>Business</th>
-                  <td>
-                    <strong>{payment.business.name}</strong>
-                  </td>
-                </tr>
-                <tr>
-                  <th>Promotion</th>
-                  <td>
-                    <strong>{payment.promotion.name}</strong>
-                    <div className="muted mono">
-                      {payment.promotion.slug}
-                      {payment.promotion.durationDays ? ` · ${payment.promotion.durationDays} days` : null}
-                    </div>
-                  </td>
-                </tr>
-                <tr>
-                  <th>Amount paid</th>
-                  <td>{fmtMoney(payment.amountMinor, payment.currency)}</td>
-                </tr>
-                <tr>
-                  <th>Catalog price</th>
-                  <td>
-                    {payment.promotion.priceMinor == null ? (
-                      <span className="muted">Not available</span>
-                    ) : (
-                      <>
-                        {fmtMoney(payment.promotion.priceMinor, payment.currency)}
-                        {payment.promotion.priceMinor === payment.amountMinor ? (
-                          <div className="muted">Matches the catalog price.</div>
-                        ) : (
-                          <div className="reason-box">Does not match the catalog price. Verify with the business before approving.</div>
-                        )}
-                      </>
-                    )}
-                  </td>
-                </tr>
-                <tr>
-                  <th>Payment method</th>
-                  <td>
-                    {payment.paymentMethod.name} <span className="muted">({payment.paymentMethod.type.replace(/_/g, ' ')})</span>
-                  </td>
-                </tr>
-                <tr>
-                  <th>Transaction reference</th>
-                  <td className="mono">{payment.transactionReference || 'N/A'}</td>
-                </tr>
-                <tr>
-                  <th>Paid date</th>
-                  <td>{payment.paidAt ? fmtDate(payment.paidAt) : <span className="muted">Not provided</span>}</td>
-                </tr>
-                <tr>
-                  <th>Submitted</th>
-                  <td>{fmtDate(payment.submittedAt)}</td>
-                </tr>
-                {payment.note ? (
-                  <tr>
-                    <th>Business note</th>
-                    <td>{payment.note}</td>
-                  </tr>
-                ) : null}
-                <tr>
-                  <th>Receipt / proof</th>
-                  <td>
-                    {payment.receiptStorageKey ? (
-                      <button className="btn btn-ghost btn-sm" disabled={blob.loading} onClick={() => void blob.open(payment.receiptStorageKey!)}>
-                        {blob.loading ? 'Loading…' : 'View receipt'}
-                      </button>
-                    ) : (
-                      <span className="muted">No receipt uploaded</span>
-                    )}
-                  </td>
-                </tr>
-                <tr>
-                  <th>Status</th>
-                  <td>
-                    <StatusBadge value={payment.status} />
-                  </td>
-                </tr>
-                {payment.reviewedAt ? (
-                  <tr>
-                    <th>Decision</th>
-                    <td>
-                      <div>Decided {fmtDate(payment.reviewedAt)}</div>
-                      {payment.rejectionReason ? <div className="reason-box">{payment.rejectionReason}</div> : null}
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-            <p className="hint">
-              Approving a payment is the only action that puts a paid promotion live. The promotion activates with server-set start and end
-              dates. Rejecting keeps the application approved so the business can resubmit.
-            </p>
-            {payment.status === 'PENDING' ? (
-              rejecting ? (
-                <div className="drawer-actions">
-                  <input
-                    className="admin-input"
-                    style={{ minWidth: 0, width: '100%' }}
-                    placeholder="Rejection reason (required)"
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    aria-label="Payment rejection reason"
-                  />
-                  <button
-                    className="btn btn-danger btn-sm"
-                    disabled={busy || reason.trim().length < 4}
-                    onClick={() => void act(() => api.rejectPromotionPayment(payment.id, reason.trim()))}
-                  >
-                    Confirm rejection
-                  </button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setRejecting(false)}>
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <div className="drawer-actions">
-                  <button className="btn btn-sm" disabled={busy} onClick={() => approve(payment)}>
-                    {busy ? 'Working…' : 'Approve payment'}
-                  </button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setRejecting(true)}>
-                    Reject payment
-                  </button>
-                </div>
-              )
-            ) : null}
+            <Field label="Rejection reason">
+              <input
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Rejection reason (required)"
+                aria-label="Payment rejection reason"
+              />
+            </Field>
+            <FormActions>
+              <button
+                type="button"
+                className="nb-btn nb-btn-danger"
+                disabled={busy || reason.trim().length < 4}
+                onClick={() => void run(() => api.rejectPromotionPayment(p.id, reason.trim()))}
+              >
+                {busy ? 'Working…' : 'Confirm rejection'}
+              </button>
+              <button
+                type="button"
+                className="nb-btn nb-btn-secondary"
+                onClick={() => {
+                  setRejecting(false);
+                  setReason('');
+                }}
+              >
+                Cancel
+              </button>
+            </FormActions>
           </>
-        )}
-      </Drawer>
-      <BlobViewerModal title="Payment receipt" state={blob.state} onClose={blob.close} />
+        ) : (
+          <FormActions>
+            <button type="button" className="nb-btn" disabled={busy} onClick={() => approve(p)}>
+              {busy ? 'Working…' : 'Approve payment'}
+            </button>
+            <button type="button" className="nb-btn nb-btn-secondary" onClick={() => setRejecting(true)}>
+              Reject payment
+            </button>
+          </FormActions>
+        )
+      ) : null}
+      {receiptOpen && p.receiptStorageKey ? <ReceiptViewer storageKey={p.receiptStorageKey} onClose={() => setReceiptOpen(false)} /> : null}
     </>
   );
 }
 
-export function PromotionPaymentsTab() {
-  const [status, setStatus] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | ''>('PENDING');
-  const [items, setItems] = useState<AdminPromotionPayment[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+/* ------------------------------ catalog tab ---------------------------- */
 
-  const load = async () => {
-    setLoading(true);
+function PromotionDialog(props: { promotion: AdminPromotion | null; onClose: () => void; onSaved: () => void }) {
+  const editing = props.promotion;
+  const [name, setName] = useState(editing?.name ?? '');
+  const [slug, setSlug] = useState(editing?.slug ?? '');
+  const [description, setDescription] = useState(editing?.description ?? '');
+  const [price, setPrice] = useState(editing ? String(editing.priceMinor / 100) : '');
+  const [durationDays, setDurationDays] = useState(editing ? String(editing.durationDays) : '30');
+  const [displayOrder, setDisplayOrder] = useState(editing ? String(editing.displayOrder) : '0');
+  const [benefits, setBenefits] = useState(editing ? editing.benefits.join('\n') : '');
+  const [requirements, setRequirements] = useState(editing?.requirements ?? '');
+  const [isActive, setIsActive] = useState(editing?.isActive ?? true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedName = name.trim();
+    const rupees = parseFloat(price);
+    if (!trimmedName || !Number.isFinite(rupees) || rupees < 0) {
+      setError('Enter a promotion name and a valid price in rupees.');
+      return;
+    }
+    const input: PromotionInput = {
+      name: trimmedName,
+      description: description.trim() || null,
+      benefits: benefits
+        .split('\n')
+        .map((b) => b.trim())
+        .filter(Boolean),
+      priceMinor: Math.round(rupees * 100),
+      durationDays: Math.max(1, parseInt(durationDays, 10) || 30),
+      requirements: requirements.trim() || null,
+      isActive,
+      displayOrder: parseInt(displayOrder, 10) || 0,
+    };
+    const slugTrimmed = slug.trim();
+    if (!editing && slugTrimmed) input.slug = slugTrimmed;
+    setBusy(true);
     setError(null);
     try {
-      const res = await api.listPromotionPaymentRequests({ status: status || undefined });
-      setItems(res.items);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load promotion payments.');
+      if (editing) await api.updatePromotion(editing.id, input);
+      else await api.createPromotion(input);
+      props.onSaved();
+      props.onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save the promotion.');
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
 
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  return (
+    <Modal title={editing ? `Edit promotion: ${editing.name}` : 'New promotion'} onClose={props.onClose} wide>
+      {error ? <FormError message={error} /> : null}
+      <form onSubmit={(e) => void save(e)}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Field label="Name">
+            <input value={name} onChange={(e) => setName(e.target.value)} required maxLength={80} placeholder="Ramadan Spotlight" />
+          </Field>
+          <Field label={editing ? 'Slug (locked)' : 'Slug (optional, auto-generated)'}>
+            <input value={slug} onChange={(e) => setSlug(e.target.value)} maxLength={80} placeholder="ramadan-spotlight" disabled={!!editing} />
+          </Field>
+        </div>
+        <Field label="Description">
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short pitch shown to business owners." />
+        </Field>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+          <Field label="Price (PKR)">
+            <input value={price} onChange={(e) => setPrice(e.target.value)} required placeholder="4999" inputMode="decimal" />
+          </Field>
+          <Field label="Duration (days)">
+            <input value={durationDays} onChange={(e) => setDurationDays(e.target.value)} inputMode="numeric" />
+          </Field>
+          <Field label="Display order">
+            <input value={displayOrder} onChange={(e) => setDisplayOrder(e.target.value)} inputMode="numeric" />
+          </Field>
+        </div>
+        <Field label="Benefits (one per line)">
+          <textarea value={benefits} onChange={(e) => setBenefits(e.target.value)} placeholder={'Homepage banner\nSocial mention'} />
+        </Field>
+        <Field label="Requirements">
+          <textarea value={requirements} onChange={(e) => setRequirements(e.target.value)} placeholder="e.g. Active subscription required." />
+        </Field>
+        <Field label="Visible to businesses">
+          <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} aria-label="Active" />
+        </Field>
+        <FormActions>
+          <button type="submit" className="nb-btn" disabled={busy}>
+            {busy ? 'Saving…' : editing ? 'Save changes' : 'Create promotion'}
+          </button>
+          <button type="button" className="nb-btn nb-btn-secondary" onClick={props.onClose}>
+            Cancel
+          </button>
+        </FormActions>
+      </form>
+    </Modal>
+  );
+}
+
+function PromotionCatalogTab() {
+  const catalog = useAsync(() => api.listPromotions(), []);
+  const [dialog, setDialog] = useState<AdminPromotion | null | 'new'>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const toggleActive = async (p: AdminPromotion) => {
+    setBusyId(p.id);
+    setActionError(null);
+    try {
+      await api.updatePromotion(p.id, { isActive: !p.isActive });
+      catalog.reload();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Action failed.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const remove = async (p: AdminPromotion) => {
+    if (!window.confirm(`Delete the promotion "${p.name}"? This cannot be undone.`)) return;
+    setBusyId(p.id);
+    setActionError(null);
+    try {
+      await api.deletePromotion(p.id);
+      catalog.reload();
+    } catch (e) {
+      if (e instanceof api.ApiError && e.status === 409) {
+        setActionError(`Cannot delete "${p.name}": promotion requests reference it. Deactivate it instead.`);
+      } else {
+        setActionError(e instanceof Error ? e.message : 'Could not delete the promotion.');
+      }
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const columns: Column<AdminPromotion>[] = [
+    {
+      key: 'promotion',
+      header: 'Promotion',
+      render: (p) => (
+        <>
+          <strong>{p.name}</strong>
+          <div className="nb-muted nb-mono">{p.slug}</div>
+        </>
+      ),
+    },
+    { key: 'price', header: 'Price', render: (p) => fmtMoney(p.priceMinor, p.currency) },
+    { key: 'duration', header: 'Duration', render: (p) => `${p.durationDays} days` },
+    { key: 'requests', header: 'Requests', render: (p) => (p.requestCount == null ? <span className="nb-muted">N/A</span> : String(p.requestCount)) },
+    { key: 'status', header: 'Status', render: (p) => <Badge value={p.isActive ? 'ACTIVE' : 'INACTIVE'} /> },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: (p) => (
+        <>
+          <button type="button" className="nb-btn nb-btn-sm nb-btn-secondary" disabled={busyId === p.id} onClick={() => setDialog(p)}>
+            Edit
+          </button>{' '}
+          <button
+            type="button"
+            className="nb-btn nb-btn-sm nb-btn-secondary"
+            disabled={busyId === p.id}
+            onClick={() => void toggleActive(p)}
+          >
+            {p.isActive ? 'Deactivate' : 'Activate'}
+          </button>{' '}
+          <button type="button" className="nb-btn nb-btn-sm nb-btn-secondary" disabled={busyId === p.id} onClick={() => void remove(p)}>
+            Delete
+          </button>
+        </>
+      ),
+    },
+  ];
 
   return (
     <>
-      <p className="hint" style={{ marginBottom: 12 }}>
-        Paid promotions go live only through this workflow: review the business payment here, and approving it activates the promotion with
-        server-set start and end dates.
+      <p className="nb-hint" style={{ marginTop: 0 }}>
+        The paid visibility products businesses can apply for. Prices here are what payment reviewers compare against.
       </p>
-      <div className="toolbar" role="tablist" aria-label="Filter promotion payments by status">
-        {PAYMENT_FILTERS.map((f) => (
-          <button
-            key={f.value || 'all'}
-            className={`btn btn-sm ${status === f.value ? '' : 'btn-ghost'}`}
-            role="tab"
-            aria-selected={status === f.value}
-            onClick={() => setStatus(f.value)}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-      {loading ? (
-        <div className="loading">Loading promotion payments…</div>
-      ) : error ? (
-        <div className="form-error">{error}</div>
+      <Toolbar>
+        <button type="button" className="nb-btn" onClick={() => setDialog('new')}>
+          New promotion
+        </button>
+      </Toolbar>
+      {actionError ? <FormError message={actionError} /> : null}
+      {catalog.loading ? (
+        <LoadingState label="Loading promotions…" />
+      ) : catalog.error ? (
+        <ErrorState message={catalog.error} onRetry={catalog.reload} />
       ) : (
-        <div className="panel">
-          <h2>Promotion payments ({items!.length})</h2>
-          {items!.length === 0 ? (
-            <div className="empty">No promotion payments with this status.</div>
-          ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Business</th>
-                  <th>Promotion</th>
-                  <th>Amount</th>
-                  <th>Method</th>
-                  <th>Reference</th>
-                  <th>Submitted</th>
-                  <th>Status</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {items!.map((p) => (
-                  <tr key={p.id}>
-                    <td>
-                      <strong>{p.business.name}</strong>
-                    </td>
-                    <td>{p.promotion.name}</td>
-                    <td>{fmtMoney(p.amountMinor, p.currency)}</td>
-                    <td>{p.paymentMethod.name}</td>
-                    <td className="mono">{p.transactionReference || 'N/A'}</td>
-                    <td>{fmtDate(p.submittedAt)}</td>
-                    <td>
-                      <StatusBadge value={p.status} />
-                    </td>
-                    <td>
-                      <button className="btn btn-ghost btn-sm" onClick={() => setSelectedId(p.id)}>
-                        Review
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <Card title={`Promotion catalog (${catalog.data!.length})`}>
+          <DataTable<AdminPromotion>
+            columns={columns}
+            rows={catalog.data!}
+            rowKey={(p) => p.id}
+            empty={<EmptyState title="No promotions yet." body="Create one to offer paid visibility boosts to businesses." />}
+          />
+        </Card>
       )}
-      {selectedId ? (
-        <PaymentReviewDrawer paymentId={selectedId} onClose={() => setSelectedId(null)} onChanged={() => void load()} />
+      {dialog ? (
+        <PromotionDialog promotion={dialog === 'new' ? null : dialog} onClose={() => setDialog(null)} onSaved={catalog.reload} />
       ) : null}
     </>
   );
 }
 
-/* ------------------------------- active tab ----------------------------- */
+/* ------------------------------ requests tab --------------------------- */
 
-export function ActivePlacementsTab() {
-  const [items, setItems] = useState<FeaturedItem[] | null>(null);
-  const [loading, setLoading] = useState(true);
+const REQUEST_STATUSES = ['PENDING', 'APPROVED', 'REJECTED', 'ACTIVE', 'EXPIRED', 'CANCELLED'] as const;
+
+function RequestDrawer(props: { request: AdminPromotionRequest; onClose: () => void; onChanged: () => void }) {
+  const r = props.request;
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const priceMinor = r.promotion?.priceMinor ?? null;
+  const isPaid = (priceMinor ?? 0) > 0;
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
+  const decide = async (approve: boolean) => {
+    const verb = approve ? 'Approve' : 'Reject';
+    const extra = approve
+      ? isPaid
+        ? ' The owner must pay before the promotion goes live.'
+        : ' This free promotion activates immediately.'
+      : '';
+    if (!window.confirm(`${verb} the promotion application from ${r.business.name}${r.promotion ? ` for "${r.promotion.name}"` : ''}?${extra}`))
+      return;
+    setBusy(true);
     setError(null);
-    api
-      .listFeatured('active')
-      .then((all) => {
-        if (!cancelled) setItems(all.filter((i) => i.source === 'paid'));
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Could not load active placements.');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    try {
+      const msg = message.trim() || undefined;
+      if (approve) await api.approvePromotionRequest(r.id, msg);
+      else await api.rejectPromotionRequest(r.id, msg);
+      props.onChanged();
+      props.onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Decision failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const owner = r.business.owner;
+  const ownerName = [owner.firstName, owner.lastName].filter(Boolean).join(' ');
+
+  return (
+    <GrowthDrawer title="Promotion request" subtitle={r.business.name} onClose={props.onClose}>
+      {error ? <FormError message={error} /> : null}
+      <SectionTitle>Application</SectionTitle>
+      <DefinitionList
+        items={[
+          {
+            label: 'Business',
+            value: (
+              <>
+                <strong>{r.business.name}</strong>
+                <div className="nb-muted nb-mono">{r.business.slug}</div>
+                <div className="nb-muted">
+                  {owner.email}
+                  {ownerName ? ` · ${ownerName}` : ''}
+                </div>
+              </>
+            ),
+          },
+          {
+            label: 'Promotion',
+            value: r.promotion ? (
+              <>
+                <strong>{r.promotion.name}</strong>
+                <div className="nb-muted nb-mono">
+                  {r.promotion.slug} · {r.promotion.durationDays} days
+                </div>
+                <div className="nb-muted">{r.promotion.priceMinor === 0 ? 'Free' : fmtMoney(r.promotion.priceMinor, r.promotion.currency)}</div>
+              </>
+            ) : (
+              <span className="nb-muted">No promotion attached</span>
+            ),
+          },
+          ...(r.note ? [{ label: 'Application note', value: r.note }] : []),
+          ...(r.reviewerMessage ? [{ label: 'Reviewer message', value: r.reviewerMessage }] : []),
+          { label: 'Requested', value: fmtDateTime(r.createdAt) },
+          { label: 'Decided', value: r.reviewedAt ? fmtDateTime(r.reviewedAt) : <span className="nb-muted">Not decided yet</span> },
+          { label: 'Activated', value: r.activatedAt ? fmtDateTime(r.activatedAt) : <span className="nb-muted">Not active</span> },
+          { label: 'Expires', value: r.expiresAt ? fmtDateTime(r.expiresAt) : <span className="nb-muted">N/A</span> },
+          { label: 'Application status', value: <Badge value={r.status} /> },
+          { label: 'Payment status', value: r.paymentStatus ? <Badge value={r.paymentStatus} /> : <span className="nb-muted">None</span> },
+        ]}
+      />
+      {r.status === 'PENDING' ? (
+        <>
+          <SectionTitle>Decision</SectionTitle>
+          <p className="nb-hint">
+            {isPaid
+              ? 'Approval moves this to the payment step: the owner must pay before the promotion goes live.'
+              : 'Approving activates this free promotion immediately. No payment is needed.'}
+          </p>
+          <Field label="Reviewer message (optional)">
+            <input value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Shown to the business owner." />
+          </Field>
+          <FormActions>
+            <button type="button" className="nb-btn" disabled={busy} onClick={() => void decide(true)}>
+              {busy ? 'Working…' : 'Approve application'}
+            </button>
+            <button type="button" className="nb-btn nb-btn-danger" disabled={busy} onClick={() => void decide(false)}>
+              {busy ? 'Working…' : 'Reject application'}
+            </button>
+          </FormActions>
+        </>
+      ) : null}
+      {r.status === 'APPROVED' && isPaid ? (
+        <>
+          <SectionTitle>Latest payment</SectionTitle>
+          {r.payments.length === 0 ? (
+            <p className="nb-hint">No payment submitted yet. The business owner can submit one from their app.</p>
+          ) : (
+            <PaymentReviewPanel
+              paymentId={r.payments[0].id}
+              onDecided={() => {
+                props.onChanged();
+                props.onClose();
+              }}
+            />
+          )}
+        </>
+      ) : null}
+    </GrowthDrawer>
+  );
+}
+
+function PromotionRequestsTab() {
+  const [status, setStatus] = useState<string>('PENDING');
+  const queue = useAsync(() => api.listPromotionRequests(status || undefined), [status]);
+  const [selected, setSelected] = useState<AdminPromotionRequest | null>(null);
+
+  const columns: Column<AdminPromotionRequest>[] = [
+    { key: 'requested', header: 'Requested', render: (r) => fmtDate(r.createdAt) },
+    {
+      key: 'business',
+      header: 'Business',
+      render: (r) => (
+        <>
+          <strong>{r.business.name}</strong>
+          <div className="nb-muted">{r.business.owner.email}</div>
+        </>
+      ),
+    },
+    {
+      key: 'promotion',
+      header: 'Promotion',
+      render: (r) =>
+        r.promotion ? (
+          <>
+            <strong>{r.promotion.name}</strong>
+            <div className="nb-muted">{r.promotion.durationDays} days</div>
+          </>
+        ) : (
+          <span className="nb-muted">N/A</span>
+        ),
+    },
+    {
+      key: 'price',
+      header: 'Price',
+      render: (r) =>
+        r.promotion ? (
+          r.promotion.priceMinor === 0 ? (
+            'Free'
+          ) : (
+            fmtMoney(r.promotion.priceMinor, r.promotion.currency)
+          )
+        ) : (
+          <span className="nb-muted">N/A</span>
+        ),
+    },
+    {
+      key: 'applied',
+      header: 'Applied',
+      render: (r) => (r.activatedAt ? fmtDate(r.activatedAt) : <span className="nb-muted">Not active</span>),
+    },
+    { key: 'app-status', header: 'Application status', render: (r) => <Badge value={r.status} /> },
+    {
+      key: 'pay-status',
+      header: 'Payment status',
+      render: (r) => (r.paymentStatus ? <Badge value={r.paymentStatus} /> : <span className="nb-muted">None</span>),
+    },
+    {
+      key: 'promo-status',
+      header: 'Promotion status',
+      render: (r) => {
+        if (r.status === 'ACTIVE')
+          return (
+            <>
+              <Badge value="ACTIVE" />
+              {r.expiresAt ? <div className="nb-muted">until {fmtDate(r.expiresAt)}</div> : null}
+            </>
+          );
+        if (r.status === 'EXPIRED') return <Badge value="EXPIRED" />;
+        return <span className="nb-muted">N/A</span>;
+      },
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: (r) => (
+        <button type="button" className="nb-btn nb-btn-sm nb-btn-secondary" onClick={() => setSelected(r)}>
+          Review
+        </button>
+      ),
+    },
+  ];
 
   return (
     <>
-      <p className="hint" style={{ marginBottom: 12 }}>
+      <p className="nb-hint" style={{ marginTop: 0 }}>
+        How a promotion goes live: Available → Applied → Pending review → Approved → Payment required → Payment submitted → Payment
+        approved → Active → Expires. Free promotions skip the payment steps and activate on approval.
+      </p>
+      <p className="nb-hint">Free promotions activate immediately on approval. Paid promotions wait for the owner's payment before going live.</p>
+      <Toolbar>
+        <FilterSelect
+          label="Filter promotion requests by status"
+          value={status}
+          onChange={setStatus}
+          options={[
+            { value: '', label: 'All statuses' },
+            ...REQUEST_STATUSES.map((s) => ({ value: s, label: statusLabel(s) })),
+          ]}
+        />
+      </Toolbar>
+      {queue.loading ? (
+        <LoadingState label="Loading promotion requests…" />
+      ) : queue.error ? (
+        <ErrorState message={queue.error} onRetry={queue.reload} />
+      ) : (
+        <Card title={`Promotion requests (${queue.data!.length})`}>
+          <DataTable<AdminPromotionRequest>
+            columns={columns}
+            rows={queue.data!}
+            rowKey={(r) => r.id}
+            onRowClick={(r) => setSelected(r)}
+            empty={<EmptyState title="No promotion requests with this status." />}
+          />
+        </Card>
+      )}
+      {selected ? <RequestDrawer request={selected} onClose={() => setSelected(null)} onChanged={queue.reload} /> : null}
+    </>
+  );
+}
+
+/* ------------------------------ payments tab --------------------------- */
+
+const PAYMENT_FILTERS = [
+  { key: 'PENDING', label: 'Pending review' },
+  { key: 'APPROVED', label: 'Approved' },
+  { key: 'REJECTED', label: 'Rejected' },
+  { key: 'ALL', label: 'All' },
+] as const;
+
+type PaymentFilter = (typeof PAYMENT_FILTERS)[number]['key'];
+
+export function PromotionPaymentsTab(props: { onPendingCount?: (n: number) => void }) {
+  const [status, setStatus] = useState<PaymentFilter>('PENDING');
+  const list = useAsync(() => api.listPromotionPaymentRequests({ status: status === 'ALL' ? undefined : status }), [status]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  /* Keep the shell's Payments tab badge honest: it reflects the pending
+     queue, not the currently selected filter. */
+  const onPendingCountRef = useRef(props.onPendingCount);
+  onPendingCountRef.current = props.onPendingCount;
+  useEffect(() => {
+    const report = onPendingCountRef.current;
+    if (!report) return;
+    if (status === 'PENDING' && list.data) {
+      report(list.data.items.length);
+      return;
+    }
+    let alive = true;
+    Promise.resolve()
+      .then(() => api.listPromotionPaymentRequests({ status: 'PENDING' }))
+      .then((res) => {
+        if (alive && res) report(res.items.length);
+      })
+      .catch(() => {
+        /* keep the last known count */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [status, list.data]);
+
+  const columns: Column<AdminPromotionPayment>[] = [
+    { key: 'business', header: 'Business', render: (p) => <strong>{p.business.name}</strong> },
+    { key: 'promotion', header: 'Promotion', render: (p) => p.promotion.name },
+    { key: 'amount', header: 'Amount', render: (p) => fmtMoney(p.amountMinor, p.currency) },
+    { key: 'method', header: 'Method', render: (p) => p.paymentMethod.name },
+    { key: 'reference', header: 'Reference', render: (p) => <span className="nb-mono">{p.transactionReference || 'N/A'}</span> },
+    { key: 'submitted', header: 'Submitted', render: (p) => fmtDate(p.submittedAt) },
+    { key: 'status', header: 'Status', render: (p) => <Badge value={p.status} /> },
+    {
+      key: 'actions',
+      header: '',
+      render: (p) => (
+        <button type="button" className="nb-btn nb-btn-sm nb-btn-secondary" onClick={() => setSelectedId(p.id)}>
+          Review
+        </button>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <p className="nb-hint" style={{ marginTop: 0 }}>
+        Paid promotions go live only through this workflow: review the business payment here, and approving it activates the promotion with
+        server-set start and end dates.
+      </p>
+      <p className="nb-hint">Showing the first page of results. This list is server-paginated; use the status filters to review each queue.</p>
+      <Toolbar>
+        <Tabs
+          tabs={PAYMENT_FILTERS.map((f) => ({ key: f.key, label: f.label }))}
+          active={status}
+          onChange={(k) => setStatus(k as PaymentFilter)}
+        />
+      </Toolbar>
+      {list.loading ? (
+        <LoadingState label="Loading promotion payments…" />
+      ) : list.error ? (
+        <ErrorState message={list.error} onRetry={list.reload} />
+      ) : (
+        <Card title="Promotion payments">
+          <DataTable<AdminPromotionPayment>
+            columns={columns}
+            rows={list.data!.items}
+            rowKey={(p) => p.id}
+            empty={<EmptyState title="No promotion payments with this status." />}
+          />
+        </Card>
+      )}
+      {selectedId ? (
+        <GrowthDrawer title="Promotion payment review" onClose={() => setSelectedId(null)}>
+          <PaymentReviewPanel
+            paymentId={selectedId}
+            onDecided={() => {
+              list.reload();
+              setSelectedId(null);
+            }}
+          />
+        </GrowthDrawer>
+      ) : null}
+    </>
+  );
+}
+
+/* ------------------------------- active tab ---------------------------- */
+
+export function ActivePlacementsTab() {
+  const placements = useAsync(() => api.listFeatured('active').then((all) => all.filter((i) => i.source === 'paid')), []);
+
+  const columns: Column<FeaturedItem>[] = [
+    {
+      key: 'business',
+      header: 'Business',
+      render: (i) => (
+        <>
+          <strong>{i.business.name}</strong>
+          <div className="nb-muted nb-mono">{i.business.slug}</div>
+        </>
+      ),
+    },
+    {
+      key: 'promotion',
+      header: 'Promotion',
+      render: (i) => (
+        <>
+          <strong>{i.promotion?.name ?? <span className="nb-muted">N/A</span>}</strong>
+          {i.payment ? <div className="nb-muted nb-mono">{fmtMoney(i.payment.amountMinor, i.payment.currency)} paid</div> : null}
+        </>
+      ),
+    },
+    { key: 'placement', header: 'Placement', render: (i) => <span className="nb-mono">{i.placementType}</span> },
+    { key: 'started', header: 'Started', render: (i) => (i.startsAt ? fmtDate(i.startsAt) : <span className="nb-muted">N/A</span>) },
+    { key: 'ends', header: 'Ends', render: (i) => (i.endsAt ? fmtDate(i.endsAt) : <span className="nb-muted">N/A</span>) },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (i) => (
+        <>
+          <Badge value={i.state.toUpperCase()} />
+          {i.payment ? (
+            <div style={{ marginTop: 4 }}>
+              <Badge value={i.payment.status} />
+            </div>
+          ) : null}
+        </>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <p className="nb-hint" style={{ marginTop: 0 }}>
         Currently live paid promotion placements. Each one went live through payment approval in the Payments tab.
       </p>
-      {loading ? (
-        <div className="loading">Loading active placements…</div>
-      ) : error ? (
-        <div className="form-error">{error}</div>
+      {placements.loading ? (
+        <LoadingState label="Loading active placements…" />
+      ) : placements.error ? (
+        <ErrorState message={placements.error} onRetry={placements.reload} />
       ) : (
-        <div className="panel">
-          <h2>Active paid placements ({items!.length})</h2>
-          {items!.length === 0 ? (
-            <div className="empty">No paid promotions are live right now.</div>
-          ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Business</th>
-                  <th>Promotion</th>
-                  <th>Placement</th>
-                  <th>Started</th>
-                  <th>Ends</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items!.map((i) => (
-                  <tr key={i.id}>
-                    <td>
-                      <strong>{i.business.name}</strong>
-                      <div className="muted mono">{i.business.slug}</div>
-                    </td>
-                    <td>
-                      <strong>{i.promotion?.name ?? <span className="muted">N/A</span>}</strong>
-                      {i.payment ? <div className="muted mono">{fmtMoney(i.payment.amountMinor, i.payment.currency)} paid</div> : null}
-                    </td>
-                    <td className="mono">{i.placementType}</td>
-                    <td>{i.startsAt ? fmtDate(i.startsAt) : <span className="muted">N/A</span>}</td>
-                    <td>{i.endsAt ? fmtDate(i.endsAt) : <span className="muted">N/A</span>}</td>
-                    <td>
-                      <StatusBadge value={i.state.toUpperCase()} />
-                      {i.payment ? (
-                        <div style={{ marginTop: 4 }}>
-                          <StatusBadge value={i.payment.status} />
-                        </div>
-                      ) : null}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <Card title={`Active paid placements (${placements.data!.length})`}>
+          <DataTable<FeaturedItem>
+            columns={columns}
+            rows={placements.data!}
+            rowKey={(i) => i.id}
+            empty={<EmptyState title="No paid promotions are live right now." />}
+          />
+        </Card>
       )}
     </>
   );
 }
 
-/* ------------------------------ featured tab ---------------------------- */
+/* ------------------------------ featured tab --------------------------- */
 
 function SourceBadge(props: { source: 'paid' | 'editorial' }) {
   return props.source === 'paid' ? (
-    <span className="badge badge-open">Paid promotion</span>
+    <span className="nb-badge nb-badge-ok">Paid promotion</span>
   ) : (
-    <span className="badge badge-info">Editorial pick</span>
+    <span className="nb-badge nb-badge-info">Editorial pick</span>
   );
 }
 
@@ -477,7 +933,7 @@ function FeaturedItemDrawer(props: {
   const isEditorial = i.source === 'editorial';
   const isLive = i.state === 'active' || i.state === 'scheduled';
 
-  const act = async (fn: () => Promise<unknown>, done: () => void) => {
+  const run = async (fn: () => Promise<unknown>, done: () => void) => {
     setBusy(true);
     setActionError(null);
     try {
@@ -492,107 +948,87 @@ function FeaturedItemDrawer(props: {
 
   const endEarly = () => {
     if (!window.confirm(`End the editorial feature "${i.label}" for ${i.business.name} early? It will stop showing immediately.`)) return;
-    void act(() => api.endEditorialFeature(i.id), props.onEnded);
+    void run(() => api.endEditorialFeature(i.id), props.onEnded);
   };
 
   const remove = () => {
     if (!window.confirm(`Remove the editorial feature "${i.label}" for ${i.business.name} entirely? This cannot be undone.`)) return;
-    void act(() => api.deleteEditorialFeature(i.id), props.onRemoved);
+    void run(() => api.deleteEditorialFeature(i.id), props.onRemoved);
   };
 
   return (
-    <Drawer title={isEditorial ? 'Editorial feature' : 'Paid placement'} onClose={props.onClose}>
-      {actionError ? (
-        <div className="form-error" role="alert">
-          {actionError}
-        </div>
-      ) : null}
-      <table className="admin-table">
-        <tbody>
-          <tr>
-            <th style={{ width: 170 }}>Business</th>
-            <td>
-              <strong>{i.business.name}</strong>
-              <div className="muted mono">{i.business.slug}</div>
-            </td>
-          </tr>
-          <tr>
-            <th>Source</th>
-            <td>
-              <SourceBadge source={i.source} />
-            </td>
-          </tr>
-          {isEditorial ? (
-            <>
-              <tr>
-                <th>Placement type</th>
-                <td className="mono">{i.placementType}</td>
-              </tr>
-              <tr>
-                <th>Label</th>
-                <td>{i.label}</td>
-              </tr>
-            </>
-          ) : (
-            <>
-              <tr>
-                <th>Promotion</th>
-                <td>
-                  <strong>{i.promotion?.name ?? 'N/A'}</strong>
-                  {i.promotion ? <div className="muted mono">{i.promotion.slug}</div> : null}
-                </td>
-              </tr>
-              {i.payment ? (
-                <tr>
-                  <th>Payment</th>
-                  <td>
-                    {fmtMoney(i.payment.amountMinor, i.payment.currency)} <StatusBadge value={i.payment.status} />
-                  </td>
-                </tr>
-              ) : null}
-            </>
-          )}
-          <tr>
-            <th>Starts</th>
-            <td>{i.startsAt ? fmtDate(i.startsAt) : <span className="muted">N/A</span>}</td>
-          </tr>
-          <tr>
-            <th>Ends</th>
-            <td>{i.endsAt ? fmtDate(i.endsAt) : <span className="muted">N/A</span>}</td>
-          </tr>
-          <tr>
-            <th>State</th>
-            <td>
-              <StatusBadge value={i.state.toUpperCase()} />
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <GrowthDrawer title={isEditorial ? 'Editorial feature' : 'Paid placement'} onClose={props.onClose}>
+      {actionError ? <FormError message={actionError} /> : null}
+      <DefinitionList
+        items={[
+          {
+            label: 'Business',
+            value: (
+              <>
+                <strong>{i.business.name}</strong>
+                <div className="nb-muted nb-mono">{i.business.slug}</div>
+              </>
+            ),
+          },
+          { label: 'Source', value: <SourceBadge source={i.source} /> },
+          ...(isEditorial
+            ? [
+                { label: 'Placement type', value: <span className="nb-mono">{i.placementType}</span> },
+                { label: 'Label', value: i.label },
+              ]
+            : [
+                {
+                  label: 'Promotion',
+                  value: (
+                    <>
+                      <strong>{i.promotion?.name ?? 'N/A'}</strong>
+                      {i.promotion ? <div className="nb-muted nb-mono">{i.promotion.slug}</div> : null}
+                    </>
+                  ),
+                },
+                ...(i.payment
+                  ? [
+                      {
+                        label: 'Payment',
+                        value: (
+                          <>
+                            {fmtMoney(i.payment.amountMinor, i.payment.currency)} <Badge value={i.payment.status} />
+                          </>
+                        ),
+                      },
+                    ]
+                  : []),
+              ]),
+          { label: 'Starts', value: i.startsAt ? fmtDate(i.startsAt) : <span className="nb-muted">N/A</span> },
+          { label: 'Ends', value: i.endsAt ? fmtDate(i.endsAt) : <span className="nb-muted">N/A</span> },
+          { label: 'State', value: <Badge value={i.state.toUpperCase()} /> },
+        ]}
+      />
       {isEditorial ? (
-        <p className="hint">
+        <p className="nb-hint">
           Editorial features are free admin curation and are structurally separate from paid promotions. Creating, extending, or removing
           one can never activate a paid promotion.
         </p>
       ) : (
-        <p className="hint">
-          This placement went live through payment approval in the Payments tab. Paid placements cannot be started, extended, or ended
-          from this screen; they run their server-set term.
+        <p className="nb-hint">
+          This placement went live through payment approval in the Payments tab. Paid placements cannot be started, extended, or ended from
+          this screen; they run their server-set term.
         </p>
       )}
       {isEditorial && isLive ? (
-        <div className="drawer-actions">
-          <button className="btn btn-sm" disabled={busy} onClick={props.onExtend}>
+        <FormActions>
+          <button type="button" className="nb-btn" disabled={busy} onClick={props.onExtend}>
             Extend end date
           </button>
-          <button className="btn btn-ghost btn-sm" disabled={busy} onClick={endEarly}>
+          <button type="button" className="nb-btn nb-btn-secondary" disabled={busy} onClick={endEarly}>
             End early
           </button>
-          <button className="btn btn-danger btn-sm" disabled={busy} onClick={remove}>
+          <button type="button" className="nb-btn nb-btn-danger" disabled={busy} onClick={remove}>
             Remove
           </button>
-        </div>
+        </FormActions>
       ) : null}
-    </Drawer>
+    </GrowthDrawer>
   );
 }
 
@@ -628,28 +1064,23 @@ function ExtendFeatureModal(props: { feature: EditorialFeature; onClose: () => v
 
   return (
     <Modal title={`Extend feature: ${f.label}`} onClose={props.onClose}>
-      {error ? (
-        <div className="form-error" role="alert">
-          {error}
-        </div>
-      ) : null}
-      <p className="hint" style={{ marginTop: 0 }}>
+      {error ? <FormError message={error} /> : null}
+      <p className="nb-hint" style={{ marginTop: 0 }}>
         Current end date: {fmtDate(f.endsAt)}. The extension is extend-only: the new end date must be later than the current one. Only the
         end date can change; paid promotions are never affected.
       </p>
       <form onSubmit={(e) => void save(e)}>
-        <label className="field">
-          <span className="label">New end date and time</span>
+        <Field label="New end date and time">
           <input type="datetime-local" value={endAt} onChange={(e) => setEndAt(e.target.value)} required />
-        </label>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn" disabled={busy}>
+        </Field>
+        <FormActions>
+          <button type="submit" className="nb-btn" disabled={busy}>
             {busy ? 'Saving…' : 'Extend feature'}
           </button>
-          <button type="button" className="btn btn-ghost" onClick={props.onClose}>
+          <button type="button" className="nb-btn nb-btn-secondary" onClick={props.onClose}>
             Cancel
           </button>
-        </div>
+        </FormActions>
       </form>
     </Modal>
   );
@@ -678,7 +1109,9 @@ function NewEditorialFeatureModal(props: { onClose: () => void; onSaved: () => v
     setError(null);
     try {
       const list = await api.listBusinesses({ q: term });
-      setResults(list.map((b) => ({ id: b.id, name: b.name, slug: b.slug })));
+      setResults(
+        list.slice(0, 8).map((b) => ({ id: b.id, name: b.name, slug: b.slug })),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Business search failed.');
     } finally {
@@ -722,24 +1155,24 @@ function NewEditorialFeatureModal(props: { onClose: () => void; onSaved: () => v
 
   return (
     <Modal title="New editorial feature" onClose={props.onClose} wide>
-      {error ? (
-        <div className="form-error" role="alert">
-          {error}
-        </div>
-      ) : null}
-      <p className="hint" style={{ marginTop: 0 }}>
+      {error ? <FormError message={error} /> : null}
+      <p className="nb-hint" style={{ marginTop: 0 }}>
         Editorial features are free admin curation and are structurally separate from paid promotions. Creating one can never activate a
         paid promotion. Paid promotions go live only when a payment is approved in the Payments tab.
       </p>
-      <form onSubmit={(e) => void save(e)}>
-        <div className="field">
-          <span className="label">Business</span>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save(e);
+        }}
+      >
+        <Field label="Business">
           {businessId ? (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <strong>{businessName}</strong>
               <button
                 type="button"
-                className="btn btn-ghost btn-sm"
+                className="nb-btn nb-btn-sm nb-btn-secondary"
                 onClick={() => {
                   setBusinessId('');
                   setBusinessName('');
@@ -751,36 +1184,30 @@ function NewEditorialFeatureModal(props: { onClose: () => void; onSaved: () => v
             </div>
           ) : (
             <>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="Search by business name"
-                  aria-label="Search businesses"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      void search();
-                    }
-                  }}
-                />
-                <button type="button" className="btn" disabled={searching} onClick={() => void search()}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                <div style={{ flex: 1 }}>
+                  <SearchInput value={q} onChange={setQ} placeholder="Search by business name" label="Search businesses" />
+                </div>
+                <button type="button" className="nb-btn" disabled={searching} onClick={() => void search()}>
                   {searching ? 'Searching…' : 'Search'}
                 </button>
               </div>
               {results ? (
                 results.length === 0 ? (
-                  <div className="empty">No businesses match this search.</div>
+                  <EmptyState title="No businesses match this search." />
                 ) : (
                   <ul style={{ listStyle: 'none', margin: '8px 0 0', padding: 0 }}>
-                    {results.slice(0, 8).map((b) => (
-                      <li key={b.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+                    {results.map((b) => (
+                      <li
+                        key={b.id}
+                        style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--line)' }}
+                      >
                         <span>
-                          <strong>{b.name}</strong> <span className="muted mono">{b.slug}</span>
+                          <strong>{b.name}</strong> <span className="nb-muted nb-mono">{b.slug}</span>
                         </span>
                         <button
                           type="button"
-                          className="btn btn-ghost btn-sm"
+                          className="nb-btn nb-btn-sm nb-btn-secondary"
                           style={{ marginLeft: 'auto' }}
                           onClick={() => {
                             setBusinessId(b.id);
@@ -796,35 +1223,31 @@ function NewEditorialFeatureModal(props: { onClose: () => void; onSaved: () => v
               ) : null}
             </>
           )}
-        </div>
+        </Field>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <label className="field">
-            <span className="label">Placement type</span>
+          <Field label="Placement type">
             <input value={placementType} onChange={(e) => setPlacementType(e.target.value)} required maxLength={60} placeholder="homepage_hero" />
-          </label>
-          <label className="field">
-            <span className="label">Label (optional, defaults to the placement type)</span>
+          </Field>
+          <Field label="Label (optional, defaults to the placement type)">
             <input value={label} onChange={(e) => setLabel(e.target.value)} maxLength={120} placeholder="Homepage hero" />
-          </label>
+          </Field>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <label className="field">
-            <span className="label">Start (optional, defaults to now)</span>
+          <Field label="Start (optional, defaults to now)">
             <input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} />
-          </label>
-          <label className="field">
-            <span className="label">End (required)</span>
+          </Field>
+          <Field label="End (required)">
             <input type="datetime-local" value={endAt} onChange={(e) => setEndAt(e.target.value)} required />
-          </label>
+          </Field>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn" disabled={busy}>
+        <FormActions>
+          <button type="submit" className="nb-btn" disabled={busy}>
             {busy ? 'Creating…' : 'Create editorial feature'}
           </button>
-          <button type="button" className="btn btn-ghost" onClick={props.onClose}>
+          <button type="button" className="nb-btn nb-btn-secondary" onClick={props.onClose}>
             Cancel
           </button>
-        </div>
+        </FormActions>
       </form>
     </Modal>
   );
@@ -832,31 +1255,33 @@ function NewEditorialFeatureModal(props: { onClose: () => void; onSaved: () => v
 
 export function FeaturedTab() {
   const [state, setState] = useState<FeaturedListState>('active');
-  const [items, setItems] = useState<FeaturedItem[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const list = useAsync(() => api.listFeatured(state), [state]);
   const [selected, setSelected] = useState<FeaturedItem | null>(null);
   const [extending, setExtending] = useState<EditorialFeature | null>(null);
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const load = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setItems(await api.listFeatured(state));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load the featured list.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const items = list.data ?? [];
+  const paid = items.filter((i) => i.source === 'paid');
+  const editorial = items.filter((i) => i.source === 'editorial');
 
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
+  const openExtend = (i: FeaturedItem) => {
+    if (i.source !== 'editorial') return;
+    /* The extend modal only needs the current end date, which the unified
+       list already carries; no single-feature GET exists. */
+    setExtending({
+      id: i.id,
+      placementType: i.placementType,
+      label: i.label,
+      startsAt: i.startsAt ?? new Date().toISOString(),
+      endsAt: i.endsAt ?? new Date().toISOString(),
+      state: i.state,
+      createdAt: i.startsAt ?? new Date().toISOString(),
+      business: i.business,
+      createdBy: { id: '', email: '' },
+    });
+  };
 
   const endEarly = async (i: FeaturedItem) => {
     if (i.source !== 'editorial') return;
@@ -865,7 +1290,7 @@ export function FeaturedTab() {
     setActionError(null);
     try {
       await api.endEditorialFeature(i.id);
-      await load();
+      list.reload();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Action failed.');
     } finally {
@@ -880,7 +1305,7 @@ export function FeaturedTab() {
     setActionError(null);
     try {
       await api.deleteEditorialFeature(i.id);
-      await load();
+      list.reload();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Action failed.');
     } finally {
@@ -888,131 +1313,146 @@ export function FeaturedTab() {
     }
   };
 
-  const openExtend = async (i: FeaturedItem) => {
-    if (i.source !== 'editorial') return;
-    setBusyId(i.id);
-    setActionError(null);
-    try {
-      // Reuse the featured list dates; the extend modal only needs the
-      // current end date, which the unified list already carries.
-      setExtending({
-        id: i.id,
-        placementType: i.placementType,
-        label: i.label,
-        startsAt: i.startsAt ?? new Date().toISOString(),
-        endsAt: i.endsAt ?? new Date().toISOString(),
-        state: i.state,
-        createdAt: i.startsAt ?? new Date().toISOString(),
-        business: i.business,
-        createdBy: { id: '', email: '' },
-      });
-    } finally {
-      setBusyId(null);
-    }
-  };
+  const paidColumns: Column<FeaturedItem>[] = [
+    {
+      key: 'business',
+      header: 'Business',
+      render: (i) => (
+        <>
+          <strong>{i.business.name}</strong>
+          <div className="nb-muted nb-mono">{i.business.slug}</div>
+        </>
+      ),
+    },
+    { key: 'source', header: 'Source', render: (i) => <SourceBadge source={i.source} /> },
+    {
+      key: 'placement',
+      header: 'Placement',
+      render: (i) => (
+        <>
+          <strong>{i.promotion?.name ?? 'N/A'}</strong>
+          {i.payment ? <div className="nb-muted nb-mono">{fmtMoney(i.payment.amountMinor, i.payment.currency)} paid</div> : null}
+          <div className="nb-muted nb-mono">{i.placementType}</div>
+        </>
+      ),
+    },
+    { key: 'starts', header: 'Starts', render: (i) => (i.startsAt ? fmtDate(i.startsAt) : <span className="nb-muted">N/A</span>) },
+    { key: 'ends', header: 'Ends', render: (i) => (i.endsAt ? fmtDate(i.endsAt) : <span className="nb-muted">N/A</span>) },
+    { key: 'state', header: 'State', render: (i) => <Badge value={i.state.toUpperCase()} /> },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: (i) => (
+        <button type="button" className="nb-btn nb-btn-sm nb-btn-secondary" onClick={() => setSelected(i)}>
+          View
+        </button>
+      ),
+    },
+  ];
+
+  const editorialColumns: Column<FeaturedItem>[] = [
+    {
+      key: 'business',
+      header: 'Business',
+      render: (i) => (
+        <>
+          <strong>{i.business.name}</strong>
+          <div className="nb-muted nb-mono">{i.business.slug}</div>
+        </>
+      ),
+    },
+    { key: 'source', header: 'Source', render: (i) => <SourceBadge source={i.source} /> },
+    {
+      key: 'placement',
+      header: 'Placement',
+      render: (i) => (
+        <>
+          <strong>{i.label}</strong>
+          <div className="nb-muted nb-mono">{i.placementType}</div>
+        </>
+      ),
+    },
+    { key: 'starts', header: 'Starts', render: (i) => (i.startsAt ? fmtDate(i.startsAt) : <span className="nb-muted">N/A</span>) },
+    { key: 'ends', header: 'Ends', render: (i) => (i.endsAt ? fmtDate(i.endsAt) : <span className="nb-muted">N/A</span>) },
+    { key: 'state', header: 'State', render: (i) => <Badge value={i.state.toUpperCase()} /> },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: (i) => {
+        const isLive = i.state === 'active' || i.state === 'scheduled';
+        return (
+          <>
+            <button type="button" className="nb-btn nb-btn-sm nb-btn-secondary" onClick={() => setSelected(i)}>
+              View
+            </button>
+            {isLive ? (
+              <>
+                {' '}
+                <button type="button" className="nb-btn nb-btn-sm nb-btn-secondary" disabled={busyId === i.id} onClick={() => openExtend(i)}>
+                  Extend
+                </button>{' '}
+                <button type="button" className="nb-btn nb-btn-sm nb-btn-secondary" disabled={busyId === i.id} onClick={() => void endEarly(i)}>
+                  End early
+                </button>{' '}
+                <button type="button" className="nb-btn nb-btn-sm nb-btn-danger" disabled={busyId === i.id} onClick={() => void remove(i)}>
+                  Remove
+                </button>
+              </>
+            ) : null}
+          </>
+        );
+      },
+    },
+  ];
 
   return (
     <>
-      <p className="hint" style={{ marginBottom: 12 }}>
+      <p className="nb-hint" style={{ marginTop: 0 }}>
         The unified featured list. <strong>Paid promotion</strong> badges mark placements that were activated through payment approval;
         <strong> Editorial pick</strong> badges mark free admin curation. Nothing on this screen can activate a paid promotion.
       </p>
-      <div className="toolbar">
-        <select className="admin-select" value={state} onChange={(e) => setState(e.target.value as FeaturedListState)} aria-label="Filter featured items by state">
-          {FEATURED_STATES.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-        <button className="btn" onClick={() => setCreating(true)}>
+      <Toolbar>
+        <FilterSelect
+          label="Filter featured items by state"
+          value={state}
+          onChange={(v) => setState(v as FeaturedListState)}
+          options={FEATURED_STATES.map((s) => ({ value: s.value, label: s.label }))}
+        />
+        <button type="button" className="nb-btn" onClick={() => setCreating(true)}>
           New editorial feature
         </button>
-      </div>
-      {actionError ? (
-        <div className="form-error" role="alert">
-          {actionError}
-        </div>
-      ) : null}
-      {loading ? (
-        <div className="loading">Loading featured businesses…</div>
-      ) : error ? (
-        <div className="form-error">{error}</div>
+      </Toolbar>
+      {actionError ? <FormError message={actionError} /> : null}
+      {list.loading ? (
+        <LoadingState label="Loading featured businesses…" />
+      ) : list.error ? (
+        <ErrorState message={list.error} onRetry={list.reload} />
       ) : (
-        <div className="panel">
-          <h2>Featured businesses ({items!.length})</h2>
-          {items!.length === 0 ? (
-            <div className="empty">Nothing featured with this filter.</div>
-          ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Business</th>
-                  <th>Source</th>
-                  <th>Placement</th>
-                  <th>Starts</th>
-                  <th>Ends</th>
-                  <th>State</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items!.map((i) => {
-                  const isEditorial = i.source === 'editorial';
-                  const isLive = i.state === 'active' || i.state === 'scheduled';
-                  return (
-                    <tr key={`${i.source}-${i.id}`}>
-                      <td>
-                        <strong>{i.business.name}</strong>
-                        <div className="muted mono">{i.business.slug}</div>
-                      </td>
-                      <td>
-                        <SourceBadge source={i.source} />
-                      </td>
-                      <td>
-                        {isEditorial ? (
-                          <>
-                            <strong>{i.label}</strong>
-                            <div className="muted mono">{i.placementType}</div>
-                          </>
-                        ) : (
-                          <>
-                            <strong>{i.promotion?.name ?? 'N/A'}</strong>
-                            {i.payment ? <div className="muted mono">{fmtMoney(i.payment.amountMinor, i.payment.currency)} paid</div> : null}
-                          </>
-                        )}
-                      </td>
-                      <td>{i.startsAt ? fmtDate(i.startsAt) : <span className="muted">N/A</span>}</td>
-                      <td>{i.endsAt ? fmtDate(i.endsAt) : <span className="muted">N/A</span>}</td>
-                      <td>
-                        <StatusBadge value={i.state.toUpperCase()} />
-                      </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        <button className="btn btn-ghost btn-sm" onClick={() => setSelected(i)}>
-                          View
-                        </button>
-                        {isEditorial && isLive ? (
-                          <>
-                            {' '}
-                            <button className="btn btn-ghost btn-sm" disabled={busyId === i.id} onClick={() => void openExtend(i)}>
-                              Extend
-                            </button>{' '}
-                            <button className="btn btn-ghost btn-sm" disabled={busyId === i.id} onClick={() => void endEarly(i)}>
-                              End early
-                            </button>{' '}
-                            <button className="btn btn-ghost btn-sm" disabled={busyId === i.id} onClick={() => void remove(i)}>
-                              Remove
-                            </button>
-                          </>
-                        ) : null}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <>
+          <Card
+            title={`Paid promotions (${paid.length})`}
+            subtitle="Activated through payment approval in the Payments tab. Read-only here."
+          >
+            <DataTable<FeaturedItem>
+              columns={paidColumns}
+              rows={paid}
+              rowKey={(i) => `paid-${i.id}`}
+              empty={<EmptyState title="No paid placements with this filter." />}
+            />
+          </Card>
+          <div style={{ height: 16 }} />
+          <Card
+            title={`Editorial picks (${editorial.length})`}
+            subtitle="Free admin curation. Creating, extending, or removing one can never activate a paid promotion."
+          >
+            <DataTable<FeaturedItem>
+              columns={editorialColumns}
+              rows={editorial}
+              rowKey={(i) => `editorial-${i.id}`}
+              empty={<EmptyState title="No editorial features with this filter." body="Use New editorial feature to curate one." />}
+            />
+          </Card>
+        </>
       )}
       {selected ? (
         <FeaturedItemDrawer
@@ -1020,20 +1460,21 @@ export function FeaturedTab() {
           onClose={() => setSelected(null)}
           onEnded={() => {
             setSelected(null);
-            void load();
+            list.reload();
           }}
           onExtend={() => {
+            const it = selected;
             setSelected(null);
-            void openExtend(selected);
+            openExtend(it);
           }}
           onRemoved={() => {
             setSelected(null);
-            void load();
+            list.reload();
           }}
         />
       ) : null}
-      {extending ? <ExtendFeatureModal feature={extending} onClose={() => setExtending(null)} onSaved={() => void load()} /> : null}
-      {creating ? <NewEditorialFeatureModal onClose={() => setCreating(false)} onSaved={() => void load()} /> : null}
+      {extending ? <ExtendFeatureModal feature={extending} onClose={() => setExtending(null)} onSaved={list.reload} /> : null}
+      {creating ? <NewEditorialFeatureModal onClose={() => setCreating(false)} onSaved={list.reload} /> : null}
     </>
   );
 }
@@ -1042,7 +1483,7 @@ export function FeaturedTab() {
 
 const TABS = [
   { key: 'catalog', label: 'Catalog' },
-  { key: 'requests', label: 'Requests queue' },
+  { key: 'requests', label: 'Requests' },
   { key: 'payments', label: 'Payments' },
   { key: 'active', label: 'Active' },
   { key: 'featured', label: 'Featured' },
@@ -1052,26 +1493,27 @@ type CenterTab = (typeof TABS)[number]['key'];
 
 export function PromotionCenter() {
   const [tab, setTab] = useState<CenterTab>('catalog');
+  const [pendingPayments, setPendingPayments] = useState<number | null>(null);
+
   return (
     <>
-      <div className="toolbar" role="tablist" aria-label="Promotions views">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            className={`btn ${tab === t.key ? '' : 'btn-ghost'}`}
-            role="tab"
-            aria-selected={tab === t.key}
-            onClick={() => setTab(t.key)}
-          >
-            {t.label}
-          </button>
-        ))}
+      <PageHeader title="Promotions" subtitle="Growth and advertising control center." />
+      <Tabs
+        tabs={TABS.map((t) => ({
+          key: t.key,
+          label: t.label,
+          count: t.key === 'payments' && pendingPayments ? pendingPayments : undefined,
+        }))}
+        active={tab}
+        onChange={(k) => setTab(k as CenterTab)}
+      />
+      <div style={{ marginTop: 16 }}>
+        {tab === 'catalog' ? <PromotionCatalogTab /> : null}
+        {tab === 'requests' ? <PromotionRequestsTab /> : null}
+        {tab === 'payments' ? <PromotionPaymentsTab onPendingCount={setPendingPayments} /> : null}
+        {tab === 'active' ? <ActivePlacementsTab /> : null}
+        {tab === 'featured' ? <FeaturedTab /> : null}
       </div>
-      {tab === 'catalog' ? <PromotionCatalog /> : null}
-      {tab === 'requests' ? <PromotionRequestQueue /> : null}
-      {tab === 'payments' ? <PromotionPaymentsTab /> : null}
-      {tab === 'active' ? <ActivePlacementsTab /> : null}
-      {tab === 'featured' ? <FeaturedTab /> : null}
     </>
   );
 }
