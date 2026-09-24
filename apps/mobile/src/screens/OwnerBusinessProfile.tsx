@@ -2,7 +2,16 @@ import { useState } from 'react';
 import { getMyBusinesses, getVerification, logout, type Business } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, Loading } from '../components/ui.js';
-import { StoreIcon } from '../components/icons.js';
+import {
+  BellIcon,
+  CheckIcon,
+  ChevronRightIcon,
+  ExploreIcon,
+  LockIcon,
+  StarIcon,
+  StoreIcon,
+  UserIcon,
+} from '../components/icons.js';
 import { OwnerPlanCard } from './subscription-badge.js';
 import { Stars } from '../components/ReviewForm.js';
 
@@ -103,7 +112,7 @@ export function OwnerBusinessProfile(props: {
               <span className="hub-row-sub">Profile, hours, catalog, payments, reviews</span>
             </span>
             <span className="hub-row-chevron" aria-hidden>
-              ›
+              <ChevronRightIcon size={18} />
             </span>
           </button>
           {props.onListBusiness ? (
@@ -116,7 +125,7 @@ export function OwnerBusinessProfile(props: {
                 <span className="hub-row-sub">List a second location or brand</span>
               </span>
               <span className="hub-row-chevron" aria-hidden>
-                ›
+                <ChevronRightIcon size={18} />
               </span>
             </button>
           ) : null}
@@ -130,14 +139,14 @@ export function OwnerBusinessProfile(props: {
           <VerificationRow businessId={active.id} onOpen={() => open('verification')} />
           <button type="button" className="hub-row" onClick={() => open('promotions')}>
             <span className="hub-row-icon" aria-hidden>
-              ◆
+              <StarIcon size={19} />
             </span>
             <span className="hub-row-text">
               <span className="hub-row-title">Promotions</span>
               <span className="hub-row-sub">Featured listing and platform perks</span>
             </span>
             <span className="hub-row-chevron" aria-hidden>
-              ›
+              <ChevronRightIcon size={18} />
             </span>
           </button>
         </div>
@@ -149,36 +158,36 @@ export function OwnerBusinessProfile(props: {
         <div className="hub-card">
           <button type="button" className="hub-row" onClick={props.onEditProfile}>
             <span className="hub-row-icon" aria-hidden>
-              ✎
+              <UserIcon size={19} />
             </span>
             <span className="hub-row-text">
               <span className="hub-row-title">Personal information</span>
               <span className="hub-row-sub">Your name and phone (customer identity)</span>
             </span>
             <span className="hub-row-chevron" aria-hidden>
-              ›
+              <ChevronRightIcon size={18} />
             </span>
           </button>
           <button type="button" className="hub-row" onClick={props.onChangePassword}>
             <span className="hub-row-icon" aria-hidden>
-              🔒
+              <LockIcon size={19} />
             </span>
             <span className="hub-row-text">
               <span className="hub-row-title">Change password</span>
             </span>
             <span className="hub-row-chevron" aria-hidden>
-              ›
+              <ChevronRightIcon size={18} />
             </span>
           </button>
           <button type="button" className="hub-row" onClick={props.onOpenNotifications}>
             <span className="hub-row-icon" aria-hidden>
-              🔔
+              <BellIcon size={19} />
             </span>
             <span className="hub-row-text">
               <span className="hub-row-title">Notifications</span>
             </span>
             <span className="hub-row-chevron" aria-hidden>
-              ›
+              <ChevronRightIcon size={18} />
             </span>
           </button>
         </div>
@@ -189,14 +198,14 @@ export function OwnerBusinessProfile(props: {
         <div className="hub-card">
           <button type="button" className="hub-row" onClick={props.onSwitchToCustomer}>
             <span className="hub-row-icon" aria-hidden>
-              ⇄
+              <ExploreIcon size={19} />
             </span>
             <span className="hub-row-text">
               <span className="hub-row-title">Switch to Customer mode</span>
               <span className="hub-row-sub">Explore and order from other businesses as yourself</span>
             </span>
             <span className="hub-row-chevron" aria-hidden>
-              ›
+              <ChevronRightIcon size={18} />
             </span>
           </button>
         </div>
@@ -229,7 +238,7 @@ function VerificationRow(props: { businessId: string; onOpen: () => void }) {
   return (
     <button type="button" className="hub-row" onClick={props.onOpen}>
       <span className="hub-row-icon" aria-hidden>
-        ✓
+        <CheckIcon size={19} />
       </span>
       <span className="hub-row-text">
         <span className="hub-row-title">Verification</span>
@@ -237,7 +246,7 @@ function VerificationRow(props: { businessId: string; onOpen: () => void }) {
       </span>
       {status === 'APPROVED' ? <span className="badge badge-verified">✓ Verified</span> : null}
       <span className="hub-row-chevron" aria-hidden>
-        ›
+        <ChevronRightIcon size={18} />
       </span>
     </button>
   );

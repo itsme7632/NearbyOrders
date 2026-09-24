@@ -128,38 +128,19 @@ function BusinessMapPreview(props: { business: Business; onClose: () => void; on
       className="map-preview-card"
       role="dialog"
       aria-label={`${b.name} preview`}
-      style={{
-        position: 'absolute',
-        left: 10,
-        right: 10,
-        bottom: 10,
-        background: 'var(--card)',
-        border: '1px solid var(--border)',
-        borderRadius: 16,
-        padding: 12,
-        boxShadow: '0 -6px 24px rgba(17,24,39,0.12)',
-        display: 'flex',
-        gap: 12,
-        alignItems: 'center',
-      }}
     >
-      <span
-        aria-hidden
-        style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--brand-soft)', color: 'var(--brand-strong)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, flexShrink: 0 }}
-      >
+      <span className="map-preview-initial" aria-hidden>
         {b.name[0]?.toUpperCase() ?? '?'}
       </span>
-      <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <span className="pop-card-name" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {b.name}
-        </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <span className="map-preview-main">
+        <span className="map-preview-name">{b.name}</span>
+        <span className="map-preview-meta">
           <RatingChip average={b.averageRating} count={b.reviewCount ?? undefined} />
           {b.categories[0] ? <span className="pop-card-cat">{b.categories[0].name}</span> : null}
           {distance ? <span className="biz-distance">{distance}</span> : null}
         </span>
       </span>
-      <span style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+      <span className="map-preview-actions">
         <button type="button" className="btn btn-primary sm" onClick={props.onOpen}>
           View
         </button>

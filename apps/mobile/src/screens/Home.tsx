@@ -8,6 +8,7 @@ import {
   listMyBookings,
   listMyOrders,
   listNearbyBusinesses,
+  searchMarketplace,
   whoami,
   type Booking,
   type Business,
@@ -16,8 +17,12 @@ import {
   type FeaturedPlacement,
   type MyProfile,
   type Order,
+  type ProductSearchResult,
+  type SearchPage,
+  type ServiceSearchResult,
 } from '../api.js';
 import { formatDistanceKm, isDeniedOutcome, locationOutcomeHint, requestCustomerLocation } from '../location.js';
+import { longDateLabel } from '../time.js';
 import { useAsyncData } from '../hooks.js';
 import { BusinessRow, EmptyState, ErrorState, Money, RatingChip, SectionHeader } from '../components/ui.js';
 import { BookingStatusBadge } from './Bookings.js';
@@ -306,7 +311,7 @@ export function HomeScreen(props: {
           <span className="home-hero-search-icon" aria-hidden>
             <ExploreIcon size={18} />
           </span>
-          <span className="home-hero-search-placeholder">Search food, services, shops…</span>
+          <span className="home-hero-search-placeholder">Search businesses, products & services</span>
           <span className="search-go" aria-hidden>
             <ExploreIcon size={16} />
           </span>
@@ -349,18 +354,6 @@ export function HomeScreen(props: {
           </div>
         )}
       </section>
-
-      {/* Featured placements: clearly labeled as sponsored/curated — never
-          part of organic ranking. The section is omitted entirely when the
-          server returns nothing. */}
-      <FeaturedSection onOpenBusiness={props.onOpenBusiness} />
-
-      {/* Contextual card: at most one, only from real customer data. */}
-      {context ? (
-        <section aria-label="For you" className="rail-section">
-          <ContextCard context={context} onOpenBusiness={props.onOpenBusiness} onOpenOrder={props.onOpenOrder} onOpenBooking={props.onOpenBooking} />
-        </section>
-      ) : null}
 
       {/* Discovery feed: an actionable "open now" lead when the server provides
           open/closed status, followed by the remaining places as a scannable
@@ -441,6 +434,208 @@ export function HomeScreen(props: {
           </button>
         </>
       )}
+
+      {/* Products & services: what can actually be ordered or booked. */}
+      <DiscoverSection coords={coords} onOpenBusiness={props.onOpenBusiness} onSeeAll={props.onOpenSearch} />
+
+      {/* Featured placements: clearly labeled as sponsored/curated — never
+          part of organic ranking. The section is omitted entirely when the
+          server returns nothing. */}
+      <FeaturedSection onOpenBusiness={props.onOpenBusiness} />
+
+      {/* Recent activity: the in-flight context card leads, then the latest
+          orders and bookings as compact rows. Signed-in customers only. */}
+      {context && context.kind !== 'saved' ? (
+        <section aria-label="Recent activity" className="rail-section">
+          <SectionHeader title="Recent activity" />
+          <ContextCard context={context} onOpenBusiness={props.onOpenBusiness} onOpenOrder={props.onOpenOrder} onOpenBooking={props.onOpenBooking} />
+          <RecentActivityRows
+            orders={contextData.data?.orders ?? []}
+            bookings={contextData.data?.bookings ?? []}
+            excludeOrderId={context.kind === 'order' || context.kind === 'reorder' ? context.order.id : null}
+            excludeBookingId={context.kind === 'booking' ? context.booking.id : null}
+            onOpenOrder={props.onOpenOrder}
+            onOpenBooking={props.onOpenBooking}
+          />
+        </section>
+      ) : null}
+      {context && context.kind === 'saved' ? (
+        <section aria-label="Recent activity" className="rail-section">
+          <ContextCard context={context} onOpenBusiness={props.onOpenBusiness} onOpenOrder={props.onOpenOrder} onOpenBooking={props.onOpenBooking} />
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Products & services discovery: what the customer can actually ORDER or
+ * BOOK, pulled from the real unified search endpoint (type-filtered, never
+ * fabricated). Products lead, services follow; each card opens the owning
+ * business. The section is omitted when the server returns nothing.
+ */
+function DiscoverSection(props: { coords: Coords | null; onOpenBusiness: (id: string) => void; onSeeAll: () => void }) {
+  const geoKey = props.coords ? `${props.coords.lat.toFixed(4)},${props.coords.lng.toFixed(4)}` : 'all';
+  const discover = useAsyncData<{ products: ProductSearchResult[]; services: ServiceSearchResult[] }>(async () => {
+    const geo = props.coords
+      ? { lat: props.coords.lat, lng: props.coords.lng, radiusKm: NEARBY_RADIUS_KM, sort: 'distance' as const }
+      : {};
+    const [productsPage, servicesPage] = await Promise.all([
+      searchMarketplace({ ...geo, type: 'product', limit: 6 }).catch((): SearchPage | null => null),
+      searchMarketplace({ ...geo, type: 'service', limit: 6 }).catch((): SearchPage | null => null),
+    ]);
+    return {
+      products: (productsPage?.results ?? []).filter((r): r is ProductSearchResult => r.type === 'product'),
+      services: (servicesPage?.results ?? []).filter((r): r is ServiceSearchResult => r.type === 'service'),
+    };
+  }, [geoKey]);
+
+  if (discover.loading) {
+    return (
+      <section aria-label="Products and services" className="rail-section">
+        <SectionHeader title="Products & services" />
+        <div className="discover-rail" aria-hidden>
+          {Array.from({ length: 3 }, (_, i) => (
+            <div key={i} className="discover-card">
+              <span className="skeleton" style={{ width: 64, height: 64, borderRadius: 14 }} />
+              <span className="skeleton skeleton-line w-60" style={{ marginTop: 8 }} />
+              <span className="skeleton skeleton-line w-40" style={{ marginTop: 6 }} />
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+  const items: (ProductSearchResult | ServiceSearchResult)[] = [
+    ...(discover.data?.products ?? []),
+    ...(discover.data?.services ?? []),
+  ].slice(0, 8);
+  if (!items.length) return null;
+  return (
+    <section aria-label="Products and services" className="rail-section">
+      <SectionHeader
+        title="Products & services"
+        action={
+          <button type="button" className="see-all-link" onClick={props.onSeeAll}>
+            See all
+          </button>
+        }
+      />
+      <p className="section-sub">Order products or book services near you</p>
+      <div className="discover-rail">
+        {items.map((r) => (
+          <DiscoverCard key={`${r.type}-${r.id}`} result={r} onOpen={() => props.onOpenBusiness(r.businessId)} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DiscoverCard(props: { result: ProductSearchResult | ServiceSearchResult; onOpen: () => void }) {
+  const r = props.result;
+  const isProduct = r.type === 'product';
+  const distance = r.distanceKm !== undefined && r.distanceKm !== null ? formatDistanceKm(r.distanceKm) : null;
+  return (
+    <button
+      type="button"
+      className="discover-card"
+      onClick={props.onOpen}
+      aria-label={`${r.name}, ${isProduct ? 'product' : 'service'} at ${r.businessName}`}
+    >
+      <span className="discover-media" aria-hidden>
+        {isProduct && r.imageUrl ? (
+          <img src={r.imageUrl} alt="" loading="lazy" />
+        ) : (
+          <span className="discover-initial">{r.name[0]?.toUpperCase() ?? '?'}</span>
+        )}
+      </span>
+      <span className="discover-kind">{isProduct ? 'Product' : 'Service'}</span>
+      <span className="discover-name">{r.name}</span>
+      <span className="discover-biz">{r.businessName}</span>
+      <span className="discover-meta">
+        <Money minor={r.priceMinor} currency={r.currency} />
+        {!isProduct && r.durationMinutes ? ` · ${r.durationMinutes} min` : null}
+        {distance ? ` · ${distance}` : null}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * Compact rows for the latest orders and bookings, excluding whatever the
+ * context card already surfaces. Real customer data only.
+ */
+function RecentActivityRows(props: {
+  orders: Order[];
+  bookings: Booking[];
+  excludeOrderId: string | null;
+  excludeBookingId: string | null;
+  onOpenOrder: (id: string) => void;
+  onOpenBooking: (id: string) => void;
+}) {
+  const orders = props.orders
+    .filter((o) => o.id !== props.excludeOrderId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 2);
+  const bookings = props.bookings
+    .filter((b) => b.id !== props.excludeBookingId)
+    .sort((a, b) => b.bookingDate.localeCompare(a.bookingDate) || b.startTime.localeCompare(a.startTime))
+    .slice(0, 2);
+  if (!orders.length && !bookings.length) return null;
+  return (
+    <div className="recent-rows">
+      {orders.map((o) => {
+        const label = orderLabel(o.status);
+        const itemCount = o.items.reduce((sum, i) => sum + i.quantity, 0);
+        return (
+          <button
+            key={o.id}
+            type="button"
+            className="recent-row"
+            onClick={() => props.onOpenOrder(o.id)}
+            aria-label={`Order from ${o.business.name}, ${label.text}`}
+          >
+            <span className="recent-row-icon" aria-hidden>
+              <OrdersIcon size={18} />
+            </span>
+            <span className="recent-row-main">
+              <span className="recent-row-title">{o.business.name}</span>
+              <span className="recent-row-sub">
+                {itemCount} item{itemCount === 1 ? '' : 's'}
+                {o.totalMinor !== undefined ? (
+                  <>
+                    {' · '}
+                    <Money minor={o.totalMinor} currency={o.currency} />
+                  </>
+                ) : null}
+              </span>
+            </span>
+            <span className={`badge ${label.cls}`}>{label.text}</span>
+          </button>
+        );
+      })}
+      {bookings.map((b) => (
+        <button
+          key={b.id}
+          type="button"
+          className="recent-row"
+          onClick={() => props.onOpenBooking(b.id)}
+          aria-label={`Booking ${b.serviceName ?? ''} at ${b.businessName}`}
+        >
+          <span className="recent-row-icon" aria-hidden>
+            <BookingsIcon size={18} />
+          </span>
+          <span className="recent-row-main">
+            <span className="recent-row-title">
+              {b.serviceName ?? 'Booking'} · {b.businessName}
+            </span>
+            <span className="recent-row-sub">
+              {longDateLabel(b.bookingDate)} · {b.startTime}
+            </span>
+          </span>
+          <BookingStatusBadge status={b.status} />
+        </button>
+      ))}
     </div>
   );
 }

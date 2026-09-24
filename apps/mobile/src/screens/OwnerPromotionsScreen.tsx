@@ -117,7 +117,7 @@ export function OwnerPromotions(props: { businessId: string }) {
   }
 
   return (
-    <div className="owner-promotions">
+    <div className="owner-screen owner-promotions">
       {error ? <ErrorState message={error} /> : null}
       {notice ? (
         <p className="save-ok" role="status">
@@ -193,91 +193,99 @@ function AvailablePromotions(props: {
   }
 
   return (
-    <div className="plan-option-list">
-      {list.map((p) => {
-        const existing = byPromotionId.get(p.id);
-        const isPending = existing?.status === 'PENDING';
-        const canReapply =
-          !existing ||
-          existing.status === 'REJECTED' ||
-          existing.status === 'EXPIRED' ||
-          existing.status === 'CANCELLED';
-        return (
-          <section key={p.id} className="plan-option" aria-label={p.name}>
-            <span className="plan-option-top">
-              <span className="plan-option-name">{p.name}</span>
-              {existing ? (
-                <span className={`badge ${existing.status === 'APPROVED' || existing.status === 'ACTIVE' ? 'badge-open' : existing.status === 'PENDING' ? 'badge-neutral' : 'badge-closed'}`}>
-                  {REQUEST_STATUS_LABEL[existing.status]}
+    <>
+      <div className="section-head">
+        <h2>
+          Available promotions
+          <span className="count-pill">{list.length}</span>
+        </h2>
+      </div>
+      <div className="plan-option-list">
+        {list.map((p) => {
+          const existing = byPromotionId.get(p.id);
+          const isPending = existing?.status === 'PENDING';
+          const canReapply =
+            !existing ||
+            existing.status === 'REJECTED' ||
+            existing.status === 'EXPIRED' ||
+            existing.status === 'CANCELLED';
+          return (
+            <section key={p.id} className="plan-option" aria-label={p.name}>
+              <span className="plan-option-top">
+                <span className="plan-option-name">{p.name}</span>
+                {existing ? (
+                  <span className={`badge ${existing.status === 'APPROVED' || existing.status === 'ACTIVE' ? 'badge-open' : existing.status === 'PENDING' ? 'badge-neutral' : 'badge-closed'}`}>
+                    {REQUEST_STATUS_LABEL[existing.status]}
+                  </span>
+                ) : null}
+              </span>
+              {p.description ? <span className="plan-option-desc">{p.description}</span> : null}
+              {p.priceMinor != null ? (
+                <span className="plan-option-price">
+                  <Money minor={p.priceMinor} currency={p.currency} />
+                  {p.durationDays != null ? <span className="muted"> / {p.durationDays} days</span> : null}
                 </span>
               ) : null}
-            </span>
-            {p.description ? <span className="plan-option-desc">{p.description}</span> : null}
-            {p.priceMinor != null ? (
-              <span className="plan-option-price">
-                <Money minor={p.priceMinor} currency={p.currency} />
-                {p.durationDays != null ? <span className="muted"> / {p.durationDays} days</span> : null}
-              </span>
-            ) : null}
-            {(p.benefits ?? []).length > 0 ? (
-              <ul className="sub-benefits">
-                {(p.benefits ?? []).map((b) => (
-                  <li key={b}>
-                    <CheckIcon size={14} />
-                    <span>{b}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {p.requirements ? (
-              <p className="hint" style={{ marginTop: 6 }}>
-                <strong>Requirements:</strong> {p.requirements}
-              </p>
-            ) : null}
-            {existing?.status === 'REJECTED' && existing.rejectionReason ? (
-              <p className="hint">Reason: {existing.rejectionReason}</p>
-            ) : null}
-            {existing?.lifecycleState === 'PAYMENT_REQUIRED' ? (
-              <p className="hint" style={{ marginTop: 8 }}>
-                Your application was approved. Open the My requests tab to complete the promotion payment.
-              </p>
-            ) : null}
-            {canReapply ? (
-              noteFor === p.id ? (
-                <div style={{ marginTop: 8 }}>
-                  <Field label="Note for the team (optional)">
-                    <input
-                      value={note}
-                      onChange={(e) => props.onNoteChange(e.target.value)}
-                      maxLength={500}
-                      placeholder="Anything we should know"
-                    />
-                  </Field>
-                  <div className="btn-row">
-                    <Button sm disabled={busy} onClick={() => props.onSendRequest(p)}>
-                      {busy && requestingId === p.id ? 'Sending…' : 'Send request'}
-                    </Button>
-                    <Button sm variant="ghost" disabled={busy} onClick={() => { props.onNoteFor(null); props.onNoteChange(''); }}>
-                      Cancel
+              {(p.benefits ?? []).length > 0 ? (
+                <ul className="sub-benefits">
+                  {(p.benefits ?? []).map((b) => (
+                    <li key={b}>
+                      <CheckIcon size={14} />
+                      <span>{b}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {p.requirements ? (
+                <p className="hint" style={{ marginTop: 6 }}>
+                  <strong>Requirements:</strong> {p.requirements}
+                </p>
+              ) : null}
+              {existing?.status === 'REJECTED' && existing.rejectionReason ? (
+                <p className="hint">Reason: {existing.rejectionReason}</p>
+              ) : null}
+              {existing?.lifecycleState === 'PAYMENT_REQUIRED' ? (
+                <p className="hint" style={{ marginTop: 8 }}>
+                  Your application was approved. Open the My requests tab to complete the promotion payment.
+                </p>
+              ) : null}
+              {canReapply ? (
+                noteFor === p.id ? (
+                  <div style={{ marginTop: 8 }}>
+                    <Field label="Note for the team (optional)">
+                      <input
+                        value={note}
+                        onChange={(e) => props.onNoteChange(e.target.value)}
+                        maxLength={500}
+                        placeholder="Anything we should know"
+                      />
+                    </Field>
+                    <div className="btn-row">
+                      <Button sm disabled={busy} onClick={() => props.onSendRequest(p)}>
+                        {busy && requestingId === p.id ? 'Sending…' : 'Send request'}
+                      </Button>
+                      <Button sm variant="ghost" disabled={busy} onClick={() => { props.onNoteFor(null); props.onNoteChange(''); }}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="btn-row" style={{ marginTop: 8 }}>
+                    <Button sm variant="secondary" disabled={busy} onClick={() => props.onNoteFor(p.id)}>
+                      Request this promotion
                     </Button>
                   </div>
-                </div>
-              ) : (
-                <div className="btn-row" style={{ marginTop: 8 }}>
-                  <Button sm variant="secondary" disabled={busy} onClick={() => props.onNoteFor(p.id)}>
-                    Request this promotion
-                  </Button>
-                </div>
-              )
-            ) : isPending ? (
-              <p className="hint" style={{ marginTop: 8 }}>
-                Your request is with the NearbyOrders team. They will contact you about next steps.
-              </p>
-            ) : null}
-          </section>
-        );
-      })}
-    </div>
+                )
+              ) : isPending ? (
+                <p className="hint" style={{ marginTop: 8 }}>
+                  Your request is with the NearbyOrders team. They will contact you about next steps.
+                </p>
+              ) : null}
+            </section>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
@@ -305,75 +313,83 @@ function MyPromotionRequests(props: {
   }
 
   return (
-    <div className="plan-option-list">
-      {list.map((r) => (
-        <section key={r.id} className="plan-option" aria-label={r.promotionName ?? 'Promotion request'}>
-          <span className="plan-option-top">
-            <span className="plan-option-name">{r.promotionName ?? 'Promotion'}</span>
-            <span className={`badge ${LIFECYCLE_BADGE_CLASS[r.lifecycleState]}`}>
-              {LIFECYCLE_LABEL[r.lifecycleState]}
+    <>
+      <div className="section-head">
+        <h2>
+          My requests
+          <span className="count-pill">{list.length}</span>
+        </h2>
+      </div>
+      <div className="plan-option-list">
+        {list.map((r) => (
+          <section key={r.id} className="plan-option" aria-label={r.promotionName ?? 'Promotion request'}>
+            <span className="plan-option-top">
+              <span className="plan-option-name">{r.promotionName ?? 'Promotion'}</span>
+              <span className={`badge ${LIFECYCLE_BADGE_CLASS[r.lifecycleState]}`}>
+                {LIFECYCLE_LABEL[r.lifecycleState]}
+              </span>
             </span>
-          </span>
-          <p className="hint">Requested {formatDate(r.submittedAt)}</p>
+            <p className="hint">Requested {formatDate(r.submittedAt)}</p>
 
-          {r.lifecycleState === 'ACTIVE' && r.activatedAt ? (
-            <p className="hint">
-              Active from {formatDate(r.activatedAt)}
-              {r.expiresAt ? ` to ${formatDate(r.expiresAt)}` : null}
-              {r.promotionDurationDays != null ? ` (${r.promotionDurationDays} days)` : null}
-            </p>
-          ) : null}
+            {r.lifecycleState === 'ACTIVE' && r.activatedAt ? (
+              <p className="hint">
+                Active from {formatDate(r.activatedAt)}
+                {r.expiresAt ? ` to ${formatDate(r.expiresAt)}` : null}
+                {r.promotionDurationDays != null ? ` (${r.promotionDurationDays} days)` : null}
+              </p>
+            ) : null}
 
-          {r.lifecycleState === 'EXPIRED' && r.activatedAt ? (
-            <p className="hint">
-              Ran {formatDate(r.activatedAt)}
-              {r.expiresAt ? ` to ${formatDate(r.expiresAt)}` : null}
-            </p>
-          ) : null}
+            {r.lifecycleState === 'EXPIRED' && r.activatedAt ? (
+              <p className="hint">
+                Ran {formatDate(r.activatedAt)}
+                {r.expiresAt ? ` to ${formatDate(r.expiresAt)}` : null}
+              </p>
+            ) : null}
 
-          {r.lifecycleState === 'REJECTED' && r.rejectionReason ? (
-            <p className="hint">Reason: {r.rejectionReason}</p>
-          ) : null}
+            {r.lifecycleState === 'REJECTED' && r.rejectionReason ? (
+              <p className="hint">Reason: {r.rejectionReason}</p>
+            ) : null}
 
-          {r.lifecycleState === 'PAYMENT_REQUIRED' ? (
-            <div style={{ marginTop: 8 }}>
-              <div className="pay-details">
-                <div className="pay-detail-row">
-                  <span className="pay-detail-label">Amount due</span>
-                  <span className="pay-detail-value">
-                    <Money minor={r.amountDueMinor} currency={r.currency} />
-                  </span>
+            {r.lifecycleState === 'PAYMENT_REQUIRED' ? (
+              <div style={{ marginTop: 8 }}>
+                <div className="pay-details">
+                  <div className="pay-detail-row">
+                    <span className="pay-detail-label">Amount due</span>
+                    <span className="pay-detail-value">
+                      <Money minor={r.amountDueMinor} currency={r.currency} />
+                    </span>
+                  </div>
+                </div>
+                {r.lastPaymentRejected ? (
+                  <p className="hint" style={{ marginTop: 6 }}>
+                    Your last payment was rejected. Submit a new payment below.
+                  </p>
+                ) : null}
+                <div className="btn-row" style={{ marginTop: 8 }}>
+                  <Button full onClick={() => onPay(r)}>
+                    Pay now
+                  </Button>
                 </div>
               </div>
-              {r.lastPaymentRejected ? (
-                <p className="hint" style={{ marginTop: 6 }}>
-                  Your last payment was rejected. Submit a new payment below.
-                </p>
-              ) : null}
-              <div className="btn-row" style={{ marginTop: 8 }}>
-                <Button full onClick={() => onPay(r)}>
-                  Pay now
-                </Button>
-              </div>
-            </div>
-          ) : null}
+            ) : null}
 
-          {r.lifecycleState === 'PAYMENT_UNDER_REVIEW' ? (
-            <p className="hint" style={{ marginTop: 8 }}>
-              Your payment proof is with the NearbyOrders team. Your promotion activates after approval.
-            </p>
-          ) : null}
+            {r.lifecycleState === 'PAYMENT_UNDER_REVIEW' ? (
+              <p className="hint" style={{ marginTop: 8 }}>
+                Your payment proof is with the NearbyOrders team. Your promotion activates after approval.
+              </p>
+            ) : null}
 
-          {r.lifecycleState === 'PENDING_REVIEW' ? (
-            <p className="hint" style={{ marginTop: 8 }}>
-              The NearbyOrders team is reviewing your request.
-              {r.promotionPriceMinor != null && r.promotionPriceMinor > 0
-                ? ' If approved, you will complete a payment step before it activates.'
-                : ' Free promotions activate directly on approval.'}
-            </p>
-          ) : null}
-        </section>
-      ))}
-    </div>
+            {r.lifecycleState === 'PENDING_REVIEW' ? (
+              <p className="hint" style={{ marginTop: 8 }}>
+                The NearbyOrders team is reviewing your request.
+                {r.promotionPriceMinor != null && r.promotionPriceMinor > 0
+                  ? ' If approved, you will complete a payment step before it activates.'
+                  : ' Free promotions activate directly on approval.'}
+              </p>
+            ) : null}
+          </section>
+        ))}
+      </div>
+    </>
   );
 }

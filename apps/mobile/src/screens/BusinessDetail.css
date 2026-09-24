@@ -4,7 +4,101 @@
 
 /* The sticky action bar sits above the floating bottom nav — keep the last
    of the scrollable content clear of it. */
-.biz-detail { padding-bottom: calc(170px + env(safe-area-inset-bottom)); }
+.biz-detail { padding-bottom: calc(170px + env(safe-area-inset-bottom)); overflow-x: clip; }
+
+/* ---- Atlas hero: confident identity over the media ---- */
+.biz-detail .biz-hero-name {
+  font-family: var(--font-sans);
+  font-size: clamp(30px, 8.5vw, 38px);
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  overflow-wrap: break-word;
+}
+.biz-detail .biz-hero-meta {
+  font-size: 14px;
+  font-weight: 600;
+}
+.biz-detail .biz-hero-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.biz-detail .biz-hero-overlay-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: var(--space-2);
+}
+.biz-detail .biz-hero-featured {
+  font-size: 11.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--gold-strong);
+  color: #fff;
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+/* ---- Utility action bar: save / call / directions / share ---- */
+.biz-detail .biz-action-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
+}
+.biz-detail .biz-action {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.biz-detail .save-heart-on {
+  color: var(--action-strong);
+  border-color: var(--action-soft);
+  background: var(--action-soft);
+}
+
+/* ---- Primary content navigation: confident tabs, ember active mark ---- */
+.biz-detail .tab-strip button {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--muted);
+  min-height: 48px;
+}
+.biz-detail .tab-strip button.tab-active {
+  color: var(--ink);
+  box-shadow: inset 0 -3px 0 var(--action);
+}
+
+/* ---- Sections: commerce-first editorial rhythm ---- */
+.biz-detail .detail-section {
+  margin-top: var(--space-5);
+}
+.biz-detail .detail-section-title {
+  font-family: var(--font-sans);
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  margin: 0 0 var(--space-3);
+  overflow-wrap: break-word;
+}
+.biz-detail .detail-section-text {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin: 0;
+  overflow-wrap: break-word;
+}
 
 /* "At a glance" trust block: rating, open/closed state from the real hours
    payload, booking/ordering capability, then the key contact rows. One fact
@@ -39,7 +133,8 @@
 .bd-glance-sub { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); }
 
 /* Contextual primary action pinned above the floating bottom nav. Real
-   <button>, safe-area aware, never covers the scroll content. */
+   <button>, safe-area aware, never covers the scroll content. Ember is the
+   single accent: this is the screen's one primary conversion action. */
 .bd-sticky-bar {
   position: fixed;
   left: 50%;
@@ -56,16 +151,17 @@
 .bd-sticky-cta {
   display: block;
   width: 100%;
-  min-height: 48px;
+  min-height: 52px;
   border-radius: var(--radius-md);
-  background: var(--brand);
+  background: var(--action);
   color: #fff;
-  font-size: 15px;
+  font-family: var(--font-sans);
+  font-size: 16px;
   font-weight: 800;
   letter-spacing: -0.01em;
-  box-shadow: 0 2px 8px rgba(92, 19, 16, 0.22);
+  box-shadow: 0 4px 14px rgba(226, 58, 46, 0.35);
 }
-.bd-sticky-cta:active { background: var(--brand-pressed); }
+.bd-sticky-cta:active { background: var(--action-strong); }
 .bd-sticky-cta:disabled {
   background: var(--bg);
   color: var(--disabled);
@@ -78,4 +174,245 @@
   line-height: 1.4;
   color: var(--text-muted);
   text-align: center;
+}
+
+/* ---- Catalog rows: commerce-first, prominent prices ---- */
+.biz-detail .svc-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.biz-detail .svc-row {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 12px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.biz-detail .svc-main {
+  flex: 1;
+  min-width: 0;
+}
+.biz-detail .svc-main .item-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.biz-detail .svc-main .item-name {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+.biz-detail .svc-main .money {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink);
+  flex: 0 0 auto;
+}
+.biz-detail .svc-main .item-desc {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 4px 0 0;
+  overflow-wrap: break-word;
+}
+.biz-detail .svc-thumb {
+  width: 60px;
+  height: 60px;
+  border-radius: 14px;
+  object-fit: cover;
+  flex: 0 0 auto;
+  background: var(--brand-softer);
+}
+.biz-detail .svc-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.biz-detail .pill {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
+  font-size: 12.5px;
+}
+.biz-detail .pill-action {
+  min-height: 40px;
+  font-weight: 800;
+  color: var(--action-strong);
+  border-color: var(--action-soft);
+  background: var(--action-soft);
+}
+.biz-detail .pill-action:active {
+  background: var(--action);
+  border-color: var(--action);
+  color: #fff;
+}
+
+/* Overview service preview list inherits the catalog treatment. */
+.biz-detail .item-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.biz-detail .item-list > li {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 12px;
+}
+.biz-detail .item-list .item-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.biz-detail .item-list .item-name {
+  font-size: 15.5px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+.biz-detail .item-list .money {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ink);
+  flex: 0 0 auto;
+}
+.biz-detail .item-list .item-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* Cart notice / conflict: calm Atlas surfaces. */
+.biz-detail .cart-notice,
+.biz-detail .cart-conflict {
+  border-radius: var(--radius);
+  font-size: 14px;
+}
+.biz-detail .cart-notice {
+  background: var(--success-soft);
+  border: 1px solid var(--border);
+  padding: 12px 14px;
+  margin-bottom: var(--space-3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ---- Hours list: clean two-column editorial rows ---- */
+.biz-detail .hours-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.biz-detail .hours-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 11px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  border-bottom: 1px dashed var(--border);
+  min-height: 44px;
+}
+.biz-detail .hours-list li:last-child { border-bottom: 0; }
+.biz-detail .hours-list li.closed { color: var(--muted); }
+.biz-detail .hours-list li span:last-child {
+  text-align: right;
+  overflow-wrap: break-word;
+}
+
+/* ---- Reviews: summary + list with Atlas type ---- */
+.biz-detail .rating-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: var(--space-3);
+}
+.biz-detail .rating-average {
+  font-family: var(--font-sans);
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.biz-detail .review-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.biz-detail .review-item {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 14px;
+}
+.biz-detail .review-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.biz-detail .review-author {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.biz-detail .review-date {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+.biz-detail .review-comment-text {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  margin: 8px 0 0;
+  overflow-wrap: break-word;
+}
+
+/* Photos tab media keeps the Atlas radius. */
+.biz-detail .detail-hero-media-v3 {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* 360px: hero and catalog stay single-column and truncate cleanly. */
+@media (max-width: 400px) {
+  .biz-detail .biz-action-bar { gap: 6px; }
+  .biz-detail .biz-action { padding: 10px 12px; font-size: 13px; }
 }

@@ -43,11 +43,11 @@ function OwnerPaymentRow(props: { payment: CustomerPayment; kind: 'booking' | 'o
   };
 
   return (
-    <li className="manage-item pay-owner-row">
-      <div className="pay-owner-head">
-        <strong>
+    <li className="manage-item">
+      <div className="item-row">
+        <span className="item-name">
           <Money minor={payment.amountMinor} currency={payment.currency} />
-        </strong>
+        </span>
         <span className={`pay-status pay-status-${payment.status === 'PAID' ? 'paid' : payment.status === 'FAILED' ? 'failed' : 'pending'}`}>
           {CUSTOMER_PAYMENT_LABEL[payment.status]}
         </span>
@@ -160,7 +160,7 @@ export function OwnerCustomerPayments(props: { businessId: string }) {
   };
 
   return (
-    <div className="owner-section">
+    <div className="owner-screen">
       <section className="card" aria-label="Payments awaiting verification">
         <h2>Awaiting verification</h2>
         {queue.loading ? (
@@ -173,7 +173,12 @@ export function OwnerCustomerPayments(props: { businessId: string }) {
           <>
             {bookingPayments.length > 0 ? (
               <>
-                <h3 className="pay-section-title">Booking payments</h3>
+                <div className="section-head section-head-sm">
+                  <h2>
+                    Booking payments
+                    <span className="count-pill">{bookingPayments.length}</span>
+                  </h2>
+                </div>
                 <ul className="manage-list">
                   {bookingPayments.map((p) => (
                     <OwnerPaymentRow key={p.id} payment={p} kind="booking" onChanged={reload} />
@@ -183,7 +188,12 @@ export function OwnerCustomerPayments(props: { businessId: string }) {
             ) : null}
             {orderPayments.length > 0 ? (
               <>
-                <h3 className="pay-section-title">Order payments</h3>
+                <div className="section-head section-head-sm">
+                  <h2>
+                    Order payments
+                    <span className="count-pill">{orderPayments.length}</span>
+                  </h2>
+                </div>
                 <ul className="manage-list">
                   {orderPayments.map((p) => (
                     <OwnerPaymentRow key={p.id} payment={p} kind="order" onChanged={reload} />
@@ -209,8 +219,8 @@ export function OwnerCustomerPayments(props: { businessId: string }) {
           <ul className="manage-list">
             {(methods.data ?? []).map((m) => (
               <li key={m.id} className="manage-item">
-                <div className="pay-owner-head">
-                  <strong>{m.displayName}</strong>
+                <div className="item-row">
+                  <span className="item-name">{m.displayName}</span>
                   <span className={`badge ${m.isActive ? 'badge-open' : 'badge-closed'}`}>{m.isActive ? 'Active' : 'Inactive'}</span>
                 </div>
                 <p className="hint">

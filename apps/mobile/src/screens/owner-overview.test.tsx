@@ -2,7 +2,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 import * as api from '../api.js';
-import type { Business, BusinessSubscriptionState, OwnerAnalytics, OwnerOverview, Subscription } from '../api.js';
+import type { Business, BusinessSubscriptionState, OwnerAnalytics, OwnerOverview, Subscription, VerificationState } from '../api.js';
 
 afterEach(cleanup);
 
@@ -13,6 +13,7 @@ vi.mock('../api.js', async (importOriginal) => ({
   getOwnerAnalytics: vi.fn(),
   getBusinessSubscription: vi.fn(),
   listPaymentRequests: vi.fn(),
+  getVerification: vi.fn(),
 }));
 
 const biz = (patch: Partial<Business> = {}): Business => ({
@@ -106,6 +107,11 @@ describe('business overview (redesigned hub)', () => {
     vi.mocked(api.getOwnerOverview).mockResolvedValue(overview());
     vi.mocked(api.getBusinessSubscription).mockResolvedValue(subscriptionState());
     vi.mocked(api.listPaymentRequests).mockResolvedValue([]);
+    // Verification healthy: the Overview's attention layer renders nothing.
+    vi.mocked(api.getVerification).mockResolvedValue({
+      application: { status: 'APPROVED', reviewerMessage: null },
+      documents: [],
+    } as unknown as VerificationState);
   });
 
   it('renders no in-screen app header: the shell owns the owner header', async () => {
@@ -167,7 +173,7 @@ describe('business overview (redesigned hub)', () => {
   it('renders this-month metrics verbatim from the server, never invented', async () => {
     await renderHome();
     await screen.findByText('Total bookings'); // loaded tiles, not the skeleton
-    const region = screen.getByRole('region', { name: 'Monthly snapshot' });
+    const region = screen.getByRole('region', { name: 'Performance' });
     // Bookings tile: server month total.
     expect(region).toHaveTextContent('Total bookings');
     expect(region).toHaveTextContent('This month');
@@ -186,7 +192,7 @@ describe('business overview (redesigned hub)', () => {
     await renderHome();
     // Wait for the loaded tiles, not the loading skeleton's empty region.
     await screen.findByText('Avg. rating');
-    const region = screen.getByRole('region', { name: 'Monthly snapshot' });
+    const region = screen.getByRole('region', { name: 'Performance' });
     expect(region).toHaveTextContent('No reviews yet');
     expect(region).not.toHaveTextContent('4.5');
   });
@@ -211,6 +217,25 @@ describe('business overview (redesigned hub)', () => {
     await renderHome();
     expect(await screen.findByText(/all caught up/i)).toBeTruthy();
     expect(screen.getByText(/Nothing needs your attention right now/)).toBeTruthy();
+  });
+
+  it('surfaces verification warnings in the needs-attention layer', async () => {
+    vi.mocked(api.getVerification).mockResolvedValue({
+      application: { status: 'CHANGES_REQUESTED', reviewerMessage: null },
+      documents: [],
+    } as unknown as VerificationState);
+    vi.mocked(api.getOwnerOverview).mockResolvedValue(
+      overview({ needsAttention: { pendingOrders: 0, pendingBookings: 0, pendingPayments: 0 } }),
+    );
+    const onOpen = vi.fn();
+    await renderHome({ onOpen });
+    const region = await screen.findByRole('region', { name: 'Needs attention' });
+    // The verification warning comes from its own async fetch inside the
+    // attention layer, so wait for it like the queue rows above.
+    const row = await within(region).findByRole('button', { name: /Complete verification/ });
+    expect(row).toHaveTextContent('The review team asked for changes');
+    fireEvent.click(row);
+    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/verification');
   });
 
   it('lists honest profile gaps linked to the right management screens', async () => {
@@ -297,6 +322,61 @@ describe('business overview (redesigned hub)', () => {
     expect(card).toBeTruthy();
     expect(card).toHaveTextContent('Butt Spices');
     expect(card).toHaveTextContent('once approved');
+  });
+
+  it('shows today\'s activity from the live overview, with tappable rows', async () => {
+    const onOpenOrder = vi.fn();
+    const onOpenBooking = vi.fn();
+    vi.mocked(api.getOwnerOverview).mockResolvedValue(
+      overview({
+        today: { orders: 2, bookings: 1, revenueMinor: 45500 },
+        upcomingBookings: [
+          { id: 'bk-9', serviceName: 'Haircut', customerName: 'Ayesha Khan', date: '2026-09-24', startTime: '14:00', status: 'CONFIRMED' },
+        ],
+        recentOrders: [
+          {
+            id: 'ord-111111',
+            status: 'PENDING',
+            subtotalMinor: 250000,
+            currency: 'PKR',
+            fulfillmentType: 'PICKUP',
+            createdAt: '2026-09-24T09:30:00.000Z',
+            notes: null,
+            business: { id: 'biz-1', name: 'Butt Spices', slug: 'butt-spices' },
+            customer: { firstName: 'Sara', lastName: 'Ahmed' },
+            items: [],
+          },
+        ],
+        needsAttention: { pendingOrders: 0, pendingBookings: 0, pendingPayments: 0 },
+      }),
+    );
+    await renderHome({ onOpenOrder, onOpenBooking });
+    const region = await screen.findByRole('region', { name: 'Today' });
+    // Today's counts and collected revenue, verbatim from the server.
+    const tiles = region.querySelectorAll('.metric-tile-num');
+    expect(tiles[0]).toHaveTextContent('2');
+    expect(tiles[1]).toHaveTextContent('1');
+    expect(within(region).getByText('Rs 455')).toBeTruthy();
+    // Upcoming booking and recent order rows open their details.
+    fireEvent.click(within(region).getByRole('button', { name: /Ayesha Khan/ }));
+    expect(onOpenBooking).toHaveBeenCalledWith('bk-9');
+    fireEvent.click(within(region).getByRole('button', { name: /Sara Ahmed/ }));
+    expect(onOpenOrder).toHaveBeenCalledWith('ord-111111');
+  });
+
+  it('shows an honest quiet-day state when there is no activity today', async () => {
+    vi.mocked(api.getOwnerOverview).mockResolvedValue(
+      overview({
+        today: { orders: 0, bookings: 0, revenueMinor: 0 },
+        upcomingBookings: [],
+        recentOrders: [],
+        recentBookings: [],
+        needsAttention: { pendingOrders: 0, pendingBookings: 0, pendingPayments: 0 },
+      }),
+    );
+    await renderHome();
+    const region = await screen.findByRole('region', { name: 'Today' });
+    expect(within(region).getByText(/No orders or bookings yet today/)).toBeTruthy();
   });
 });
 

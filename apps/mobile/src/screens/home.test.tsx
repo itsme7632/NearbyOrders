@@ -155,7 +155,7 @@ describe('Home search entry', () => {
     const onOpenSearch = vi.fn();
     render(<HomeScreen {...defaultProps()} onOpenSearch={onOpenSearch} />);
     const entry = await screen.findByRole('button', { name: 'Search businesses, services and products' });
-    expect(entry).toHaveTextContent('Search food, services, shops…');
+    expect(entry).toHaveTextContent('Search businesses, products & services');
     fireEvent.click(entry);
     expect(onOpenSearch).toHaveBeenCalledTimes(1);
   });
@@ -271,5 +271,97 @@ describe('Home contextual section', () => {
     signIn();
     render(<HomeScreen {...defaultProps()} />);
     await screen.findByText(/Good (morning|afternoon|evening)|Up late, Zach/);
+  });
+});
+
+describe('Home products & services discovery', () => {
+  const productResult = (patch = {}) => ({
+    type: 'product' as const,
+    id: 'prod-1',
+    businessId: 'biz-1',
+    businessName: 'Butt Spices',
+    businessSlug: 'butt-spices',
+    name: 'Chicken Biryani',
+    description: null,
+    distanceKm: 1.2,
+    averageRating: 4.5,
+    reviewCount: 12,
+    score: 1,
+    priceMinor: 45000,
+    currency: 'PKR',
+    imageUrl: null,
+    ...patch,
+  });
+  const serviceResult = (patch = {}) => ({
+    type: 'service' as const,
+    id: 'svc-1',
+    businessId: 'biz-2',
+    businessName: 'DHA Glow Salon',
+    businessSlug: 'dha-glow-salon',
+    name: 'Hair Consultation',
+    description: null,
+    distanceKm: null,
+    averageRating: null,
+    reviewCount: 0,
+    score: 1,
+    priceMinor: 250000,
+    currency: 'PKR',
+    durationMinutes: 30,
+    ...patch,
+  });
+
+  it('renders orderable products and bookable services from real search results', async () => {
+    vi.spyOn(api, 'searchMarketplace').mockImplementation(async (q: { type?: string }) => ({
+      results: q.type === 'product' ? [productResult()] : [serviceResult()],
+      nextCursor: null,
+      total: 1,
+      sort: 'relevance' as const,
+    }));
+    const onOpenBusiness = vi.fn();
+    render(<HomeScreen {...defaultProps()} onOpenBusiness={onOpenBusiness} />);
+    await screen.findByText('Products & services');
+    expect(screen.getByText('Chicken Biryani')).toBeTruthy();
+    expect(screen.getByText('Hair Consultation')).toBeTruthy();
+    // Prices render through the real Money component (PKR).
+    expect(screen.getAllByText(/Rs/).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: /Chicken Biryani, product at Butt Spices/ }));
+    expect(onOpenBusiness).toHaveBeenCalledWith('biz-1');
+  });
+
+  it('omits the section when search returns nothing', async () => {
+    vi.spyOn(api, 'searchMarketplace').mockResolvedValue({ results: [], nextCursor: null, total: 0, sort: 'relevance' as const });
+    render(<HomeScreen {...defaultProps()} />);
+    await screen.findByRole('button', { name: 'Search businesses, services and products' });
+    await waitFor(() => expect(screen.queryByText('Products & services')).toBeNull());
+  });
+});
+
+describe('Home recent activity', () => {
+  const signIn = (orders: Order[] = [], bookings: Booking[] = [], favorites: FavoriteEntry[] = []) => {
+    vi.spyOn(api, 'getSession').mockReturnValue(session);
+    vi.spyOn(api, 'whoami').mockResolvedValue({ id: 'u-1', email: 'a@b.c', role: 'CUSTOMER', firstName: 'Zach', lastName: null });
+    vi.spyOn(api, 'listMyOrders').mockResolvedValue(orders);
+    vi.spyOn(api, 'listMyBookings').mockResolvedValue(bookings);
+    vi.spyOn(api, 'listFavorites').mockResolvedValue(favorites);
+  };
+
+  it('lists recent orders and bookings below the context card', async () => {
+    signIn(
+      [
+        order({ id: 'order-9', status: 'PREPARING', createdAt: '2026-09-21T12:00:00.000Z' }),
+        order({ id: 'order-old', status: 'COMPLETED', createdAt: '2026-09-10T12:00:00.000Z' }),
+      ],
+      [booking({ id: 'bk-2', status: 'COMPLETED' })],
+    );
+    const onOpenOrder = vi.fn();
+    render(<HomeScreen {...defaultProps()} onOpenOrder={onOpenOrder} />);
+    // In-flight order leads as the context card...
+    await screen.findByRole('button', { name: /Your order/ });
+    // ...and the section is labeled Recent activity.
+    expect(screen.getByRole('heading', { name: 'Recent activity' })).toBeTruthy();
+    // Completed history follows as compact rows (the in-flight order is not repeated).
+    const row = screen.getByRole('button', { name: /Order from Butt Spices, Completed/ });
+    fireEvent.click(row);
+    expect(onOpenOrder).toHaveBeenCalledWith('order-old');
   });
 });

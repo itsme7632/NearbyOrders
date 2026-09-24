@@ -26,7 +26,7 @@ export function OwnerServices(props: { businessId: string }) {
   const visible = list.filter((s) => (filter === 'all' ? true : filter === 'active' ? s.isActive : !s.isActive));
 
   return (
-    <section className="card">
+    <section className="card" aria-label="Services">
       <div className="section-head-v3">
         <h2>
           Services{list.length ? <span className="count-note"> · {list.length}</span> : null}
@@ -69,7 +69,12 @@ export function OwnerServices(props: { businessId: string }) {
                   {s.durationMinutes ? <span className="pill">{s.durationMinutes} min</span> : null}
                   {s.advanceType && s.advanceType !== 'NONE' ? (
                     <span className="pill">
-                      Advance: {s.advanceType === 'FIXED' ? `Rs ${(s.advanceAmountMinor ?? 0) / 100}` : `${s.advancePercent ?? 0}%`}
+                      Advance:{' '}
+                      {s.advanceType === 'FIXED' ? (
+                        <Money minor={s.advanceAmountMinor ?? 0} currency={s.currency} />
+                      ) : (
+                        `${s.advancePercent ?? 0}%`
+                      )}
                     </span>
                   ) : null}
                 </div>
@@ -240,7 +245,7 @@ function ServiceForm(props: { businessId: string; onCreated: () => void }) {
 
   if (!open) {
     return (
-      <Button full variant="secondary" onClick={() => setOpen(true)}>
+      <Button full onClick={() => setOpen(true)}>
         + Add service
       </Button>
     );
@@ -394,7 +399,7 @@ export function OwnerProducts(props: { businessId: string }) {
   const visible = list.filter((p) => (filter === 'all' ? true : filter === 'available' ? p.isActive : !p.isActive));
 
   return (
-    <section className="card">
+    <section className="card" aria-label="Products">
       <div className="section-head-v3">
         <h2>
           Products{list.length ? <span className="count-note"> · {list.length}</span> : null}
@@ -662,7 +667,7 @@ function ProductForm(props: { businessId: string; onCreated: () => void }) {
 
   if (!open) {
     return (
-      <Button full variant="secondary" onClick={() => setOpen(true)}>
+      <Button full onClick={() => setOpen(true)}>
         + Add product
       </Button>
     );

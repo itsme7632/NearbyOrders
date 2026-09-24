@@ -15,7 +15,10 @@ export function OwnerReviews(props: { businessId: string }) {
   if (items.length === 0)
     return (
       <section className="card" aria-label="Reviews">
-        <h2>Reviews</h2>
+        <div className="section-head">
+          <h2>Reviews</h2>
+        </div>
+        <p className="ov-section-sub">What customers say about your business.</p>
         <p className="muted">No reviews yet. Customers can review after a completed booking or order.</p>
       </section>
     );
@@ -24,7 +27,10 @@ export function OwnerReviews(props: { businessId: string }) {
 
   return (
     <section className="card" aria-label="Reviews">
-      <h2>Reviews</h2>
+      <div className="section-head">
+        <h2>Reviews</h2>
+      </div>
+      <p className="ov-section-sub">What customers say about your business.</p>
       <div className="rating-summary">
         <span className="rating-average">{(Math.round(avg * 10) / 10).toFixed(1)}</span>
         <Stars value={avg} count={items.length} />

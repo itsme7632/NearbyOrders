@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { getMyBusinesses, getVerification, getBusinessSubscription, listPaymentRequests, type Business } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, Loading } from '../components/ui.js';
-import { CheckIcon, OrdersIcon, PinIcon, StoreIcon } from '../components/icons.js';
+import { AlertIcon, CheckIcon, OrdersIcon, PinIcon, StoreIcon } from '../components/icons.js';
 import { OwnerHubRow, OwnerHubSection } from './owner-ui.js';
 
 /**
@@ -63,6 +63,7 @@ export function OwnerDashboardScreen(props: {
       </button>
       <header className="owner-head">
         <h1>Business dashboard</h1>
+        <p className="owner-sub">Manage the catalog, hours, orders, bookings and settings for this business.</p>
       </header>
       {props.justCreatedName ? (
         <div className="created-banner" role="status">
@@ -213,6 +214,9 @@ export function OwnerAttentionItems(props: {
   businessId: string;
   onOpenVerification: () => void;
   onOpenSubscription: () => void;
+  /** Render only the rows (no labelled section wrapper) for embedding inside
+      another section, e.g. the Overview's "Needs attention". */
+  bare?: boolean;
 }) {
   const verification = useAsyncData(() => getVerification(props.businessId), [props.businessId]);
   const subscription = useAsyncData(() => getBusinessSubscription(props.businessId), [props.businessId]);
@@ -272,18 +276,18 @@ export function OwnerAttentionItems(props: {
 
   if (items.length === 0) return null;
 
-  return (
-    <OwnerHubSection label="Needs attention">
-      {items.map((item) => (
-        <OwnerHubRow
-          key={item.title}
-          icon={<CheckIcon size={18} />}
-          title={item.title}
-          subtitle={item.subtitle}
-          badge="Action needed"
-          onClick={item.onClick}
-        />
-      ))}
-    </OwnerHubSection>
-  );
+  const rows = items.map((item) => (
+    <OwnerHubRow
+      key={item.title}
+      icon={<AlertIcon size={18} />}
+      title={item.title}
+      subtitle={item.subtitle}
+      badge="Action needed"
+      onClick={item.onClick}
+    />
+  ));
+
+  if (props.bare) return <div className="hub-card">{rows}</div>;
+
+  return <OwnerHubSection label="Needs attention">{rows}</OwnerHubSection>;
 }

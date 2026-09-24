@@ -3,7 +3,7 @@ import { getBusiness, listBusinessReviews, listFeaturedBusinesses, getSession, t
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, ListSkeleton, Loading, Money, OpenBadge, VerifiedBadge } from '../components/ui.js';
 import { useToast } from '../components/primitives.js';
-import { StoreIcon } from '../components/icons.js';
+import { StoreIcon, PinIcon } from '../components/icons.js';
 import { dayOfWeek, formatSlotTime, todayPkt } from '../time.js';
 import { addToCart, replaceWith } from '../cart.js';
 import { useCartCount } from '../useCartCount.js';
@@ -159,7 +159,15 @@ export function BusinessDetailScreen(props: {
             <span className="biz-hero-meta-item">
               {b.categories.map((c) => c.name).join(' • ') || 'Local business'}
             </span>
-            {distanceLabel ? <span className="biz-hero-meta-item">📍 {distanceLabel} away</span> : place ? <span className="biz-hero-meta-item">📍 {place}</span> : null}
+            {distanceLabel ? (
+              <span className="biz-hero-meta-item">
+                <PinIcon size={13} aria-hidden /> {distanceLabel} away
+              </span>
+            ) : place ? (
+              <span className="biz-hero-meta-item">
+                <PinIcon size={13} aria-hidden /> {place}
+              </span>
+            ) : null}
           </div>
         </header>
       </div>

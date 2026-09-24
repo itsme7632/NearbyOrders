@@ -62,7 +62,7 @@ export function SavedBusinessesScreen(props: { onBack: () => void; onOpenBusines
   const userId = getSession()?.user.id ?? '';
 
   // Memberships referencing unsaved businesses are dropped whenever the
-  // favorites list refreshes — an unsave silently leaves every collection.
+  // favorites list refreshes: an unsave silently leaves every collection.
   useEffect(() => {
     if (userId && saved.data) pruneCollections(userId, saved.data.map((e) => e.business.id));
   }, [userId, saved.data]);
@@ -332,7 +332,7 @@ function AddressForm(props: {
           required
         />
       </label>
-      {/* Phase 3C: optional map pin. Coordinates are never invented — the
+      {/* Phase 3C: optional map pin. Coordinates are never invented: the
           pin only exists once the user places it. */}
       <div className="addr-pin-section">
         <button
@@ -557,7 +557,7 @@ export function AddressesScreen(props: { onBack: () => void }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Info pages (honest placeholders — final legal content comes later)  */
+/* Info pages (honest placeholders: final legal content comes later)   */
 /* ------------------------------------------------------------------ */
 
 function InfoPage(props: { title: string; children: React.ReactNode; onBack: () => void }) {

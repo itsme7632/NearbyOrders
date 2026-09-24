@@ -11,12 +11,12 @@ import { AlertIcon } from '../components/icons.js';
 
 /**
  * Notification preferences (Phase 3D). These settings gate PUSH alerts
- * only — verified against the server's push dispatch, which skips delivery
+ * only: verified against the server's push dispatch, which skips delivery
  * per category while in-app notifications are still recorded. The copy
  * says exactly that so nobody thinks "off" means "gone".
  *
  * Toggles save immediately (optimistic, revert on failure) because these
- * are independent booleans — no "save" button to forget.
+ * are independent booleans: no "save" button to forget.
  */
 
 const ROWS: {

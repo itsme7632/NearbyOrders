@@ -274,7 +274,7 @@ export function OwnerLocation(props: { businessId: string }) {
   const hasPin = lat.trim() !== '' && lng.trim() !== '';
 
   return (
-    <div>
+    <div aria-label="Business location">
       {configured ? (
         <p className="location-configured-note" role="status">
           <PinIcon size={16} /> Your location is set. Nearby customers see your real distance.

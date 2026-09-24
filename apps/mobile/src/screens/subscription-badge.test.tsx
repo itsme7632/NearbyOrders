@@ -170,7 +170,7 @@ describe('business overview uses real data and business wording', () => {
     expect(await screen.findByText('Butt Spices!')).toBeTruthy();
     // The redesigned Overview shows month-scoped tiles, not day cards.
     await screen.findByText('Total bookings');
-    const region = screen.getByRole('region', { name: 'Monthly snapshot' });
+    const region = screen.getByRole('region', { name: 'Performance' });
     // No fake metrics: with empty server data every count is a real zero.
     expect(within(region).getByText('0')).toBeTruthy();
     expect(region).toHaveTextContent('Rs 0');

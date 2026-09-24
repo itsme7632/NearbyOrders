@@ -83,7 +83,7 @@ export function NotificationsScreen(props: {
   const items = state?.items ?? page.data?.items ?? [];
   const cursor = state?.cursor ?? page.data?.nextCursor ?? null;
   const unread = items.filter((n) => !n.isRead);
-  // Cheap O(n) bucketing; intentionally not memoized — this component has
+  // Cheap O(n) bucketing; intentionally not memoized. This component has
   // early returns above, and a hook here would violate hook ordering.
   const groups = groupNotifications(items);
 
@@ -170,10 +170,7 @@ export function NotificationsScreen(props: {
           const groupUnread = g.items.filter((n) => !n.isRead).length;
           return (
             <section key={g.key} aria-label={g.title}>
-              <h2
-                className="type-section"
-                style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', margin: '18px 0 8px' }}
-              >
+              <h2 className="notif-group-title">
                 {g.title}
                 {groupUnread > 0 ? <span className="type-meta">{groupUnread} new</span> : null}
               </h2>

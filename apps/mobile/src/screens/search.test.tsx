@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
 import * as api from '../api.js';
 import { SearchScreen } from './Search.js';
 import type { SearchPage, SearchResult } from '../api.js';
@@ -173,9 +173,12 @@ describe('SearchScreen (Phase 14 unified search)', () => {
     vi.mocked(api.searchMarketplace).mockResolvedValue(page([prodResult, bizResult, svcResult], { total: 3 }));
     render(<SearchScreen initialQuery="grill" onBack={() => {}} onOpenBusiness={() => {}} />);
     await screen.findByText('Gulberg Grill');
-    expect(screen.getByRole('heading', { name: /businesses/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /services/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /products/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Search businesses, products & services' })).toBeInTheDocument();
+    // The grouped type sections carry their own headings with result counts.
+    for (const label of ['Businesses', 'Services', 'Products']) {
+      const section = screen.getByRole('region', { name: label });
+      expect(within(section).getByRole('heading', { name: new RegExp(`^${label}`) })).toBeInTheDocument();
+    }
     // The server order inside each group is preserved.
     const businesses = screen.getByRole('list', { name: /businesses results/i });
     expect(businesses).toHaveTextContent('Gulberg Grill');

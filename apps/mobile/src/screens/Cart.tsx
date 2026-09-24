@@ -421,7 +421,7 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
             <Money minor={cartSubtotal(cart)} currency="PKR" />
           </strong>
         </div>
-        <Button full onClick={place} disabled={busy || (!!selected && (!reference.trim() || !receiptFile))}>
+        <Button full className="btn-ember" onClick={place} disabled={busy || (!!selected && (!reference.trim() || !receiptFile))}>
           {busy ? 'Placing order…' : selected ? 'Submit order + payment proof' : 'Place order'}
         </Button>
         <Button full variant="ghost" onClick={clearCart} disabled={busy}>

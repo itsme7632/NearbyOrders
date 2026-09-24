@@ -152,7 +152,7 @@ export function EditProfileScreen(props: { onBack: () => void; onSaved: () => vo
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  // The fetch must fire exactly once per mount and once per manual retry —
+  // The fetch must fire exactly once per mount and once per manual retry,
   // never on re-render.
   const [loadRetry, setLoadRetry] = useState(0);
 
@@ -393,9 +393,9 @@ function AccountHub(props: {
   const initial = (displayName || props.session.user.email)[0]?.toUpperCase() ?? '?';
 
   return (
-    <div className="screen">
+    <div className="screen profile-screen">
       {/* Identity band: the person, clearly, on the brand surface. Business
-          management is a distinct section below — never the identity. */}
+          management is a distinct section below, never the identity. */}
       <div className="me-band">
         <div className="me-band-row">
           <div className="avatar-v4" aria-hidden>

@@ -75,8 +75,13 @@ export function OwnerHours(props: { businessId: string }) {
   };
 
   return (
-    <section className="card">
-      <h2>Opening hours</h2>
+    <section className="card" aria-label="Opening hours">
+      <div className="section-head">
+        <h2>Opening hours</h2>
+      </div>
+      <p className="ov-section-sub">
+        Customers see your business as open only during these hours. Set each day you trade, or switch a day off.
+      </p>
       {error ? <ErrorState message={error} /> : null}
       {saved ? <p className="save-ok">Saved ✓</p> : null}
       <ul className="hours-editor">

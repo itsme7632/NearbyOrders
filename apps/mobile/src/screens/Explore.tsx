@@ -141,6 +141,12 @@ export function ExploreScreen(props: {
 
   return (
     <div className="screen explore-screen">
+      {/* Atlas hero: confident commerce-first framing. The sticky search bar
+          below stays the working entry point; this header scrolls away. */}
+      <header className="explore-hero">
+        <h1>Explore</h1>
+        <p>Find businesses you can order from or book, near you.</p>
+      </header>
       {/* Sticky discovery controls: search commits to unified search; the
           location pill toggles spatial nearby mode. */}
       <div className="explore-top">

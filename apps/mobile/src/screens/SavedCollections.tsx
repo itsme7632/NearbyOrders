@@ -55,7 +55,7 @@ export function NewCollectionForm(props: { userId: string; onCreated: (c: SavedC
   };
 
   return (
-    <form onSubmit={submit} style={{ display: 'flex', gap: 8 }}>
+    <form className="collection-new-form" onSubmit={submit} style={{ display: 'flex', gap: 8 }}>
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
@@ -180,7 +180,7 @@ export function CollectionsView(props: {
   const counts = collectionCounts(props.userId);
   const byId = new Map(props.entries.map((e) => [e.business.id, e.business]));
 
-  // If the open collection was deleted elsewhere, close it — in an effect,
+  // If the open collection was deleted elsewhere, close it in an effect,
   // never during render. The boolean dep keeps the effect stable even though
   // listCollections() returns a fresh array each render.
   const openExists = openId ? collections.some((c) => c.id === openId) : true;

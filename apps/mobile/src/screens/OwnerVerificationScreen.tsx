@@ -206,7 +206,7 @@ export function OwnerVerification(props: { businessId: string }) {
           : 'badge-neutral';
 
   return (
-    <div className="owner-verification">
+    <div className="owner-screen owner-verification">
       {error ? <ErrorState message={error} /> : null}
       {notice ? (
         <p className="save-ok" role="status">
@@ -239,7 +239,7 @@ export function OwnerVerification(props: { businessId: string }) {
       </section>
 
       {/* Why / what / what-next explainer. */}
-      <section className="card" aria-label="About verification" style={{ marginTop: 12 }}>
+      <section className="card" aria-label="About verification">
         <h3 className="owner-section-title" style={{ margin: '0 0 6px' }}>Why verification is required</h3>
         <p className="muted" style={{ margin: '0 0 8px' }}>
           Verified businesses earn a badge on their profile and rank higher in customer trust. It confirms your
@@ -261,7 +261,7 @@ export function OwnerVerification(props: { businessId: string }) {
       {editable ? (
         <>
           {/* Draft form. */}
-          <section className="card" aria-label="Verification details" style={{ marginTop: 12 }}>
+          <section className="card" aria-label="Verification details">
             <h3 className="owner-section-title" style={{ margin: '0 0 8px' }}>Business details</h3>
             <Field label="Legal (registered) name">
               <input value={form.legalName} onChange={set('legalName')} maxLength={120} />
@@ -315,7 +315,7 @@ export function OwnerVerification(props: { businessId: string }) {
           </section>
 
           {/* Documents. */}
-          <section className="card" aria-label="Verification documents" style={{ marginTop: 12 }}>
+          <section className="card" aria-label="Verification documents">
             <h3 className="owner-section-title" style={{ margin: '0 0 8px' }}>Documents</h3>
             <p className="hint" style={{ margin: '0 0 8px' }}>
               Documents upload to the NearbyOrders server and stay attached to this application.
@@ -368,7 +368,7 @@ export function OwnerVerification(props: { businessId: string }) {
             </div>
           </section>
 
-          <div className="btn-row" style={{ marginTop: 14 }}>
+          <div className="btn-row">
             <Button full disabled={busy || saving} onClick={() => void submit()}>
               {busy ? 'Submitting…' : 'Submit for verification'}
             </Button>
@@ -377,7 +377,7 @@ export function OwnerVerification(props: { businessId: string }) {
       ) : null}
 
       {status === 'APPROVED' ? (
-        <p className="save-ok" role="status" style={{ marginTop: 12 }}>
+        <p className="save-ok" role="status">
           <CheckIcon size={15} /> Your business is verified. The badge shows on your business profile.
         </p>
       ) : null}

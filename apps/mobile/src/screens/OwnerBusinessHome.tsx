@@ -26,16 +26,18 @@ import {
 } from '../components/icons.js';
 import { OwnerHubRow } from './owner-ui.js';
 import { OwnerPlanCard } from './subscription-badge.js';
+import { OwnerAttentionItems } from './OwnerDashboard.js';
+import { formatSlotTime, longDateLabel } from '../time.js';
+import type { OrderStatus } from '../api.js';
 
 /**
  * Business-mode Overview: "How is my business doing?" at a glance.
  *
- * Hierarchy: greeting → business status → plan → monthly snapshot →
- * needs attention → quick actions → calmly grouped management sections
- * (Manage, Catalog, Grow, Account & settings). The app header is rendered
- * once at the shell level (main.tsx) — this screen renders no app header.
- * Every old dashboard destination is still one tap away; the Overview
- * restructures presentation, never destinations.
+ * Locked owner hierarchy: BUSINESS STATUS → NEEDS ATTENTION → TODAY'S
+ * ACTIVITY → PERFORMANCE → QUICK ACTIONS → MANAGEMENT. The app header is
+ * rendered once at the shell level (main.tsx) — this screen renders no app
+ * header. Every old dashboard destination is still one tap away; the
+ * Overview restructures presentation, never destinations.
  */
 export function OwnerBusinessHome(props: {
   onOpen: (path: string) => void;
@@ -139,6 +141,30 @@ function OverviewBody(props: {
       {/* Business status: the first answer to "how is my business doing?" */}
       <BusinessStatusCard business={active} />
 
+      {/* Needs attention: verification / plan warnings first, then the
+          actionable queues (orders, bookings, payments), then profile gaps. */}
+      <OverviewAttention
+        businessId={active.id}
+        overview={overview}
+        onOpen={onOpen}
+        base={base}
+        onOpenBooking={props.onOpenBooking}
+        onOpenOrder={props.onOpenOrder}
+      />
+
+      {/* Today's activity: today's orders, bookings and collected revenue,
+          plus what's up next — all from the live overview. */}
+      <TodayActivity
+        overview={overview}
+        currency={active.currency}
+        onOpenOrder={props.onOpenOrder}
+        onOpenBooking={props.onOpenBooking}
+      />
+
+      {/* Performance: server-computed monthly figures plus the real rating.
+          Restrained snapshot, not a dashboard. */}
+      <PerformanceSection businessId={active.id} business={active} />
+
       {/* Plan: the single subscription entry point on this screen. The real
           plan, price, trial and payment state come from OwnerPlanCard. */}
       <section aria-label="Your plan" className="ov-section">
@@ -149,18 +175,6 @@ function OverviewBody(props: {
           onViewPayments={() => onOpen(`${base}/subscription`)}
         />
       </section>
-
-      {/* Monthly snapshot: server-computed figures plus the real rating. */}
-      <MonthlySnapshot businessId={active.id} business={active} />
-
-      {/* Everything actionable: attention items, then profile gaps. */}
-      <OverviewAttention
-        overview={overview}
-        onOpen={onOpen}
-        base={base}
-        onOpenBooking={props.onOpenBooking}
-        onOpenOrder={props.onOpenOrder}
-      />
 
       <QuickActions base={base} onOpen={onOpen} />
 
@@ -242,20 +256,145 @@ function BusinessStatusCard({ business }: { business: Business }) {
   );
 }
 
+/** Friendly order status labels for the activity rows (presentation only). */
+const ACTIVITY_STATUS_LABEL: Record<OrderStatus, string> = {
+  PENDING: 'Pending',
+  ACCEPTED: 'Accepted',
+  REJECTED: 'Rejected',
+  PREPARING: 'Preparing',
+  READY: 'Ready',
+  COMPLETED: 'Completed',
+  CANCELLED: 'Cancelled',
+};
+
+const recentOrderCustomer = (o: OwnerOverview['recentOrders'][number]): string =>
+  [o.customer?.firstName, o.customer?.lastName].filter(Boolean).join(' ') || 'Customer';
+
+const recentOrderNo = (o: OwnerOverview['recentOrders'][number]): string =>
+  `#${o.id.replace(/-/g, '').slice(-6).toUpperCase()}`;
+
+const formatWhen = (iso: string): string =>
+  new Date(iso).toLocaleString('en-PK', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+
 /**
- * Monthly snapshot: this month's bookings, the real average customer
- * rating, and this month's collected revenue. All server-computed; an
- * honest zero/empty state when there is no data yet.
+ * Today's activity: today's order/booking counts and collected revenue from
+ * the live overview, plus the next upcoming bookings and the most recent
+ * orders — each one tap from its detail. Honest empty state when the day is
+ * quiet; never invented.
  */
-function MonthlySnapshot({ businessId, business }: { businessId: string; business: Business }) {
+function TodayActivity(props: {
+  overview: AsyncState<OwnerOverview>;
+  currency: string | null;
+  onOpenOrder: (id: string) => void;
+  onOpenBooking: (id: string) => void;
+}) {
+  const { overview } = props;
+  if (overview.loading) return <ListSkeleton count={1} />;
+  if (overview.error) return <ErrorState message={overview.error} onRetry={overview.reload} />;
+  if (!overview.data) return null;
+  const o = overview.data;
+  const currency = props.currency ?? 'PKR';
+  const upcoming = o.upcomingBookings.slice(0, 3);
+  const recent = o.recentOrders.slice(0, 3);
+
+  return (
+    <section aria-label="Today" className="ov-section">
+      <h2 className="ov-section-title">Today</h2>
+      <div className="metric-trio">
+        <div className="metric-tile">
+          <span className="metric-tile-num">{o.today.orders}</span>
+          <span className="metric-tile-label">Orders</span>
+          <span className="metric-tile-sub">Today</span>
+        </div>
+        <div className="metric-tile">
+          <span className="metric-tile-num">{o.today.bookings}</span>
+          <span className="metric-tile-label">Bookings</span>
+          <span className="metric-tile-sub">Today</span>
+        </div>
+        <div className="metric-tile">
+          <span className="metric-tile-num metric-tile-money">
+            <Money minor={o.today.revenueMinor} currency={currency} />
+          </span>
+          <span className="metric-tile-label">Revenue</span>
+          <span className="metric-tile-sub">Collected today</span>
+        </div>
+      </div>
+      {upcoming.length ? (
+        <>
+          <h3 className="ov-subhead">Up next</h3>
+          <div className="activity-card">
+            {upcoming.map((b) => (
+              <button key={b.id} type="button" className="activity-row" onClick={() => props.onOpenBooking(b.id)}>
+                <span className="activity-icon tone-indigo" aria-hidden>
+                  <BookingsIcon size={18} />
+                </span>
+                <span className="activity-main">
+                  <span className="activity-title">{b.customerName}</span>
+                  <span className="activity-sub">
+                    {b.serviceName ?? 'Booking'} · {longDateLabel(b.date)} · {formatSlotTime(b.startTime)}
+                  </span>
+                </span>
+                <span className="activity-when" aria-hidden>
+                  ›
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
+      {recent.length ? (
+        <>
+          <h3 className="ov-subhead">Recent orders</h3>
+          <div className="activity-card">
+            {recent.map((order) => (
+              <button key={order.id} type="button" className="activity-row" onClick={() => props.onOpenOrder(order.id)}>
+                <span className="activity-icon tone-green" aria-hidden>
+                  <OrdersIcon size={18} />
+                </span>
+                <span className="activity-main">
+                  <span className="activity-title">
+                    {recentOrderCustomer(order)} · {recentOrderNo(order)}
+                  </span>
+                  <span className="activity-sub">
+                    {formatWhen(order.createdAt)} · {ACTIVITY_STATUS_LABEL[order.status]}
+                  </span>
+                </span>
+                <span className="activity-side">
+                  <Money minor={order.subtotalMinor} currency={order.currency} />
+                </span>
+                <span className="activity-when" aria-hidden>
+                  ›
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
+      {!upcoming.length && !recent.length ? (
+        <p className="calm-note" role="status">
+          No orders or bookings yet today.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+/**
+ * Performance: this month's bookings, the real average customer
+ * rating, and this month's collected revenue. All server-computed; an
+ * honest zero/empty state when there is no data yet. Restrained snapshot,
+ * not an analytics dashboard.
+ */
+function PerformanceSection({ businessId, business }: { businessId: string; business: Business }) {
   const analytics = useAsyncData<OwnerAnalytics>(() => getOwnerAnalytics(businessId, 'month'), [businessId]);
 
   const rating = business.averageRating;
   const reviewCount = business.reviewCount ?? 0;
 
   return (
-    <section aria-label="Monthly snapshot" className="ov-section">
-      <h2 className="ov-section-title">Monthly snapshot</h2>
+    <section aria-label="Performance" className="ov-section">
+      <h2 className="ov-section-title">Performance</h2>
+      <p className="ov-section-sub">This month</p>
       {analytics.loading ? (
         <ListSkeleton count={1} />
       ) : analytics.error ? (
@@ -286,18 +425,21 @@ function MonthlySnapshot({ businessId, business }: { businessId: string; busines
 }
 
 /**
- * Needs attention + profile gaps: the only interruptive content on the
- * overview. Every item is one tap from its action; when there is nothing,
- * the dashboard stays quiet.
+ * Needs attention: verification / trial / plan warnings from live server
+ * state first, then the actionable queues (orders, bookings, payments),
+ * then profile gaps. The only interruptive content on the overview. Every
+ * item is one tap from its action; when there is nothing, the dashboard
+ * stays quiet.
  */
 function OverviewAttention(props: {
+  businessId: string;
   overview: AsyncState<OwnerOverview>;
   onOpen: (path: string) => void;
   base: string;
   onOpenBooking: (id: string) => void;
   onOpenOrder: (id: string) => void;
 }) {
-  const { overview, onOpen, base } = props;
+  const { businessId, overview, onOpen, base } = props;
 
   if (overview.loading) return <ListSkeleton count={1} />;
   if (overview.error) return <ErrorState message={overview.error} onRetry={overview.reload} />;
@@ -338,6 +480,14 @@ function OverviewAttention(props: {
     <>
       <section aria-label="Needs attention" className="ov-section">
         <h2 className="ov-section-title">Needs attention</h2>
+        {/* Verification, trial and subscription warnings from live server
+            state. Renders nothing when everything is healthy. */}
+        <OwnerAttentionItems
+          businessId={businessId}
+          bare
+          onOpenVerification={() => onOpen(`${base}/verification`)}
+          onOpenSubscription={() => onOpen(`${base}/subscription`)}
+        />
         {attention.length ? (
           <div className="activity-card">
             {attention.map((a) => (

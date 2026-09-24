@@ -1,38 +1,51 @@
 /* ------------------------------------------------------------------
-   NearbyOrders design tokens (v5 visual identity — "warm local premium")
-   A warm cream canvas, deep burgundy brand, restrained burnt-orange
-   action accent, charcoal ink and a muted olive support. Single source
-   of truth for color, radius, shadow, spacing and type. Screens consume
-   tokens via CSS variables; hard-coded values in screens are visual bugs.
+   NearbyOrders design tokens (Atlas Refined)
+   Porcelain canvas, slate/graphite foundation, restrained ember accent.
+   Confident typography led by Bricolage Grotesque (bundled, offline-safe).
+   Single source of truth for color, radius, shadow, spacing and type.
+   Screens consume tokens via CSS variables; hard-coded values in screens
+   are visual bugs. Legacy token names are intentionally kept so every
+   existing consumer restyles with the new identity.
 ------------------------------------------------------------------- */
+
+/* Atlas voice: Bricolage Grotesque, variable (200-800), bundled locally
+   so the Capacitor shell renders offline. System stack is the fallback. */
+@font-face {
+  font-family: "Bricolage Grotesque";
+  src: url("/fonts/BricolageGrotesque-Variable.woff2") format("woff2");
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
-  /* Brand: deep burgundy identity (NOT indigo/purple/neon) */
-  --brand: #5c1310;
-  --brand-strong: #4a0f0b;
-  --brand-pressed: #370b08;
-  --brand-soft: #f7ecec;
-  --brand-softer: #faf5f4;
+  /* Brand: slate identity (replaces burgundy; same token, new color) */
+  --brand: #16222e;
+  --brand-strong: #0f1822;
+  --brand-pressed: #0b1119;
+  --brand-soft: #e8eef3;
+  --brand-softer: #f2f5f7;
 
-  /* Action accent: burnt orange for highlights and busy CTAs on burgundy */
-  --action: #c65324;
-  --action-strong: #a8431b;
-  --action-soft: #fbeee6;
+  /* Action accent: ember for highlights and busy CTAs on slate */
+  --action: #e23a2e;
+  --action-strong: #c22e24;
+  --action-soft: #fbe9e7;
 
-  /* Support accent (restrained muted olive) */
-  --accent: #666653;
-  --accent-soft: #efefe7;
+  /* Support accent (restrained graphite) */
+  --accent: #5c6e80;
+  --accent-soft: #e3e9ef;
 
-  /* Surfaces: warm cream neutrals, deep warm-charcoal ink */
-  --bg: #f6f5f2;
-  --bg-raised: #fbfaf8;
+  /* Surfaces: porcelain neutrals, slate ink */
+  --bg: #f2f5f7;
+  --bg-raised: #ffffff;
   --card: #ffffff;
-  --border: #e9e5dd;
-  --border-strong: #d9d3c7;
+  --border: #e3e9ef;
+  --border-strong: #cbd5dd;
 
   /* Text */
-  --ink: #171211;
-  --ink-2: #3f3833;
-  --muted: #756c65;
+  --ink: #16222e;
+  --ink-2: #33465a;
+  --muted: #5c6e80;
 
   /* Semantic */
   --success: #22763f;
@@ -60,7 +73,7 @@
   --nav-selected-bg: var(--brand-soft);
 
   /* Overlay */
-  --overlay: rgba(23, 18, 17, 0.45);
+  --overlay: rgba(22, 34, 46, 0.45);
 
   /* Legacy aliases: keep old var names working so no screen loses
      styling while token consumers are updated. */
@@ -70,32 +83,31 @@
   --navy: var(--ink);
   --light: var(--brand-soft);
 
-  /* Radius scale (v7: flattened — less "bubble", more editorial) */
+  /* Radius scale (Atlas: confident, tactile surfaces) */
   --radius-sm: 8px;
   --radius-md: 12px;
-  --radius: 14px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
+  --radius: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
 
-  /* Elevation scale (v7: near-flat content; real depth only for floating
-     chrome like the bottom nav). Warm tint kept for cohesion. */
-  --shadow-sm: 0 1px 2px rgba(28, 25, 23, 0.04);
-  --shadow: 0 1px 2px rgba(28, 25, 23, 0.05);
-  --shadow-lg: 0 10px 30px rgba(28, 25, 23, 0.12);
+  /* Elevation scale (Atlas: soft, cool-tinted depth) */
+  --shadow-sm: 0 1px 2px rgba(22, 34, 46, 0.05);
+  --shadow: 0 2px 8px rgba(22, 34, 46, 0.07);
+  --shadow-lg: 0 12px 32px rgba(22, 34, 46, 0.14);
 
-  /* Type scale (v7: compact, strong hierarchy, no oversized hero) */
-  --font-display: 24px;
-  --font-h1: 20px;
-  --font-h2: 16px;
-  --font-h3: 15px;
-  --font-body: 14.5px;
+  /* Type scale (Atlas: big, confident hierarchy) */
+  --font-display: 28px;
+  --font-h1: 24px;
+  --font-h2: 19px;
+  --font-h3: 16px;
+  --font-body: 15px;
   --font-caption: 12.5px;
 
   color-scheme: light;
 }
 
 :root {
-  font-family: Inter, system-ui, sans-serif;
+  font-family: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color: var(--ink);
   background: var(--bg);
   /* --sat: the systematic Android TOP inset. max() of every source so the
@@ -197,7 +209,7 @@ main {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 6px rgba(92, 19, 16, 0.28);
+  box-shadow: 0 2px 6px rgba(22, 34, 46, 0.28);
   flex: 0 0 auto;
 }
 .logo-word b { color: var(--brand); }
@@ -259,7 +271,7 @@ nav {
   display: flex;
   justify-content: space-around;
   padding: 12px 8px calc(12px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
-  box-shadow: 0 -3px 14px rgba(28, 25, 23, 0.07);
+  box-shadow: 0 -3px 14px rgba(22, 34, 46, 0.07);
 }
 nav button {
   font-size: 11.5px;
@@ -1427,7 +1439,7 @@ nav.business-nav .nav-item.active {
   background: var(--card);
   transition: border-color 0.08s ease, box-shadow 0.08s ease;
 }
-.auth-input:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(92, 19, 16, 0.1); }
+.auth-input:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(22, 34, 46, 0.1); }
 .auth-input.input-invalid { border-color: var(--error); }
 .auth-input.input-invalid:focus-within { border-color: var(--error); box-shadow: 0 0 0 3px rgba(194, 53, 36, 0.1); }
 .auth-input-icon {
@@ -1988,7 +2000,7 @@ button.hub-row:active { background: var(--bg); }
 }
 .confirm-cancel { margin-top: 12px; background: rgba(239, 68, 68, 0.05); border: 1px dashed rgba(239, 68, 68, 0.4); border-radius: 12px; padding: 12px; }
 .confirm-cancel p { margin: 0 0 4px; font-weight: 600; font-size: 13.5px; }
-.pill-action { border: 1px solid rgba(92, 19, 16, 0.35); color: var(--primary); font-weight: 700; padding: 3px 12px; }
+.pill-action { border: 1px solid rgba(22, 34, 46, 0.35); color: var(--primary); font-weight: 700; padding: 3px 12px; }
 
 @media (max-width: 359px) {
   .slot-grid { grid-template-columns: repeat(2, 1fr); }
@@ -2189,7 +2201,7 @@ input[aria-invalid='true'] { border-color: #b91c1c; }
   box-shadow: var(--shadow);
   margin: 14px 0 4px;
 }
-.search-bar-v3:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(92, 19, 16, 0.1); }
+.search-bar-v3:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(22, 34, 46, 0.1); }
 .search-bar-v3 input {
   flex: 1;
   min-width: 0;
@@ -2738,13 +2750,13 @@ h2, .section-title { font-size: var(--font-h2); letter-spacing: -0.01em; }
 
 /* ---- Buttons: filled brand, soft secondary, clear states ---- */
 .btn { border-radius: 13px; letter-spacing: 0.01em; }
-.btn-primary { background: var(--brand); box-shadow: 0 2px 8px rgba(92, 19, 16, 0.2); }
+.btn-primary { background: var(--brand); box-shadow: 0 2px 8px rgba(22, 34, 46, 0.2); }
 .btn-primary:hover { background: var(--brand-strong); }
 .btn-primary:active { background: var(--brand-pressed); transform: scale(0.98); }
 .btn-secondary { background: var(--brand-soft); color: var(--brand-strong); }
-.btn-secondary:hover { background: #ffe8d6; }
+.btn-secondary:hover { background: #dfe7ee; }
 .btn-ghost { color: var(--ink-2); }
-.btn-ghost:hover { background: rgba(28, 25, 23, 0.05); }
+.btn-ghost:hover { background: rgba(22, 34, 46, 0.05); }
 
 /* ---- Inputs: warm borders, brand focus ---- */
 .field input,
@@ -2773,7 +2785,7 @@ nav.business-nav-v3 {
   border-radius: 22px;
   border: 1px solid var(--border);
   background: var(--nav-surface);
-  box-shadow: 0 10px 30px rgba(28, 25, 23, 0.14);
+  box-shadow: 0 10px 30px rgba(22, 34, 46, 0.14);
   padding: 8px 6px calc(8px);
 }
 nav .nav-item,
@@ -2784,10 +2796,11 @@ nav button {
 }
 nav .nav-item.active,
 nav button.active {
-  color: var(--nav-selected);
+  color: var(--brand);
   background: var(--nav-selected-bg);
 }
-nav .nav-item.active svg { transform: translateY(-1px); }
+/* Atlas: the active destination's glyph carries the ember accent. */
+nav .nav-item.active svg { color: var(--action); transform: translateY(-1px); }
 
 /* ---- Cards: warm borders, minimal elevation ---- */
 .card { border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
@@ -2799,7 +2812,7 @@ nav .nav-item.active svg { transform: translateY(-1px); }
 /* ---- Chips: brand selection state ---- */
 .chip-active,
 .category-chip:active { background: var(--brand); border-color: var(--brand); color: #fff; }
-.chip-active { box-shadow: 0 2px 8px rgba(92, 19, 16, 0.22); }
+.chip-active { box-shadow: 0 2px 8px rgba(22, 34, 46, 0.22); }
 
 /* ---- Tabs: brand underline ---- */
 .tab-strip button.tab-active { color: var(--brand); border-bottom-color: var(--brand); }
@@ -2941,7 +2954,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   height: 56px;
   border-radius: 18px;
   background: var(--brand);
-  box-shadow: 0 6px 20px rgba(92, 19, 16, 0.35);
+  box-shadow: 0 6px 20px rgba(22, 34, 46, 0.35);
 }
 .auth-card {
   border-radius: var(--radius-lg);
@@ -3066,7 +3079,7 @@ nav.business-nav-v3 {
   width: min(460px, calc(100% - 20px));
   border: 1px solid var(--border);
   border-radius: 18px;
-  box-shadow: 0 10px 30px rgba(28, 25, 23, 0.16);
+  box-shadow: 0 10px 30px rgba(22, 34, 46, 0.16);
   display: flex;
   padding: 6px;
   gap: 2px;
@@ -3148,7 +3161,7 @@ nav.business-nav-v3 .nav-item.active {
   padding: 11px 12px;
   box-shadow: var(--shadow);
 }
-.home-hero-search:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(92, 19, 16, 0.09); }
+.home-hero-search:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(22, 34, 46, 0.09); }
 .home-hero-search-icon { color: var(--muted); display: inline-flex; }
 .home-hero-search input {
   flex: 1;
@@ -3423,7 +3436,7 @@ nav.business-nav-v3 .nav-item.active {
 .biz-hero-scrim {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(23, 18, 17, 0.08) 30%, rgba(23, 18, 17, 0.72) 100%);
+  background: linear-gradient(180deg, rgba(22, 34, 46, 0.08) 30%, rgba(22, 34, 46, 0.72) 100%);
 }
 .biz-hero-media .hero-initial {
   position: absolute;
@@ -3477,7 +3490,7 @@ nav.business-nav-v3 .nav-item.active {
   font-weight: 800;
   text-decoration: none;
 }
-.biz-action-primary { flex: 1 1 auto; background: var(--brand); color: #fff; box-shadow: 0 2px 8px rgba(92, 19, 16, 0.22); }
+.biz-action-primary { flex: 1 1 auto; background: var(--brand); color: #fff; box-shadow: 0 2px 8px rgba(22, 34, 46, 0.22); }
 .biz-action-primary:active { background: var(--brand-pressed); transform: scale(0.98); }
 .biz-action:not(.biz-action-primary) { flex: 0 1 auto; background: var(--card); color: var(--brand-strong); border: 1px solid var(--border-strong); }
 
@@ -3608,7 +3621,7 @@ nav.business-nav-v3 .nav-item.active {
   width: 46px;
   border-radius: 13px;
   background: var(--light);
-  border: 1px solid rgba(92, 19, 16, 0.14);
+  border: 1px solid rgba(22, 34, 46, 0.14);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3919,7 +3932,7 @@ nav.business-nav-v3 .nav-item.active {
 /* ---- Floating bottom nav: the one place real depth is allowed ------- */
 nav.nav-v3, nav.business-nav-v3 {
   border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(28, 25, 23, 0.14);
+  box-shadow: 0 8px 24px rgba(22, 34, 46, 0.14);
   border: 1px solid var(--border);
 }
 
@@ -4284,11 +4297,11 @@ nav.nav-v3, nav.business-nav-v3 {
 
 :root {
   /* ---- Type stacks ---- */
-  /* Editorial serif: system serif stack on purpose — no external font
-     dependency, works offline in the Capacitor shell, always available
-     on Android. Reserved for business identity and editorial headlines. */
-  --font-sans: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-serif: "Iowan Old Style", Georgia, "Times New Roman", serif;
+  /* Atlas voice: Bricolage Grotesque leads everywhere (bundled locally,
+     offline-safe in the Capacitor shell). --font-serif is kept as an alias
+     so editorial/display roles keep working — it resolves to Bricolage. */
+  --font-sans: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 
   /* ---- Semantic surface aliases ---- */
   --surface: var(--card);
@@ -4307,7 +4320,7 @@ nav.nav-v3, nav.business-nav-v3 {
 
   /* ---- Focus ---- */
   --focus: var(--brand);
-  --focus-ring: rgba(92, 19, 16, 0.22);
+  --focus-ring: rgba(226, 58, 46, 0.22);
 
   /* ---- Spacing scale ---- */
   --space-1: 4px;
@@ -4326,8 +4339,8 @@ nav.nav-v3, nav.business-nav-v3 {
    Everything else stays in the system grotesque for utility clarity. */
 .type-display {
   font-family: var(--font-serif);
-  font-size: 24px;
-  line-height: 1.25;
+  font-size: var(--font-display);
+  line-height: 1.15;
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--text);
@@ -4969,7 +4982,7 @@ nav.nav-v3, nav.business-nav-v3 {
 .sub-plan-featured {
   border: 2px solid var(--brand);
   background: var(--brand-softer);
-  box-shadow: 0 4px 14px rgba(92, 19, 16, 0.12);
+  box-shadow: 0 4px 14px rgba(22, 34, 46, 0.12);
 }
 .sub-plan-top {
   display: flex;
@@ -5088,7 +5101,7 @@ nav.nav-v3, nav.business-nav-v3 {
 .plan-option-highlighted {
   border: 1.5px solid var(--brand);
   background: var(--brand-softer);
-  box-shadow: 0 3px 10px rgba(92, 19, 16, 0.1);
+  box-shadow: 0 3px 10px rgba(22, 34, 46, 0.1);
 }
 .plan-option-highlighted.plan-option-selected {
   border-color: var(--brand);
@@ -5218,4 +5231,1192 @@ nav.nav-v3, nav.business-nav-v3 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ==================================================================
+   Atlas Refined: Home commerce-first (Phase 3)
+   New surfaces for the locked Home hierarchy:
+   LOCATION → SEARCH → CATEGORIES → NEARBY BUSINESSES →
+   PRODUCTS/SERVICES → FEATURED → RECENT ACTIVITY
+   ================================================================== */
+
+/* Muted sub-caption under a section header. */
+.section-sub {
+  margin: -6px 0 10px;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* Products & services rail: horizontal, snap-scrolling cards. */
+.discover-rail {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  margin: 0 -2px;
+  padding: 2px 2px 8px;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.discover-rail::-webkit-scrollbar { display: none; }
+.discover-card {
+  flex: 0 0 148px;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 10px;
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+}
+.discover-card:active { transform: scale(0.97); }
+.discover-media {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: var(--radius-md);
+  background: var(--brand-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.discover-media img { width: 100%; height: 100%; object-fit: cover; }
+.discover-initial {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--brand);
+}
+.discover-kind {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--action);
+  margin-bottom: 2px;
+}
+.discover-name {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--ink);
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.discover-biz {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  margin-top: 2px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.discover-meta {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--ink);
+  margin-top: 4px;
+}
+.discover-meta .money { font-weight: 800; }
+
+/* Recent activity rows: compact order/booking history under the context card. */
+.recent-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+.recent-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  box-shadow: var(--shadow-sm);
+}
+.recent-row:active { transform: scale(0.985); }
+.recent-row-icon {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.recent-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.recent-row-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-row-sub {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* ==================================================================
+   Merged from atlas-css/transactions.css — see header inside file for provenance.
+   ================================================================== */
+/* ==================================================================
+   Atlas Refined - Transactions (Cart, Orders, Bookings)
+   Phase 3 presentation layer. Additive polish on top of styles.css:
+   the Atlas design tokens (color, type, radius, shadow) already flow
+   from the Phase 2 retoken; this file only tunes transaction-specific
+   rhythm, touch targets, and emphasis. Presentation only: no data
+   flow, props, behavior, or component APIs change here.
+
+   Wiring note: import this file AFTER styles.css (e.g. from the
+   mobile entry) so these later rules win at equal specificity.
+   ================================================================== */
+
+/* ---- 44px+ touch targets on every tappable transaction control ----
+   Quantity steppers, remove, fulfillment/payment/address radio chips,
+   and the Active/All segmented lens. Small screens keep full-size
+   targets: no shrinking. */
+.qty-btn {
+  width: 44px;
+  height: 44px;
+}
+.cart-remove {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+.pay-chip {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.seg-tab {
+  min-height: 44px;
+}
+.btn {
+  min-height: 44px;
+}
+
+/* ---- Ember commitment CTA: "Place order" (Cart checkout footer) ----
+   Restrained ember is the action accent; the checkout commitment is
+   the one place it carries full weight. Compose as
+   className="btn-ember" on the existing Button primitive. */
+.btn-ember {
+  background: var(--action);
+  color: #fff;
+  font-size: 15px;
+  box-shadow: 0 3px 12px rgba(226, 58, 46, 0.32);
+}
+.btn-ember:hover {
+  background: var(--action-strong);
+}
+.btn-ember:active {
+  background: var(--action-strong);
+}
+.btn-ember:disabled {
+  background: var(--action-soft);
+  color: var(--action);
+  box-shadow: none;
+  opacity: 0.75;
+}
+
+/* ---- Order / booking card rhythm: stacked cards never touch ---- */
+.order-list > li + li {
+  margin-top: 10px;
+}
+
+/* ---- Order-row confidence: bigger business identity, tabular totals.
+   Long names still wrap (overflow-wrap lives in styles.css); prices
+   use tabular numerals so totals align and scan. */
+.oc-name {
+  font-size: 15.5px;
+  letter-spacing: -0.01em;
+}
+.oc-amount {
+  font-size: 16px;
+}
+.oc-side .money,
+.oc-amount .money {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Checkout totals: the decision number reads first ---- */
+.checkout-footer-value {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+.cart-total .type-price {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Checkout step markers: confident numbered anchors ---- */
+.checkout-step-num {
+  width: 24px;
+  height: 24px;
+  font-size: 12.5px;
+}
+
+/* ==================================================================
+   Merged from atlas-css/profile.css — see header inside file for provenance.
+   ================================================================== */
+/* ==================================================================
+   Atlas Refined: Profile, Saved, Reviews, Addresses, Notifications,
+   Notification preferences, Collections, info pages, auth.
+   Loaded after styles.css. Additive overrides scoped to these screens:
+   .profile-screen for the Profile hub, and the notif/pref/fav/addr/
+   info/collection class families that only these screens render.
+   Voice: porcelain canvas, slate identity, graphite text, restrained
+   ember, Bricolage Grotesque, confident type, 44px+ touch targets.
+   ================================================================== */
+
+/* ------------------------------------------------------------------ */
+/* Profile hub: identity band                                          */
+/* ------------------------------------------------------------------ */
+
+.profile-screen .me-band {
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+
+.profile-screen .me-band .avatar-v4 {
+  width: 60px;
+  height: 60px;
+  font-size: 24px;
+}
+
+.profile-screen .me-band .profile-hero-name {
+  font-size: 24px;
+  font-weight: 750;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.profile-screen .me-band .profile-hero-email {
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.85);
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.profile-screen .me-band .me-edit-btn {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--radius-md);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.profile-screen .me-band-foot {
+  margin-top: 16px;
+  padding-top: 14px;
+}
+
+.profile-screen .me-role {
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.profile-screen .manage-cta {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Profile hub: sections and rows                                      */
+/* ------------------------------------------------------------------ */
+
+.profile-screen .hub-section {
+  margin-top: 24px;
+}
+
+.profile-screen .hub-section-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 10px;
+  padding: 0 4px;
+}
+
+.profile-screen .hub-card {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.profile-screen .hub-row {
+  min-height: 62px;
+  padding: 12px 16px;
+  gap: 14px;
+}
+
+.profile-screen .hub-row-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-md);
+  background: var(--brand-soft);
+  color: var(--brand);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.profile-screen .hub-row-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+}
+
+.profile-screen .hub-row-sub {
+  font-size: 13.5px;
+  margin-top: 2px;
+}
+
+.profile-screen .hub-row-chevron {
+  color: var(--muted);
+}
+
+/* Sign-out card under the last section */
+.profile-screen > .card:last-child {
+  margin-top: 24px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+
+.profile-screen > .card:last-child .btn {
+  min-height: 52px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------------ */
+/* Signed-out auth screen                                              */
+/* ------------------------------------------------------------------ */
+
+.auth-screen .auth-brand-name {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.auth-screen .auth-brand-tag {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.auth-screen .auth-panel {
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow);
+}
+
+.auth-screen .auth-kicker {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--action);
+}
+
+.auth-screen .auth-intro h1 {
+  font-size: 30px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  line-height: 1.12;
+}
+
+.auth-screen .auth-lede {
+  font-size: 15.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.auth-screen .auth-mode-tab {
+  min-height: 48px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.auth-screen .auth-input {
+  min-height: 56px;
+  border-radius: var(--radius);
+}
+
+.auth-screen .auth-input input {
+  font-size: 16px; /* 16px stops iOS auto-zoom on focus */
+}
+
+.auth-screen .role-seg {
+  min-height: 62px;
+  border-radius: var(--radius);
+  padding: 10px 14px;
+}
+
+.auth-screen .role-seg-name {
+  font-size: 15.5px;
+  font-weight: 750;
+}
+
+.auth-screen .role-seg-desc {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.auth-screen .auth-form .btn {
+  min-height: 54px;
+  font-size: 16.5px;
+  font-weight: 750;
+}
+
+.auth-screen .agree-row {
+  min-height: 44px;
+}
+
+.auth-screen .forgot-link {
+  min-height: 44px;
+}
+
+.auth-screen .auth-assurances {
+  font-size: 14.5px;
+}
+
+/* Edit profile / change password forms */
+.profile-screen .field input,
+.profile-screen .field textarea {
+  font-size: 16px;
+  min-height: 52px;
+}
+
+.profile-screen .btn-row .btn {
+  min-height: 52px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Screen heads (Saved, Reviews, Addresses, Collections, info pages)   */
+/* ------------------------------------------------------------------ */
+
+.saved-head h1 {
+  font-size: var(--font-display);
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  line-height: 1.12;
+}
+
+.saved-head-sub {
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.header-link,
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Saved businesses                                                    */
+/* ------------------------------------------------------------------ */
+
+.fav-list {
+  gap: 10px;
+}
+
+/* Overlay actions on saved rows: full 44px touch targets */
+.fav-action-btn {
+  width: 44px;
+  height: 44px;
+}
+
+.fav-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+/* ------------------------------------------------------------------ */
+/* My reviews                                                          */
+/* ------------------------------------------------------------------ */
+
+.fav-row {
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+  min-height: 76px;
+}
+
+.fav-row-name {
+  font-size: 16px;
+  font-weight: 750;
+  letter-spacing: -0.005em;
+}
+
+.fav-row-meta {
+  font-size: 13px;
+  margin-top: 3px;
+}
+
+.fav-row-comment {
+  font-size: 14.5px;
+  line-height: 1.55;
+  margin-top: 6px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Addresses                                                           */
+/* ------------------------------------------------------------------ */
+
+.addr-list {
+  gap: 12px;
+}
+
+.addr-card {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.addr-label {
+  font-size: 17px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+
+.addr-default-chip {
+  background: var(--brand);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+.addr-recipient {
+  font-size: 14.5px;
+  font-weight: 600;
+  margin-top: 6px;
+}
+
+.addr-text,
+.addr-phone {
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+
+.addr-pin-hint {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+.addr-card-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.addr-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--brand);
+  border-radius: var(--radius-sm);
+}
+
+.addr-link-danger {
+  color: var(--error);
+}
+
+.addr-form {
+  display: grid;
+  gap: 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 18px 16px;
+}
+
+.addr-field {
+  display: grid;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.addr-field input,
+.addr-field textarea {
+  font-size: 16px;
+  min-height: 52px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  background: var(--bg-raised);
+  color: var(--ink);
+  width: 100%;
+}
+
+.addr-field textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.addr-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.addr-actions .btn {
+  min-height: 52px;
+  flex: 1;
+}
+
+.addr-error {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--error);
+}
+
+/* ------------------------------------------------------------------ */
+/* Info pages                                                          */
+/* ------------------------------------------------------------------ */
+
+.info-card {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 20px 18px;
+}
+
+.info-card p {
+  font-size: 15.5px;
+  line-height: 1.7;
+  color: var(--ink-2);
+  margin-bottom: 14px;
+}
+
+.about-tagline {
+  font-size: 24px !important;
+  font-weight: 750;
+  letter-spacing: -0.015em;
+  color: var(--ink) !important;
+  line-height: 1.2 !important;
+}
+
+/* ------------------------------------------------------------------ */
+/* Notifications                                                       */
+/* ------------------------------------------------------------------ */
+
+.notif-group-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 20px 0 10px;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  padding: 0 4px;
+}
+
+.notif-list {
+  gap: 10px;
+}
+
+.notif-item {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+  min-height: 78px;
+  align-items: center;
+}
+
+.notif-item:hover {
+  border-color: var(--brand);
+}
+
+.notif-unread {
+  border-color: var(--brand);
+  background: var(--brand-softer);
+  box-shadow: var(--shadow);
+}
+
+.notif-unread .notif-icon {
+  background: #fff;
+}
+
+.notif-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+}
+
+.notif-title {
+  font-size: 15.5px;
+  font-weight: 750;
+  letter-spacing: -0.005em;
+}
+
+.notif-dot {
+  width: 10px;
+  height: 10px;
+  background: var(--action);
+}
+
+.notif-message {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.notif-time {
+  font-size: 12.5px;
+  margin-top: 2px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Notification preferences                                            */
+/* ------------------------------------------------------------------ */
+
+.pref-list {
+  gap: 10px;
+}
+
+.pref-row {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+  min-height: 66px;
+}
+
+.pref-title {
+  font-size: 16px;
+  font-weight: 750;
+  letter-spacing: -0.005em;
+}
+
+.pref-body {
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin-top: 2px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Collections                                                         */
+/* ------------------------------------------------------------------ */
+
+.collection-card {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+  min-height: 72px;
+}
+
+.collection-card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+}
+
+.collection-card-name {
+  font-size: 16px;
+  font-weight: 750;
+  letter-spacing: -0.005em;
+}
+
+.collection-card-meta {
+  font-size: 13px;
+}
+
+.collection-pick {
+  min-height: 56px;
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+}
+
+.collection-pick-name {
+  font-size: 15px;
+}
+
+/* New-collection inline form (inside sheets) */
+.collection-new-form input {
+  font-size: 16px;
+  min-height: 52px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  background: var(--bg-raised);
+  color: var(--ink);
+}
+
+.collection-new-form .btn {
+  min-height: 52px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Small screens: keep everything inside 360px                        */
+/* ------------------------------------------------------------------ */
+
+@media (max-width: 380px) {
+  .profile-screen .me-band {
+    padding: 16px;
+  }
+
+  .profile-screen .me-band .profile-hero-name {
+    font-size: 21px;
+  }
+
+  .profile-screen .hub-row {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .notif-item {
+    padding: 12px;
+  }
+
+  .info-card {
+    padding: 16px 14px;
+  }
+
+  .addr-actions {
+    flex-direction: column;
+  }
+}
+
+/* ==================================================================
+   Merged from atlas-css/discovery.css — see header inside file for provenance.
+   ================================================================== */
+/* ================================================================
+   Atlas Refined — Discovery (Phase 3)
+   Explore + ExploreMapView (+ shared discovery controls).
+   Every selector is scoped to .explore-screen so no other screen
+   shifts. Tokens (porcelain/slate/ember, Bricolage, radii, shadows)
+   flow from styles.css; this file only composes them.
+   This file must be imported by the app shell (e.g. main.tsx) after
+   styles.css, alongside the other atlas-css kits. Do not duplicate
+   classes that styles.css already defines.
+   ================================================================ */
+
+/* ---- Explore hero: confident, commerce-first ---- */
+.explore-screen .explore-hero {
+  padding: var(--space-4) 0 var(--space-1);
+}
+.explore-screen .explore-hero h1 {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 32px;
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  overflow-wrap: break-word;
+}
+.explore-screen .explore-hero p {
+  margin: 6px 0 0;
+  font-size: 15px;
+  line-height: 1.45;
+  font-weight: 500;
+  color: var(--muted);
+  max-width: 34ch;
+}
+
+/* ---- Search entry: ember go button is the single accent ---- */
+.explore-screen .explore-search {
+  margin-top: var(--space-3);
+}
+.explore-screen .explore-search .search-go {
+  background: var(--action);
+}
+.explore-screen .explore-search .search-go:active {
+  transform: scale(0.94);
+}
+
+/* ---- Chips: 44px targets, confident type ---- */
+.explore-screen .chip {
+  min-height: 44px;
+  padding: 11px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: 999px;
+}
+.explore-screen .chip-active {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+
+/* ---- LIST / MAP segmented toggle: pill, slate selection ---- */
+.explore-screen .segmented {
+  background: var(--brand-soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px;
+}
+.explore-screen .segmented-option {
+  min-height: 40px;
+  padding: 8px 20px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.explore-screen .segmented-option[aria-checked="true"] {
+  background: var(--brand);
+  color: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---- Business rows: Atlas type, generous touch area ---- */
+.explore-screen .biz-row {
+  padding: 12px 0;
+}
+.explore-screen .biz-row-name {
+  font-size: 16.5px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+.explore-screen .biz-row-meta {
+  font-size: 13px;
+}
+.explore-screen .biz-row-selected {
+  background: var(--brand-softer);
+  border-radius: var(--radius-md);
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
+}
+
+/* ---- Map view: Atlas frame, Leaflet provider untouched ---- */
+.explore-map-wrap {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  background: var(--brand-soft);
+}
+.explore-map-wrap .map-search-area {
+  background: var(--action);
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 800;
+  padding: 12px 20px;
+  min-height: 44px;
+  box-shadow: 0 6px 18px rgba(226, 58, 46, 0.35);
+}
+.explore-map-wrap .map-search-area:active {
+  background: var(--action-strong);
+}
+
+/* ---- Marker preview: structured card, no inline styles ---- */
+.map-preview-card {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  z-index: 500;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  box-shadow: var(--shadow-lg);
+}
+.map-preview-initial {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--brand-softer);
+  color: var(--brand-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.map-preview-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.map-preview-name {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.map-preview-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.map-preview-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.map-preview-actions .btn {
+  min-width: 76px;
+  min-height: 40px;
+}
+.map-preview-actions .btn-primary {
+  background: var(--action);
+}
+.map-preview-actions .btn-primary:active {
+  background: var(--action-strong);
+}
+
+/* ---- Location-denied card: calm Atlas surface ---- */
+.explore-screen .location-denied-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.explore-screen .location-denied-title {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.explore-screen .location-denied-text {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* ---- Map sheet: the map stays an Explore capability, framed ---- */
+.explore-screen .map-sheet {
+  margin-top: var(--space-2);
+}
+
+/* ---- Empty states read with Atlas confidence ---- */
+.explore-screen .empty-state h3 {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+/* ---- 360px safety: nothing in Explore scrolls sideways ---- */
+.explore-screen {
+  overflow-x: clip;
+}
+@media (max-width: 400px) {
+  .explore-screen .explore-hero h1 {
+    font-size: 28px;
+  }
+  .map-preview-card {
+    flex-wrap: wrap;
+  }
+  .map-preview-actions {
+    flex-direction: row;
+    width: 100%;
+  }
+  .map-preview-actions .btn {
+    flex: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .explore-screen .chip,
+  .explore-screen .segmented-option,
+  .explore-map-wrap .map-search-area {
+    transition: none;
+  }
+}
+
+/* ==================================================================
+   Merged from atlas-css/owner.css — see header inside file for provenance.
+   ================================================================== */
+/* ------------------------------------------------------------------
+   NearbyOrders — Atlas Refined owner kit (gap fills)
+   Small additive classes for the Business Owner screens. Everything here
+   consumes the Atlas tokens from styles.css (:root); no hard-coded palette.
+   This file must be imported by the app shell (e.g. main.tsx) after
+   styles.css. Do not duplicate classes that styles.css already defines.
+------------------------------------------------------------------- */
+
+/* Small confident sub-heading inside an ov-section (e.g. "Up next",
+   "Recent orders" inside the Overview's Today section). */
+.ov-subhead {
+  margin: 18px 2px 8px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--ink-2);
+}
+
+/* Right-aligned value (price/total) inside an activity-row, before the
+   chevron. Keeps long prices from colliding with the row text. */
+.activity-side {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* Section title inside the owner order payment block. */
+.pay-section-title {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
 }

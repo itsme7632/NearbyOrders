@@ -179,15 +179,15 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
   const hasFilters = type !== 'all' || categoryId !== undefined;
 
   return (
-    <div className="screen">
+    <div className="screen search-screen">
       <button className="back-link" onClick={props.onBack}>
         ‹ Back
       </button>
-      <section className="home-greeting" aria-label="Search">
-        <h1 className="home-greeting-title" style={{ fontSize: 'clamp(22px, 6vw, 26px)' }}>
-          Search <em>NearbyOrders</em>
+      <section className="home-greeting search-greeting" aria-label="Search">
+        <h1 className="home-greeting-title" style={{ fontSize: 'clamp(24px, 7vw, 30px)' }}>
+          Search businesses, products &amp; services
         </h1>
-        <p className="home-greeting-sub">Businesses, services, and products, in one place.</p>
+        <p className="home-greeting-sub">Everything nearby you can order or book, in one search.</p>
       </section>
 
       <form
@@ -368,7 +368,7 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
         ) : (
           <EmptyState
             icon={<ExploreIcon size={28} />}
-            title="Search NearbyOrders"
+            title="Search businesses, products & services"
             body="Find businesses by what they do, bookable services, or orderable products, all in one search."
           />
         )
@@ -436,7 +436,15 @@ function SearchResultRow(props: { result: SearchResult; onOpen: () => void }) {
             {r.type === 'business' ? <VerifiedBadge verified={r.isVerified} /> : null}
             {r.type === 'business' ? <OpenBadge open={r.isOpenNow} /> : null}
             {r.type === 'service' || r.type === 'product' ? <Money minor={r.priceMinor} currency={r.currency} /> : null}
-            {distance ? <span className="biz-distance">📍 {distance}</span> : place ? <span className="biz-place">📍 {place}</span> : null}
+            {distance ? (
+              <span className="biz-distance search-result-place">
+                <PinIcon size={13} /> {distance}
+              </span>
+            ) : place ? (
+              <span className="biz-place search-result-place">
+                <PinIcon size={13} /> {place}
+              </span>
+            ) : null}
             <RatingChip average={r.averageRating} count={r.reviewCount} />
           </span>
         </span>

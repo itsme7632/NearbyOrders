@@ -115,6 +115,218 @@
 
 .booking-ticket-actions { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-4); }
 
+/* ---- Atlas flow chrome: hero, step rail, sections ---- */
+.booking-screen { overflow-x: clip; }
+
+.booking-screen .booking-head {
+  margin-top: var(--space-2);
+}
+.booking-screen .booking-eyebrow {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.booking-screen .booking-title,
+.booking-screen .book-service-name {
+  font-family: var(--font-sans);
+  font-size: clamp(26px, 7.5vw, 32px);
+  line-height: 1.08;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin: 0;
+  overflow-wrap: break-word;
+}
+.booking-screen .booking-head-biz,
+.booking-screen .book-service-meta {
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.booking-screen .booking-head-verified {
+  font-weight: 800;
+  color: var(--success);
+}
+.booking-screen .book-service-meta .money {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+/* Step rail: quiet numbers, ember marks the current step. */
+.booking-screen .book-steps {
+  margin: var(--space-4) 0 0;
+  padding: 0;
+}
+.booking-screen .book-step-dot {
+  width: 30px;
+  height: 30px;
+  font-size: 13.5px;
+  font-weight: 800;
+  border-radius: 999px;
+}
+.booking-screen .book-step-now .book-step-dot {
+  background: var(--action);
+  border-color: var(--action);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(226, 58, 46, 0.35);
+}
+.booking-screen .book-step-now .book-step-name {
+  color: var(--ink);
+}
+.booking-screen .book-step-done .book-step-dot {
+  background: var(--brand-soft);
+  border-color: var(--border-strong);
+  color: var(--brand-strong);
+}
+.booking-screen .book-step-name {
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+/* Section titles: confident Atlas heads. */
+.booking-screen .book-section {
+  padding: var(--space-5) 0;
+}
+.booking-screen .book-section-title {
+  font-family: var(--font-sans);
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  margin: 0 0 var(--space-3);
+}
+
+/* Service options: larger type, 44px+ rows, clear selection ring. */
+.booking-screen .svc-option {
+  min-height: 72px;
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.booking-screen .svc-option-name {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.booking-screen .svc-option-desc {
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+.booking-screen .svc-option-price {
+  font-size: 16px;
+}
+.booking-screen .svc-option-duration {
+  font-size: 13px;
+}
+.booking-screen .svc-option-active {
+  border-color: var(--action);
+  background: var(--action-soft);
+  box-shadow: 0 0 0 1px var(--action);
+}
+.booking-screen .svc-option-check {
+  color: var(--action-strong);
+}
+
+/* Date strip: touch-friendly chips, slate selection. */
+.booking-screen .date-chip {
+  width: 62px;
+  min-height: 76px;
+}
+.booking-screen .date-chip-num {
+  font-size: 21px;
+}
+
+/* Slots: 46px targets already; Atlas radius + confident type. */
+.booking-screen .slot {
+  border-radius: var(--radius-md);
+  font-size: 15px;
+}
+.booking-screen .slot:active:not(:disabled) {
+  border-color: var(--action);
+}
+
+/* Note field: comfortable input. */
+.booking-screen .field .label {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ink);
+}
+.booking-screen .field textarea {
+  font-size: 15px;
+  border-radius: var(--radius-md);
+}
+
+/* Ember primary CTA: the single accent on the confirm step. */
+.booking-screen .booking-ticket-actions .btn-primary,
+.booking-screen .booking-success .btn-primary {
+  background: var(--action);
+  min-height: 54px;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  box-shadow: 0 4px 14px rgba(226, 58, 46, 0.35);
+}
+.booking-screen .booking-ticket-actions .btn-primary:active,
+.booking-screen .booking-success .btn-primary:active {
+  background: var(--action-strong);
+}
+.booking-screen .booking-ticket-actions .btn-primary:disabled,
+.booking-screen .booking-success .btn-primary:disabled {
+  background: var(--bg);
+  color: var(--disabled);
+  box-shadow: none;
+  border: 1px solid var(--border);
+}
+
+/* Ticket total: ember figure on a calm ground. */
+.booking-screen .ticket-total {
+  background: var(--brand-softer);
+}
+.booking-screen .ticket-total .money {
+  color: var(--action-strong);
+  font-size: 20px;
+}
+
+/* Success: confident confirmation. */
+.booking-screen .booking-success h2 {
+  font-family: var(--font-sans);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  margin: 0 0 8px;
+}
+.booking-screen .booking-success-sub {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--muted);
+  margin: 0 0 var(--space-4);
+  overflow-wrap: break-word;
+}
+.booking-screen .summary-list {
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  padding: 6px 16px;
+  margin-bottom: var(--space-4);
+}
+
+/* 360px: keep the step names readable, slots in two columns. */
+@media (max-width: 400px) {
+  .booking-screen .book-step-name {
+    font-size: 11px;
+  }
+  .booking-screen .slot-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ticket { box-shadow: none; }
+  .booking-screen .slot:active:not(:disabled) { transform: none; }
 }

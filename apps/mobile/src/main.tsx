@@ -5,15 +5,15 @@ import { businessTabs, navigationTabs, resolveTab, type BusinessTab, type Tab } 
 import { getMyBusinesses, getSession, onSessionChange, bootstrapSession, type Business, type Session } from './api.js';
 import { useRoute, useAsyncData } from './hooks.js';
 import { applyDefaultModeForSession, initModeSessionSync, setAppMode, useAppMode } from './mode.js';
-import { BellIcon, ExploreIcon, HeartIcon, HomeIcon, ActivityIcon, OrdersIcon, BookingsIcon, PinIcon, ProfileIcon, StoreIcon } from './components/icons.js';
-import { EmptyState, Loading } from './components/ui.js';
+import { BellIcon, ExploreIcon, HomeIcon, OrdersIcon, BookingsIcon, PinIcon, ProfileIcon, StoreIcon } from './components/icons.js';
+import { Loading } from './components/ui.js';
 import { ToastProvider } from './components/primitives.js';
 import { HomeScreen } from './screens/Home.js';
 import { ExploreScreen } from './screens/Explore.js';
 import { SearchScreen } from './screens/Search.js';
 import { BusinessDetailScreen } from './screens/BusinessDetail.js';
 import { BookServiceScreen } from './screens/BookService.js';
-import { BookingDetailScreen } from './screens/Bookings.js';
+import { BookingDetailScreen, BookingsScreen } from './screens/Bookings.js';
 import { ProfileScreen, EditProfileScreen, ChangePasswordScreen } from './screens/Profile.js';
 // (OwnerDashboardScreen intentionally not imported: /owner renders OwnerBusinessHome.)
 import { OwnerScreen } from './screens/OwnerScreen.js';
@@ -25,8 +25,7 @@ import { OwnerEarnings } from './screens/OwnerEarnings.js';
 import { OwnerBusinessProfile } from './screens/OwnerBusinessProfile.js';
 import { CreateBusinessScreen } from './screens/CreateBusiness.js';
 import { CartScreen } from './screens/Cart.js';
-import { OrderDetailScreen } from './screens/Orders.js';
-import { ActivityScreen } from './screens/Activity.js';
+import { OrderDetailScreen, OrdersScreen } from './screens/Orders.js';
 import { CartPill } from './components/CartPill.js';
 import { NotificationsScreen } from './screens/Notifications.js';
 import { NotificationPreferencesScreen } from './screens/NotificationPreferences.js';
@@ -466,29 +465,39 @@ export function App() {
         onOpenSearch={(q) => push(`/search?q=${encodeURIComponent(q)}`)}
       />
     );
-  } else if (tab === 'Activity') {
-    // Customer mode: composes the person's orders and bookings in one timeline.
-    content = (
-      <ActivityScreen
+  } else if (tab === 'Orders') {
+    // Locked navigation: the customer's order history is its own tab.
+    content = session ? (
+      <OrdersScreen
         onOpenOrder={(id) => push(`/order/${id}`)}
-        onOpenBooking={(id) => push(`/booking/${id}`)}
         onBrowse={() => {
           setTab('Explore');
           push('/');
         }}
       />
+    ) : (
+      profileAuthScreen
     );
-  } else if (tab === 'Saved') {
-    content = session ? <SavedBusinessesScreen onBack={back} onOpenBusiness={openBusiness} /> : (
-      <div className="screen">
-        <EmptyState
-          icon={<HeartIcon size={30} />}
-          title="Your saved places"
-          body="Sign in to save businesses and find them here."
-        />
-      </div>
+  } else if (tab === 'Bookings') {
+    // Locked navigation: the customer's bookings are their own tab.
+    content = session ? (
+      <BookingsScreen
+        onOpenBooking={(id) => push(`/booking/${id}`)}
+        onExplore={() => {
+          setTab('Explore');
+          push('/');
+        }}
+      />
+    ) : (
+      profileAuthScreen
     );
+  } else if (tab === 'Profile') {
+    content = session ? profileHubScreen : profileAuthScreen;
   } else {
+    // Legacy Warm Proximity values ('Activity', 'Saved', 'Account') resolve
+    // through resolveTab() at the tab-state boundaries; anything else falls
+    // back to the Profile hub, which keeps Saved, notifications, addresses,
+    // reviews and settings reachable.
     content = session ? profileHubScreen : profileAuthScreen;
   }
 
@@ -498,7 +507,7 @@ export function App() {
   // route/tab stays active, so after sign-in they land where they intended.
   const authFlow =
     !session &&
-    ((route.name === 'tabs' && tab === 'Account') ||
+    ((route.name === 'tabs' && tab === 'Profile') ||
       route.name === 'book' ||
       route.name === 'booking' ||
       route.name === 'notifications');
@@ -621,7 +630,7 @@ export function App() {
             {navigationTabs.map((t) => {
               const active = t === tab && route.name === 'tabs';
               const IconCmp =
-                t === 'Home' ? HomeIcon : t === 'Explore' ? ExploreIcon : t === 'Activity' ? ActivityIcon : t === 'Saved' ? HeartIcon : ProfileIcon;
+                t === 'Home' ? HomeIcon : t === 'Explore' ? ExploreIcon : t === 'Orders' ? OrdersIcon : t === 'Bookings' ? BookingsIcon : ProfileIcon;
               return (
                 <button
                   key={t}

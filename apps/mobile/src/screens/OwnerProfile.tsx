@@ -93,8 +93,13 @@ export function OwnerProfile(props: { business: Business; onSaved: () => void })
   };
 
   return (
-    <section className="card">
-      <h2>Business profile</h2>
+    <section className="card" aria-label="Business profile">
+      <div className="section-head">
+        <h2>Business profile</h2>
+      </div>
+      <p className="ov-section-sub">
+        This is what customers see on your business page. Keep it accurate so bookings and orders run smoothly.
+      </p>
       {error ? <ErrorState message={error} /> : null}
       {saved ? <p className="save-ok">Saved ✓</p> : null}
 
