@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 581 160" role="img" aria-label="NearbyOrders logo">
+  <title>NearbyOrders — Find nearby. Book or order.</title>
+  <desc>Horizontal brand lockup: the Meridian N mark beside the NearbyOrders wordmark.</desc>
+  <g transform="translate(28,36) scale(0.104)">
+<g>
+    <path d="M220,80 h69.7 v620.5 h-69.7 Z" fill="#F2F5F7"/>
+    <path d="M220,80 L385.3,80 L711.6,623.8 L612.6,920.1 Z" fill="#E23A2E"/>
+    <path d="M701.1,80 L779.9,80 L779.9,550.6 L701.1,613.3 Z" fill="#F2F5F7"/>
+  </g>
+  </g>
+  <text x="112" y="108" font-family="'Bricolage Grotesque', 'BricolageGrotesque', sans-serif" font-size="64" font-weight="800" letter-spacing="-1"><tspan fill="#F2F5F7">Nearby</tspan><tspan fill="#E23A2E">Orders</tspan></text>
+</svg>

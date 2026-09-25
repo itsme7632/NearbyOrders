@@ -276,3 +276,34 @@ export function CloseIcon(props: IconProps) {
     </Icon>
   );
 }
+
+/**
+ * The Meridian N — the final NearbyOrders brand mark (Concept 3B "Clearer N",
+ * approved 2026-09-25). Vector geometry mirrors brand/mark.svg exactly
+ * (viewBox 0 0 1000 1000); never substitute a raster image.
+ *
+ * `tone="light"` (default): slate stems — for light / porcelain surfaces.
+ * `tone="dark"`: porcelain stems — for dark surfaces. The ember diagonal and
+ * the geometry never change between tones.
+ */
+export function MeridianMark({
+  size = 30,
+  tone = 'light',
+  ...rest
+}: SVGProps<SVGSVGElement> & { size?: number; tone?: 'light' | 'dark' }) {
+  const stem = tone === 'dark' ? '#F2F5F7' : '#16222E';
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 1000 1000"
+      role="img"
+      aria-label="NearbyOrders"
+      {...rest}
+    >
+      <path d="M220,80 h69.7 v620.5 h-69.7 Z" fill={stem} />
+      <path d="M220,80 L385.3,80 L711.6,623.8 L612.6,920.1 Z" fill="#E23A2E" />
+      <path d="M701.1,80 L779.9,80 L779.9,550.6 L701.1,613.3 Z" fill={stem} />
+    </svg>
+  );
+}

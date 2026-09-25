@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" role="img" aria-label="NearbyOrders mark">
+  <title>NearbyOrders mark — the Meridian N (on dark surfaces)</title>
+  <desc>Same Meridian N geometry with porcelain stems for dark backgrounds. Geometry unchanged.</desc>
+<g>
+    <path d="M220,80 h69.7 v620.5 h-69.7 Z" fill="#F2F5F7"/>
+    <path d="M220,80 L385.3,80 L711.6,623.8 L612.6,920.1 Z" fill="#E23A2E"/>
+    <path d="M701.1,80 L779.9,80 L779.9,550.6 L701.1,613.3 Z" fill="#F2F5F7"/>
+  </g>
+</svg>

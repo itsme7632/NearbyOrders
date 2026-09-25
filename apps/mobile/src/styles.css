@@ -209,16 +209,17 @@ main.auth-mode {
 .brand-mark {
   width: 30px;
   height: 30px;
-  border-radius: 10px;
-  background: var(--brand);
-  color: #fff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 6px rgba(22, 34, 46, 0.28);
   flex: 0 0 auto;
+  /* The Meridian N carries its own brand colors — no tile behind it. */
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
 }
-.logo-word b { color: var(--brand); }
+.brand-mark svg { display: block; }
+.logo-word b { color: var(--action); }
 
 /* Contextual headers where the ink wordmark sits on a dark hero surface */
 .app-header-v3 .logo { color: #fff; }

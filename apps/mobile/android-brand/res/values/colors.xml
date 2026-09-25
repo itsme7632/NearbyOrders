@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- NearbyOrders brand colors (Warm Proximity / V7 Editorial).
+<!-- NearbyOrders brand colors (Atlas Refined).
      Also supplies colorPrimary/colorPrimaryDark/colorAccent, which the
      generated AppTheme references. -->
 <resources>
-    <color name="ic_launcher_background">#5C1310</color>
-    <color name="splash_background">#F6F5F2</color>
-    <color name="colorPrimary">#5C1310</color>
-    <color name="colorPrimaryDark">#4A0F0B</color>
-    <color name="colorAccent">#C65324</color>
+    <color name="ic_launcher_background">#F2F5F7</color>
+    <color name="splash_background">#F2F5F7</color>
+    <color name="colorPrimary">#16222E</color>
+    <color name="colorPrimaryDark">#0E1620</color>
+    <color name="colorAccent">#E23A2E</color>
 </resources>

@@ -5,7 +5,7 @@ import { businessTabs, navigationTabs, resolveTab, type BusinessTab, type Tab } 
 import { getMyBusinesses, getSession, onSessionChange, bootstrapSession, type Business, type Session } from './api.js';
 import { useRoute, useAsyncData } from './hooks.js';
 import { applyDefaultModeForSession, initModeSessionSync, setAppMode, useAppMode } from './mode.js';
-import { BellIcon, ExploreIcon, HomeIcon, OrdersIcon, BookingsIcon, PinIcon, ProfileIcon, StoreIcon } from './components/icons.js';
+import { BellIcon, ExploreIcon, HomeIcon, OrdersIcon, BookingsIcon, MeridianMark, ProfileIcon, StoreIcon } from './components/icons.js';
 import { Loading } from './components/ui.js';
 import { ToastProvider } from './components/primitives.js';
 import { HomeScreen } from './screens/Home.js';
@@ -85,7 +85,7 @@ function OwnerAppHeader(props: {
     <header className="app-header owner-app-header">
       <button className="logo" onClick={props.onHome} aria-label="NearbyOrders business overview">
         <span className="brand-mark" aria-hidden>
-          <PinIcon size={16} />
+          <MeridianMark size={30} />
         </span>
         <span className="logo-word">
           Nearby<b>Orders</b>
@@ -559,7 +559,7 @@ export function App() {
           <header className="app-header">
             <button className="logo" onClick={() => { setTab('Home'); setBusinessTab('Overview'); push('/'); }} aria-label="NearbyOrders home">
               <span className="brand-mark" aria-hidden>
-                <PinIcon size={16} />
+                <MeridianMark size={30} />
               </span>
               <span className="logo-word">
                 Nearby<b>Orders</b>

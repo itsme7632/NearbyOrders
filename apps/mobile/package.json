@@ -10,7 +10,8 @@
     "test": "vitest run",
     "cap:add:android": "tsc -b && vite build && cap add android",
     "cap:sync": "tsc -b && vite build && cap sync android",
-    "android:brand": "node scripts/sync-android-brand.mjs"
+    "android:brand": "node scripts/sync-android-brand.mjs",
+    "brand:assets": "python3 scripts/generate-brand-assets.py && python3 scripts/generate-android-icons.py"
   },
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "^8.0.0",

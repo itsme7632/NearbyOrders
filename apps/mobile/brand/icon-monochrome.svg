@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" role="img" aria-label="NearbyOrders monochrome icon">
+  <title>NearbyOrders monochrome icon (Android 13+ themed icons)</title>
+  <desc>Single-silhouette Meridian N; the launcher applies the dynamic tint.</desc>
+  <g transform="translate(21.5,21.5) scale(0.065)">
+    <g>
+        <path d="M220,80 h69.7 v620.5 h-69.7 Z" fill="#FFFFFF"/>
+        <path d="M220,80 L385.3,80 L711.6,623.8 L612.6,920.1 Z" fill="#FFFFFF"/>
+        <path d="M701.1,80 L779.9,80 L779.9,550.6 L701.1,613.3 Z" fill="#FFFFFF"/>
+      </g>
+  </g>
+</svg>
