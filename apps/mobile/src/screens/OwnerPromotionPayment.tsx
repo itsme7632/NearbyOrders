@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   ApiError,
+  cancelPromotionPayment,
   listPaymentMethods,
   listPromotionPayments,
   submitPromotionPayment,
@@ -66,6 +67,7 @@ export function PromotionPaymentFlow(props: {
   const [note, setNote] = useState('');
   const [pendingReceipt, setPendingReceipt] = useState<PendingImage | null>(null);
   const [busy, setBusy] = useState(false);
+  const [cancellingPaymentId, setCancellingPaymentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [viewingReceiptId, setViewingReceiptId] = useState<string | null>(null);
@@ -122,6 +124,22 @@ export function PromotionPaymentFlow(props: {
       }
     } finally {
       setBusy(false);
+    }
+  };
+
+  /** Cancels the owner's own pending payment (e.g. wrong reference typed). */
+  const cancelPayment = async (payment: PromotionPaymentRequest) => {
+    if (busy || cancellingPaymentId) return;
+    if (!window.confirm('Cancel this payment submission? You can submit a corrected payment afterwards.')) return;
+    setCancellingPaymentId(payment.id);
+    setError(null);
+    try {
+      await cancelPromotionPayment(props.businessId, request.id, payment.id);
+      payments.reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not cancel the payment');
+    } finally {
+      setCancellingPaymentId(null);
     }
   };
 
@@ -323,6 +341,16 @@ export function PromotionPaymentFlow(props: {
                     <Button sm variant="ghost" disabled={viewingReceiptId === p.id} onClick={() => void viewReceipt(p)}>
                       {viewingReceiptId === p.id ? 'Opening…' : 'View receipt'}
                     </Button>
+                    {p.status === 'PENDING' ? (
+                      <Button
+                        sm
+                        variant="ghost"
+                        disabled={cancellingPaymentId === p.id}
+                        onClick={() => void cancelPayment(p)}
+                      >
+                        {cancellingPaymentId === p.id ? 'Cancelling…' : 'Cancel payment'}
+                      </Button>
+                    ) : null}
                   </div>
                 </li>
               );

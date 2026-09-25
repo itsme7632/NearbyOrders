@@ -739,6 +739,7 @@ const PAYMENT_FILTERS = [
   { key: 'PENDING', label: 'Pending review' },
   { key: 'APPROVED', label: 'Approved' },
   { key: 'REJECTED', label: 'Rejected' },
+  { key: 'CANCELLED', label: 'Cancelled' },
   { key: 'ALL', label: 'All' },
 ] as const;
 

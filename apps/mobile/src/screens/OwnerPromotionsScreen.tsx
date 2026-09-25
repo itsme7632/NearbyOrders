@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  cancelPromotionRequest,
   listPromotions,
   listPromotionRequests,
   requestPromotion,
@@ -152,6 +153,7 @@ export function OwnerPromotions(props: { businessId: string }) {
         />
       ) : (
         <MyPromotionRequests
+          businessId={props.businessId}
           requests={requests}
           onPay={(r) => setPayingFor(r)}
         />
@@ -292,10 +294,28 @@ function AvailablePromotions(props: {
 /* ----------------------------- my requests ---------------------------- */
 
 function MyPromotionRequests(props: {
+  businessId: string;
   requests: AsyncState<PromotionRequest[]>;
   onPay: (r: PromotionRequest) => void;
 }) {
-  const { requests, onPay } = props;
+  const { businessId, requests, onPay } = props;
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState<{ id: string; message: string } | null>(null);
+
+  const cancel = async (r: PromotionRequest) => {
+    if (cancellingId) return;
+    if (!window.confirm(`Cancel your request for "${r.promotionName ?? 'this promotion'}"? This cannot be undone.`)) return;
+    setCancellingId(r.id);
+    setCancelError(null);
+    try {
+      await cancelPromotionRequest(businessId, r.id);
+      requests.reload();
+    } catch (e) {
+      setCancelError({ id: r.id, message: e instanceof Error ? e.message : 'Could not cancel the request' });
+    } finally {
+      setCancellingId(null);
+    }
+  };
 
   if (requests.loading) return <Loading label="Loading your requests…" />;
   if (requests.error) return <ErrorState message={requests.error} onRetry={requests.reload} />;
@@ -391,6 +411,24 @@ function MyPromotionRequests(props: {
             {r.lifecycleState === 'CANCELLED' ? (
               <p className="hint" style={{ marginTop: 8 }}>
                 This request was cancelled. It will not activate.
+              </p>
+            ) : null}
+
+            {r.lifecycleState === 'PENDING_REVIEW' || r.lifecycleState === 'PAYMENT_REQUIRED' ? (
+              <div className="btn-row" style={{ marginTop: 8 }}>
+                <Button
+                  variant="ghost"
+                  sm
+                  disabled={cancellingId === r.id}
+                  onClick={() => cancel(r)}
+                >
+                  {cancellingId === r.id ? 'Cancelling…' : 'Cancel request'}
+                </Button>
+              </div>
+            ) : null}
+            {cancelError && cancelError.id === r.id ? (
+              <p className="form-error" role="alert" style={{ marginTop: 8 }}>
+                {cancelError.message}
               </p>
             ) : null}
           </section>

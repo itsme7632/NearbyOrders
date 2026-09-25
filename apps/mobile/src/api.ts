@@ -918,6 +918,28 @@ export const listPromotionPayments = (businessId: string, requestId: string) =>
   );
 
 /**
+ * Cancels the owner's own pending promotion payment (e.g. wrong reference
+ * typed). Only PENDING payments can be cancelled; approved/rejected rows
+ * are immutable.
+ */
+export const cancelPromotionPayment = (businessId: string, requestId: string, paymentId: string) =>
+  request<PromotionPaymentRequest>(
+    `/businesses/${businessId}/promotion-requests/${encodeURIComponent(requestId)}/payment-requests/${encodeURIComponent(paymentId)}/cancel`,
+    { method: 'POST', auth: true },
+  );
+
+/**
+ * Cancels the owner's own promotion request while it is PENDING or APPROVED.
+ * Any pending payment on the request is cancelled with it. Active, rejected,
+ * expired or already-cancelled requests cannot be cancelled.
+ */
+export const cancelPromotionRequest = (businessId: string, requestId: string) =>
+  request<PromotionRequest>(`/businesses/${businessId}/promotion-requests/${encodeURIComponent(requestId)}/cancel`, {
+    method: 'POST',
+    auth: true,
+  });
+
+/**
  * Submits promotion payment proof for admin verification. The body carries
  * only the chosen method, the transaction reference, the uploaded receipt's
  * storage key, and the owner's optional note/payment date — amount and

@@ -1936,6 +1936,89 @@ export async function buildApp(): Promise<FastifyInstance> {
     return { data: payments.map(ownerPromotionPayment) };
   });
 
+  /**
+   * Owner-side cancellation of their own PENDING promotion payment (e.g.
+   * wrong reference typed). Never touches approved/rejected rows. Mirrors
+   * the subscription payment-request cancel endpoint.
+   */
+  app.post(
+    '/api/v1/businesses/:id/promotion-requests/:requestId/payment-requests/:paymentId/cancel',
+    { preHandler: roles('BUSINESS_OWNER') },
+    async (q, r) => {
+      const id = (q.params as { id: string }).id;
+      const requestId = (q.params as { requestId: string }).requestId;
+      const paymentId = (q.params as { paymentId: string }).paymentId;
+      await ownedBusiness(q, id);
+      const payment = await prisma.promotionPaymentRequest.findFirst({
+        where: { id: paymentId, promotionRequestId: requestId, businessId: id },
+      });
+      if (!payment) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Promotion payment not found' } });
+      if (payment.status !== 'PENDING')
+        return r.status(409).send({ error: { code: 'NOT_PENDING', message: 'Only a pending promotion payment can be cancelled' } });
+      const cancelled = await prisma.promotionPaymentRequest.update({
+        where: { id: payment.id },
+        data: { status: 'CANCELLED', reviewedAt: new Date() },
+        include: { paymentMethod: { select: { id: true, name: true, type: true } } },
+      });
+      await prisma.auditLog.create({
+        data: {
+          actorId: currentUser(q).id,
+          action: 'PROMOTION_PAYMENT_CANCELLED',
+          entityType: 'PromotionPaymentRequest',
+          entityId: payment.id,
+          metadata: { businessId: id, promotionRequestId: requestId },
+        },
+      });
+      return { data: ownerPromotionPayment(cancelled) };
+    },
+  );
+
+  /**
+   * Owner-side cancellation of their own promotion request while it is still
+   * PENDING (awaiting admin review) or APPROVED (awaiting payment). An ACTIVE,
+   * REJECTED, EXPIRED or already-CANCELLED request cannot be cancelled.
+   * Any PENDING payment on the request is cancelled with it, so no orphaned
+   * payment stays under review for a dead request.
+   */
+  app.post('/api/v1/businesses/:id/promotion-requests/:requestId/cancel', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    const requestId = (q.params as { requestId: string }).requestId;
+    await ownedBusiness(q, id);
+    const target = await prisma.promotionRequest.findFirst({ where: { id: requestId, businessId: id } });
+    if (!target) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Promotion request not found' } });
+    if (target.status !== 'PENDING' && target.status !== 'APPROVED')
+      return r.status(409).send({ error: { code: 'NOT_CANCELLABLE', message: 'Only a pending or approved promotion request can be cancelled' } });
+    const now = new Date();
+    const cancelled = await prisma.$transaction(async (tx) => {
+      await tx.promotionPaymentRequest.updateMany({
+        where: { promotionRequestId: requestId, status: 'PENDING' },
+        data: { status: 'CANCELLED', reviewedAt: now },
+      });
+      return tx.promotionRequest.update({
+        where: { id: requestId },
+        data: { status: 'CANCELLED' },
+        include: {
+          promotion: { select: { id: true, name: true, slug: true, priceMinor: true, currency: true, durationDays: true } },
+          payments: {
+            include: { paymentMethod: { select: { id: true, name: true, type: true } } },
+            orderBy: { submittedAt: 'desc' },
+            take: 1,
+          },
+        },
+      });
+    });
+    await prisma.auditLog.create({
+      data: {
+        actorId: currentUser(q).id,
+        action: 'PROMOTION_REQUEST_CANCELLED',
+        entityType: 'PromotionRequest',
+        entityId: requestId,
+        metadata: { businessId: id, previousStatus: target.status },
+      },
+    });
+    return { data: ownerPromotionRequest(cancelled) };
+  });
+
   /* ------------------- Manual subscription payments (Phase 7B) ------- */
 
   /** Public shape of a pay-in channel for businesses (no admin-only data). */
