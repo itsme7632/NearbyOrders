@@ -7,8 +7,8 @@ import {
   EmptyState,
   ErrorState,
   FilterSelect,
-  LoadingState,
   PageHeader,
+  Skeleton,
   SearchInput,
   Toolbar,
   fmtDateTime,
@@ -112,6 +112,7 @@ export function AuditLog() {
   return (
     <>
       <PageHeader
+        kicker="System"
         title="Audit log"
         subtitle="What happened across the platform, and who did it."
       />
@@ -129,9 +130,14 @@ export function AuditLog() {
             onChange={onActionChange}
             options={actionOptions}
           />
+          <span className="nb-toolbar-end">
+            <span className="nb-result-count" aria-live="polite">
+              {loading ? 'Loading…' : `${filtered.length} ${filtered.length === 1 ? 'entry' : 'entries'}`}
+            </span>
+          </span>
         </Toolbar>
         {loading ? (
-          <LoadingState label="Loading audit log..." />
+          <Skeleton rows={8} height={56} />
         ) : error ? (
           <ErrorState message={error} onRetry={reload} />
         ) : entries.length === 0 ? (
@@ -152,13 +158,13 @@ export function AuditLog() {
                 const meta = metadataSummary(entry.metadata);
                 return (
                   <li key={entry.id} className="nb-timeline-item">
-                    <span className="nb-timeline-time">{fmtDateTime(entry.createdAt)}</span>
+                    <span className="nb-timeline-time nb-mono">{fmtDateTime(entry.createdAt)}</span>
                     <div className="nb-timeline-body">
                       <span className="nb-timeline-actor">
                         {entry.actor ? entry.actor.email || entry.actor.id : 'system'}
                       </span>{' '}
                       <Badge value={entry.action} tone="info" />{' '}
-                      <span className="nb-timeline-target">
+                      <span className="nb-timeline-target nb-mono">
                         {entry.entityType}/{entry.entityId.slice(0, 8)}
                       </span>
                       {meta ? <div className="nb-timeline-target">{meta}</div> : null}

@@ -10,6 +10,7 @@ import {
   Avatar,
   Badge,
   ConfirmDialog,
+  Consequence,
   DataTable,
   DefinitionList,
   Drawer,
@@ -24,6 +25,7 @@ import {
   PageHeader,
   SearchInput,
   SectionTitle,
+  Skeleton,
   Tabs,
   Toolbar,
   statusLabel,
@@ -78,7 +80,26 @@ function UserDrawer(props: {
   };
 
   return (
-    <Drawer title={name} subtitle={user.email} onClose={props.onClose}>
+    <Drawer
+      title={name}
+      subtitle={user.email}
+      meta={`User · ${user.id.slice(0, 8)}`}
+      status={<Badge value={user.isSuspended ? 'SUSPENDED' : 'ACTIVE'} />}
+      onClose={props.onClose}
+      actions={
+        user.role !== 'ADMIN' ? (
+          user.isSuspended ? (
+            <button type="button" className="nb-btn nb-btn-secondary" disabled={busy} onClick={runSuspension}>
+              {busy ? 'Working…' : 'Reinstate account'}
+            </button>
+          ) : (
+            <button type="button" className="nb-btn nb-btn-danger" disabled={busy} onClick={() => setConfirmSuspend(true)}>
+              Suspend account
+            </button>
+          )
+        ) : undefined
+      }
+    >
       <SectionTitle>Identity</SectionTitle>
       <DefinitionList
         items={[
@@ -86,10 +107,6 @@ function UserDrawer(props: {
           { label: 'Email', value: user.email },
           { label: 'Phone', value: user.phone ?? 'Not provided' },
           { label: 'Role', value: statusLabel(user.role) },
-          {
-            label: 'Status',
-            value: <Badge value={user.isSuspended ? 'SUSPENDED' : 'ACTIVE'} />,
-          },
           { label: 'Joined', value: fmtDateTime(user.createdAt) },
         ]}
       />
@@ -103,29 +120,11 @@ function UserDrawer(props: {
         ]}
       />
       {error ? <FormError message={error} /> : null}
-      {user.role !== 'ADMIN' ? (
-        <>
-          <SectionTitle>Account actions</SectionTitle>
-          {user.isSuspended ? (
-            <button
-              type="button"
-              className="nb-btn nb-btn-secondary"
-              disabled={busy}
-              onClick={runSuspension}
-            >
-              {busy ? 'Working…' : 'Reinstate account'}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="nb-btn nb-btn-danger"
-              disabled={busy}
-              onClick={() => setConfirmSuspend(true)}
-            >
-              Suspend account
-            </button>
-          )}
-        </>
+      {user.role !== 'ADMIN' && !user.isSuspended ? (
+        <Consequence>
+          <strong>Suspending this account</strong> blocks sign-in immediately. The owner keeps
+          read access to past records but cannot operate the business until reinstated.
+        </Consequence>
       ) : null}
       {confirmSuspend ? (
         <ConfirmDialog
@@ -195,8 +194,13 @@ export function Users() {
   return (
     <div>
       <PageHeader
+        kicker="System"
         title="Users"
-        subtitle={users.data ? `${users.data.length} users` : undefined}
+        subtitle={
+          users.data
+            ? `${users.data.length} ${users.data.length === 1 ? 'account' : 'accounts'}`
+            : 'Search accounts by email or name.'
+        }
       />
       <Toolbar>
         <form
@@ -210,9 +214,14 @@ export function Users() {
             label="Search users"
           />
         </form>
+        <span className="nb-toolbar-end">
+          <span className="nb-result-count" aria-live="polite">
+            {users.loading ? 'Loading…' : `${users.data?.length ?? 0} results`}
+          </span>
+        </span>
       </Toolbar>
       {users.loading ? (
-        <LoadingState label="Loading users…" />
+        <Skeleton rows={6} />
       ) : users.error ? (
         <ErrorState message={users.error} onRetry={users.reload} />
       ) : (
@@ -372,8 +381,87 @@ function BusinessDrawer(props: {
     }
   };
 
+  /* Pinned decision actions: the verification decision is primary when an
+     application is pending, otherwise the business status decision. The
+     non-primary set stays reachable inside the panel body. */
+  const verificationActions = (
+    <>
+      <button
+        type="button"
+        className="nb-btn"
+        disabled={decisionBusy !== null}
+        onClick={() => runDecision('approve')}
+      >
+        {decisionBusy === 'approve' ? 'Working…' : 'Approve verification'}
+      </button>
+      <button
+        type="button"
+        className="nb-btn nb-btn-secondary"
+        disabled={decisionBusy !== null}
+        onClick={() => runDecision('changes')}
+      >
+        {decisionBusy === 'changes' ? 'Working…' : 'Request changes'}
+      </button>
+      <button
+        type="button"
+        className="nb-btn nb-btn-danger"
+        disabled={decisionBusy !== null}
+        onClick={() => runDecision('reject')}
+      >
+        {decisionBusy === 'reject' ? 'Working…' : 'Reject verification'}
+      </button>
+    </>
+  );
+
+  const statusActions = (
+    <FormActions>
+      {b.status !== 'APPROVED' ? (
+        <button
+          type="button"
+          className="nb-btn"
+          disabled={busy}
+          onClick={() => runStatus('APPROVED')}
+        >
+          {busy ? 'Working…' : b.status === 'SUSPENDED' ? 'Reinstate business' : 'Approve business'}
+        </button>
+      ) : null}
+      {b.status !== 'SUSPENDED' && b.status !== 'ARCHIVED' ? (
+        <button
+          type="button"
+          className="nb-btn nb-btn-danger"
+          disabled={busy}
+          onClick={() => setConfirm('suspend')}
+        >
+          Suspend business
+        </button>
+      ) : null}
+      {b.status !== 'REJECTED' ? (
+        <button
+          type="button"
+          className="nb-btn nb-btn-secondary"
+          disabled={busy}
+          onClick={() => setConfirm('reject')}
+        >
+          Reject business
+        </button>
+      ) : null}
+    </FormActions>
+  );
+
   return (
-    <Drawer title={b.name} subtitle={b.slug} onClose={props.onClose}>
+    <Drawer
+      title={b.name}
+      subtitle={b.slug}
+      meta={`Business · ${b.id.slice(0, 8)}`}
+      status={
+        <>
+          <Badge value={b.status} />
+          {verificationBadge(b)}
+        </>
+      }
+      onClose={props.onClose}
+      actions={b.verificationApplicationId ? verificationActions : statusActions}
+    >
       <SectionTitle>Profile</SectionTitle>
       <DefinitionList
         items={[
@@ -453,12 +541,15 @@ function BusinessDrawer(props: {
       <SectionTitle>Verification</SectionTitle>
       {b.verificationApplicationId ? (
         <>
-          <p className="nb-hint" style={{ marginTop: 0 }}>
-            Approving grants the verified badge and makes the business eligible
-            for a subscription trial. The reviewer message is shown to the
-            business owner; admin notes stay internal.
-          </p>
-          <Field label="Reviewer message">
+          <Consequence>
+            <strong>Approving</strong> grants the verified badge and makes the
+            business eligible for a subscription trial. The reviewer message is
+            shown to the business owner; admin notes stay internal.
+          </Consequence>
+          <Field
+            label="Reviewer message"
+            hint="Shown to the business owner. Required when requesting changes or rejecting."
+          >
             <textarea
               rows={2}
               value={reviewerMessage}
@@ -466,7 +557,7 @@ function BusinessDrawer(props: {
               placeholder="Shown to the business owner"
             />
           </Field>
-          <Field label="Admin notes">
+          <Field label="Admin notes" hint="Internal only, never shown to the business.">
             <textarea
               rows={2}
               value={adminNotes}
@@ -475,37 +566,12 @@ function BusinessDrawer(props: {
             />
           </Field>
           {decisionError ? <FormError message={decisionError} /> : null}
-          <FormActions>
-            <button
-              type="button"
-              className="nb-btn"
-              disabled={decisionBusy !== null}
-              onClick={() => runDecision('approve')}
-            >
-              {decisionBusy === 'approve' ? 'Working…' : 'Approve verification'}
-            </button>
-            <button
-              type="button"
-              className="nb-btn nb-btn-secondary"
-              disabled={decisionBusy !== null}
-              onClick={() => runDecision('changes')}
-            >
-              {decisionBusy === 'changes' ? 'Working…' : 'Request changes'}
-            </button>
-            <button
-              type="button"
-              className="nb-btn nb-btn-danger"
-              disabled={decisionBusy !== null}
-              onClick={() => runDecision('reject')}
-            >
-              {decisionBusy === 'reject' ? 'Working…' : 'Reject verification'}
-            </button>
-          </FormActions>
         </>
       ) : (
-        <p className="nb-hint" style={{ marginTop: 0 }}>
-          No verification application submitted.
-        </p>
+        <EmptyState
+          title="No verification application"
+          body="This business has not submitted a verification application."
+        />
       )}
       <div style={{ marginTop: 12 }}>
         <button
@@ -519,43 +585,19 @@ function BusinessDrawer(props: {
       </div>
 
       <SectionTitle>Business status</SectionTitle>
-      <p className="nb-hint" style={{ marginTop: 0 }}>
-        Suspending or rejecting removes the business from customer discovery
-        immediately.
-      </p>
+      {b.verificationApplicationId ? (
+        <p className="nb-hint" style={{ marginTop: 0 }}>
+          Business status actions are available below. The pending verification
+          decision is pinned at the bottom of this panel.
+        </p>
+      ) : (
+        <Consequence>
+          <strong>Suspending or rejecting</strong> removes the business from
+          customer discovery immediately.
+        </Consequence>
+      )}
       {error ? <FormError message={error} /> : null}
-      <FormActions>
-        {b.status !== 'APPROVED' ? (
-          <button
-            type="button"
-            className="nb-btn"
-            disabled={busy}
-            onClick={() => runStatus('APPROVED')}
-          >
-            {busy ? 'Working…' : b.status === 'SUSPENDED' ? 'Reinstate business' : 'Approve business'}
-          </button>
-        ) : null}
-        {b.status !== 'SUSPENDED' && b.status !== 'ARCHIVED' ? (
-          <button
-            type="button"
-            className="nb-btn nb-btn-danger"
-            disabled={busy}
-            onClick={() => setConfirm('suspend')}
-          >
-            Suspend business
-          </button>
-        ) : null}
-        {b.status !== 'REJECTED' ? (
-          <button
-            type="button"
-            className="nb-btn nb-btn-secondary"
-            disabled={busy}
-            onClick={() => setConfirm('reject')}
-          >
-            Reject business
-          </button>
-        ) : null}
-      </FormActions>
+      {b.verificationApplicationId ? statusActions : null}
 
       {confirm === 'suspend' ? (
         <ConfirmDialog
@@ -607,9 +649,9 @@ export function Businesses(props: {
       label: 'Business',
       render: (b) => (
         <span>
-          <span style={{ display: 'block', fontWeight: 600 }}>{b.name}</span>
-          <span style={muted}>
-            {b.category?.name ?? 'No category'} · {b.city}
+          <span className="nb-cell-main">{b.name}</span>
+          <span className="nb-cell-sub">
+            {[b.category?.name ?? 'No category', b.city].filter(Boolean).join(' · ')}
           </span>
         </span>
       ),
@@ -622,10 +664,8 @@ export function Businesses(props: {
         const name = fullName(b.owner.firstName, b.owner.lastName) || 'N/A';
         return (
           <span>
-            <span style={{ display: 'block' }}>{name}</span>
-            <span className="nb-mono" style={muted}>
-              {b.owner.email}
-            </span>
+            <span className="nb-cell-main">{name}</span>
+            <span className="nb-cell-sub nb-mono">{b.owner.email}</span>
           </span>
         );
       },
@@ -686,8 +726,13 @@ export function Businesses(props: {
   return (
     <div>
       <PageHeader
+        kicker="Marketplace"
         title="Businesses"
-        subtitle={businesses.data ? `${businesses.data.length} businesses` : undefined}
+        subtitle={
+          businesses.data
+            ? `${businesses.data.length} ${businesses.data.length === 1 ? 'business' : 'businesses'} on the platform`
+            : undefined
+        }
       />
       <Toolbar>
         <form onSubmit={(e) => e.preventDefault()} style={{ display: 'contents' }}>
@@ -710,9 +755,14 @@ export function Businesses(props: {
           onChange={setVerificationStatus}
           options={VERIFICATION_OPTIONS}
         />
+        <span className="nb-toolbar-end">
+          <span className="nb-result-count" aria-live="polite">
+            {businesses.loading ? 'Loading…' : `${businesses.data?.length ?? 0} results`}
+          </span>
+        </span>
       </Toolbar>
       {businesses.loading ? (
-        <LoadingState label="Loading businesses…" />
+        <Skeleton rows={6} />
       ) : businesses.error ? (
         <ErrorState message={businesses.error} onRetry={businesses.reload} />
       ) : (
@@ -864,8 +914,9 @@ export function Categories() {
   return (
     <div>
       <PageHeader
+        kicker="Marketplace"
         title="Categories"
-        subtitle={cats.data ? `${cats.data.length} categories` : undefined}
+        subtitle="Inactive categories disappear from customer discovery; existing businesses keep their links."
         actions={
           <button
             type="button"
@@ -881,12 +932,8 @@ export function Categories() {
         }
       />
       {error ? <FormError message={error} /> : null}
-      <p className="nb-hint" style={{ marginTop: 0 }}>
-        Inactive categories disappear from customer discovery; existing
-        businesses keep their links.
-      </p>
       {cats.loading ? (
-        <LoadingState label="Loading categories…" />
+        <Skeleton rows={5} />
       ) : cats.error ? (
         <ErrorState message={cats.error} onRetry={cats.reload} />
       ) : (
@@ -1002,7 +1049,24 @@ function ReviewDrawer(props: {
   };
 
   return (
-    <Drawer title="Review" subtitle={r.business.name} onClose={props.onClose}>
+    <Drawer
+      title="Review"
+      subtitle={r.business.name}
+      meta={`Review · ${r.id.slice(0, 8)}`}
+      status={r.isHidden ? <Badge value="HIDDEN" /> : <Badge value="PUBLIC" tone="ok" />}
+      onClose={props.onClose}
+      actions={
+        r.isHidden ? (
+          <button type="button" className="nb-btn nb-btn-secondary" disabled={busy} onClick={toggle}>
+            {busy ? 'Working…' : 'Restore review'}
+          </button>
+        ) : (
+          <button type="button" className="nb-btn nb-btn-danger" disabled={busy} onClick={toggle}>
+            {busy ? 'Working…' : 'Hide review'}
+          </button>
+        )
+      }
+    >
       <DefinitionList
         items={[
           { label: 'Business', value: r.business.name },
@@ -1039,27 +1103,12 @@ function ReviewDrawer(props: {
       <SectionTitle>Comment</SectionTitle>
       <p>{r.comment ?? 'No comment'}</p>
       {error ? <FormError message={error} /> : null}
-      <div style={{ marginTop: 12 }}>
-        {r.isHidden ? (
-          <button
-            type="button"
-            className="nb-btn nb-btn-secondary"
-            disabled={busy}
-            onClick={toggle}
-          >
-            {busy ? 'Working…' : 'Restore review'}
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="nb-btn nb-btn-danger"
-            disabled={busy}
-            onClick={toggle}
-          >
-            {busy ? 'Working…' : 'Hide review'}
-          </button>
-        )}
-      </div>
+      {!r.isHidden ? (
+        <Consequence info>
+          <strong>Hiding this review</strong> removes it from customer discovery
+          immediately. The customer is not notified.
+        </Consequence>
+      ) : null}
     </Drawer>
   );
 }
@@ -1162,8 +1211,9 @@ export function Reviews(props: { initialStatus?: '' | 'visible' | 'hidden' }) {
   return (
     <div>
       <PageHeader
+        kicker="Operations"
         title="Reviews"
-        subtitle={reviews.data ? `${reviews.data.length} reviews` : undefined}
+        subtitle="Customer reviews. Hidden reviews are removed from customer discovery."
       />
       <Toolbar>
         <Tabs
@@ -1171,10 +1221,15 @@ export function Reviews(props: { initialStatus?: '' | 'visible' | 'hidden' }) {
           active={status}
           onChange={(k) => setStatus(k as '' | 'visible' | 'hidden')}
         />
+        <span className="nb-toolbar-end">
+          <span className="nb-result-count" aria-live="polite">
+            {reviews.loading ? 'Loading…' : `${reviews.data?.length ?? 0} results`}
+          </span>
+        </span>
       </Toolbar>
       {actionError ? <FormError message={actionError} /> : null}
       {reviews.loading ? (
-        <LoadingState label="Loading reviews…" />
+        <Skeleton rows={6} />
       ) : reviews.error ? (
         <ErrorState message={reviews.error} onRetry={reviews.reload} />
       ) : (

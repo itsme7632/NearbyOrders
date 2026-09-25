@@ -82,7 +82,7 @@ describe('admin control center shell', () => {
     }
     for (const label of [
       'Dashboard', 'Users', 'Businesses', 'Verification', 'Orders', 'Bookings',
-      'Reviews', 'Categories', 'Subscriptions', 'Plans', 'Payment requests',
+      'Reviews', 'Categories', 'Subscriptions', 'Plans', 'Payment review',
       'Payment methods', 'Promotions', 'Audit log',
     ]) {
       expect(c.querySelector('.nb-nav')!.textContent).toContain(label);

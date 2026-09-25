@@ -13,12 +13,15 @@ import {
   ErrorState,
   Drawer,
   ConfirmDialog,
+  Consequence,
   Modal,
   Field,
   FormError,
   FormActions,
+  FormSection,
   DefinitionList,
   SectionTitle,
+  Skeleton,
   useAsync,
   fmtMoney,
   fmtDate,
@@ -97,10 +100,17 @@ export function Subscriptions() {
 
   return (
     <>
-      <PageHeader title="Subscriptions" subtitle={subtitle} />
-      <Tabs tabs={SUBSCRIPTION_TABS} active={status} onChange={(k) => { setStatus(k); setSelected(null); }} />
+      <PageHeader kicker="Billing" title="Subscriptions" subtitle={subtitle} />
+      <Toolbar>
+        <Tabs tabs={SUBSCRIPTION_TABS} active={status} onChange={(k) => { setStatus(k); setSelected(null); }} />
+        <span className="nb-toolbar-end">
+          <span className="nb-result-count" aria-live="polite">
+            {loading ? 'Loading…' : `${(data ?? []).length} in view`}
+          </span>
+        </span>
+      </Toolbar>
       {loading ? (
-        <LoadingState label="Loading subscriptions…" />
+        <Skeleton rows={6} />
       ) : error ? (
         <ErrorState message={error} onRetry={reload} />
       ) : (
@@ -113,23 +123,30 @@ export function Subscriptions() {
         />
       )}
       {selected ? (
-        <Drawer title={selected.business.name} subtitle="Subscription details" onClose={() => setSelected(null)}>
+        <Drawer
+          title={selected.business.name}
+          subtitle={selected.plan ? selected.plan.name : 'No plan'}
+          meta={`Subscription · ${selected.id.slice(0, 8)}`}
+          status={<Badge value={selected.status} />}
+          onClose={() => setSelected(null)}
+        >
+          <SectionTitle>Subscription details</SectionTitle>
           <DefinitionList
             items={[
               { label: 'Business', value: selected.business.name },
               { label: 'Plan', value: selected.plan ? selected.plan.name : 'N/A' },
               {
                 label: 'Price',
-                value: selected.plan ? fmtMoney(selected.plan.monthlyPriceMinor, selected.plan.currency) : 'N/A',
+                value: selected.plan ? <strong>{fmtMoney(selected.plan.monthlyPriceMinor, selected.plan.currency)}</strong> : 'N/A',
               },
-              { label: 'Status', value: <Badge value={selected.status} /> },
               { label: 'Started', value: fmtDate(selected.createdAt) },
               { label: 'Renews / ended', value: fmtDate(selected.currentPeriodEndAt) },
             ]}
           />
-          <p className="nb-plan-meta">
-            Subscriptions are read only here. Changes to a subscription happen through the payment request review flow.
-          </p>
+          <Consequence>
+            Subscriptions are read-only here. Changes happen through the
+            payment review flow so every change leaves an audit trail.
+          </Consequence>
         </Drawer>
       ) : null}
     </>
@@ -266,45 +283,51 @@ function PlanDialog(props: {
         }}
       >
         {formError ? <FormError message={formError} /> : null}
-        <Field label="Name">
-          <input value={name} maxLength={80} placeholder="Business Plus" onChange={(e) => setName(e.target.value)} required />
-        </Field>
-        <Field label="Slug" hint={p ? 'The slug is locked after creation.' : 'Optional. Generated automatically when left blank.'}>
-          <input value={slug} maxLength={80} onChange={(e) => setSlug(e.target.value)} disabled={!!p} />
-        </Field>
-        <Field label="Description">
-          <textarea value={description} placeholder="Short pitch shown on the plans screen." onChange={(e) => setDescription(e.target.value)} />
-        </Field>
-        <Field label="Price (PKR per month)">
-          <input
-            value={priceRupees}
-            inputMode="decimal"
-            placeholder="2999"
-            onChange={(e) => setPriceRupees(e.target.value)}
-            required
-          />
-        </Field>
-        <Field label="Currency">
-          <input value={currency} maxLength={8} onChange={(e) => setCurrency(e.target.value)} />
-        </Field>
-        <Field label="Billing interval">
-          <input value={billingInterval} maxLength={24} onChange={(e) => setBillingInterval(e.target.value)} />
-        </Field>
-        <Field label="Trial days">
-          <input value={trialDays} inputMode="numeric" onChange={(e) => setTrialDays(e.target.value)} />
-        </Field>
-        <Field label="Benefits (one per line)">
-          <textarea value={benefitsText} rows={4} onChange={(e) => setBenefitsText(e.target.value)} />
-        </Field>
-        <Field label="Display order">
-          <input value={displayOrder} inputMode="numeric" onChange={(e) => setDisplayOrder(e.target.value)} />
-        </Field>
-        <Field label="Highlighted (recommended card)">
-          <input type="checkbox" checked={isHighlighted} onChange={(e) => setIsHighlighted(e.target.checked)} />
-        </Field>
-        <Field label="Active">
-          <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
-        </Field>
+        <FormSection title="Basics" description="Identity of the plan shown to businesses.">
+          <Field label="Name" required>
+            <input value={name} maxLength={80} placeholder="Business Plus" onChange={(e) => setName(e.target.value)} required />
+          </Field>
+          <Field label="Slug" hint={p ? 'The slug is locked after creation.' : 'Optional. Generated automatically when left blank.'}>
+            <input value={slug} maxLength={80} onChange={(e) => setSlug(e.target.value)} disabled={!!p} />
+          </Field>
+          <Field label="Description">
+            <textarea value={description} placeholder="Short pitch shown on the plans screen." onChange={(e) => setDescription(e.target.value)} />
+          </Field>
+        </FormSection>
+        <FormSection title="Pricing" description="Charges apply to future subscriptions when plans change.">
+          <Field label="Price (PKR per month)" required>
+            <input
+              value={priceRupees}
+              inputMode="decimal"
+              placeholder="2999"
+              onChange={(e) => setPriceRupees(e.target.value)}
+              required
+            />
+          </Field>
+          <Field label="Currency">
+            <input value={currency} maxLength={8} onChange={(e) => setCurrency(e.target.value)} />
+          </Field>
+          <Field label="Billing interval">
+            <input value={billingInterval} maxLength={24} onChange={(e) => setBillingInterval(e.target.value)} />
+          </Field>
+          <Field label="Trial days">
+            <input value={trialDays} inputMode="numeric" onChange={(e) => setTrialDays(e.target.value)} />
+          </Field>
+        </FormSection>
+        <FormSection title="Presentation">
+          <Field label="Benefits (one per line)">
+            <textarea value={benefitsText} rows={4} onChange={(e) => setBenefitsText(e.target.value)} />
+          </Field>
+          <Field label="Display order">
+            <input value={displayOrder} inputMode="numeric" onChange={(e) => setDisplayOrder(e.target.value)} />
+          </Field>
+          <Field label="Highlighted (recommended card)">
+            <input type="checkbox" checked={isHighlighted} onChange={(e) => setIsHighlighted(e.target.checked)} />
+          </Field>
+          <Field label="Active">
+            <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+          </Field>
+        </FormSection>
         <FormActions>
           <button type="button" className="nb-btn nb-btn-secondary" onClick={props.onClose} disabled={busy}>
             Cancel
@@ -365,6 +388,7 @@ export function SubscriptionPlans() {
     <>
       <PageHeader
         title="Plans"
+        kicker="Billing"
         subtitle="Plans are read live from the API. Changes apply to future subscriptions."
         actions={
           <button type="button" className="nb-btn" onClick={() => setDialog({ plan: null })}>
@@ -374,7 +398,7 @@ export function SubscriptionPlans() {
       />
       {actionError ? <FormError message={actionError} /> : null}
       {loading ? (
-        <LoadingState label="Loading subscription plans…" />
+        <Skeleton rows={3} height={120} />
       ) : error ? (
         <ErrorState message={error} onRetry={reload} />
       ) : (plans ?? []).length === 0 ? (
@@ -500,13 +524,37 @@ function PaymentRequestDrawer(props: { request: api.AdminPaymentRequest; onDecid
 
   return (
     <>
-      <Drawer title={`Payment from ${r.business.name}`} subtitle="Review manual subscription payment" onClose={props.onClose}>
+      <Drawer
+        title={`Payment from ${r.business.name}`}
+        subtitle={r.plan ? `${r.plan.name} · ${fmtMoney(r.amountMinor, r.currency)}` : fmtMoney(r.amountMinor, r.currency)}
+        meta={`Payment · ${r.id.slice(0, 8)}`}
+        status={<Badge value={r.status} />}
+        onClose={props.onClose}
+        actions={
+          isPending && !rejecting ? (
+            <>
+              <button
+                type="button"
+                className="nb-btn nb-btn-danger"
+                onClick={() => setRejecting(true)}
+                disabled={busy}
+              >
+                Reject payment
+              </button>
+              <button type="button" className="nb-btn" onClick={() => setConfirmApprove(true)} disabled={busy}>
+                Approve payment
+              </button>
+            </>
+          ) : undefined
+        }
+      >
         {actionError ? <FormError message={actionError} /> : null}
+        <SectionTitle>Payment details</SectionTitle>
         <DefinitionList
           items={[
             { label: 'Business', value: r.business.name },
             { label: 'Plan', value: r.plan ? r.plan.name : 'N/A' },
-            { label: 'Amount', value: fmtMoney(r.amountMinor, r.currency) },
+            { label: 'Amount', value: <strong>{fmtMoney(r.amountMinor, r.currency)}</strong> },
             {
               label: 'Payment method',
               value: r.paymentMethod ? `${r.paymentMethod.name} (${statusLabel(r.paymentMethod.type)})` : 'N/A',
@@ -518,7 +566,6 @@ function PaymentRequestDrawer(props: { request: api.AdminPaymentRequest; onDecid
             { label: 'Paid date', value: r.paidAt ? fmtDate(r.paidAt) : 'Not provided' },
             { label: 'Submitted', value: fmtDateTime(r.createdAt) },
             ...(r.note ? [{ label: 'Business note', value: r.note }] : []),
-            { label: 'Status', value: <Badge value={r.status} /> },
             ...(r.reviewedAt
               ? [
                   {
@@ -540,13 +587,14 @@ function PaymentRequestDrawer(props: { request: api.AdminPaymentRequest; onDecid
         {isPending ? (
           <>
             <SectionTitle>Decision</SectionTitle>
-            <p className="nb-plan-meta">
-              Approving a payment activates the business subscription server side. Rejections require a reason that is
+            <Consequence>
+              <strong>Approving this payment</strong> activates the business
+              subscription immediately. A rejection requires a reason, which is
               shown to the business owner.
-            </p>
+            </Consequence>
             {rejecting ? (
               <>
-                <Field label="Rejection reason (required)">
+                <Field label="Rejection reason" hint="Shown to the business owner. Minimum 4 characters." required>
                   <input
                     aria-label="Rejection reason"
                     value={reason}
@@ -568,21 +616,7 @@ function PaymentRequestDrawer(props: { request: api.AdminPaymentRequest; onDecid
                   </button>
                 </FormActions>
               </>
-            ) : (
-              <FormActions>
-                <button
-                  type="button"
-                  className="nb-btn nb-btn-danger"
-                  onClick={() => setRejecting(true)}
-                  disabled={busy}
-                >
-                  Reject payment
-                </button>
-                <button type="button" className="nb-btn" onClick={() => setConfirmApprove(true)} disabled={busy}>
-                  Approve payment
-                </button>
-              </FormActions>
-            )}
+            ) : null}
           </>
         ) : null}
       </Drawer>
@@ -615,22 +649,38 @@ export function PaymentRequests(props: { initialStatus?: string; initialBusiness
   );
 
   const columns: Column<api.AdminPaymentRequest>[] = [
-    { key: 'business', header: 'Business', render: (r) => r.business.name },
+    {
+      key: 'business',
+      header: 'Business',
+      render: (r) => (
+        <>
+          <span className="nb-cell-main">{r.business.name}</span>
+          <span className="nb-cell-sub nb-mono">{r.business.id.slice(0, 8)}</span>
+        </>
+      ),
+    },
     { key: 'plan', header: 'Plan', render: (r) => (r.plan ? r.plan.name : 'N/A') },
     { key: 'amount', header: 'Amount', render: (r) => fmtMoney(r.amountMinor, r.currency) },
-    { key: 'method', header: 'Method', render: (r) => (r.paymentMethod ? r.paymentMethod.name : 'N/A') },
     {
-      key: 'reference',
-      header: 'Reference',
-      render: (r) => (r.transactionReference ? <span className="nb-mono">{r.transactionReference}</span> : 'N/A'),
+      key: 'method',
+      header: 'Method',
+      render: (r) => (
+        <>
+          <span className="nb-cell-main">{r.paymentMethod ? r.paymentMethod.name : 'N/A'}</span>
+          <span className="nb-cell-sub">
+            {r.transactionReference ? <span className="nb-mono">{r.transactionReference}</span> : 'No reference'}
+          </span>
+        </>
+      ),
     },
-    { key: 'submitted', header: 'Submitted', render: (r) => fmtDateTime(r.createdAt) },
+    { key: 'submitted', header: 'Submitted', render: (r) => fmtDateTime(r.createdAt), hideBelow: 'md' },
     { key: 'status', header: 'Status', render: (r) => <Badge value={r.status} /> },
   ];
 
   return (
     <>
-      <PageHeader title="Payment requests" subtitle="Review manual subscription payments." />
+      <PageHeader kicker="Billing" title="Payment review" subtitle="Review manual subscription payments." />
+      <Toolbar>
       <Tabs
         tabs={PAYMENT_REQUEST_TABS}
         active={tab}
@@ -639,6 +689,12 @@ export function PaymentRequests(props: { initialStatus?: string; initialBusiness
           setSelected(null);
         }}
       />
+      <span className="nb-toolbar-end">
+        <span className="nb-result-count" aria-live="polite">
+          {loading ? 'Loading…' : `${(data ?? []).length} in view`}
+        </span>
+      </span>
+      </Toolbar>
       <Toolbar>
         <SearchInput
           label="Business ID"
@@ -663,7 +719,7 @@ export function PaymentRequests(props: { initialStatus?: string; initialBusiness
         ) : null}
       </Toolbar>
       {loading ? (
-        <LoadingState label="Loading payment requests…" />
+        <Skeleton rows={6} />
       ) : error ? (
         <ErrorState message={error} onRetry={reload} />
       ) : (
@@ -791,7 +847,8 @@ function PaymentMethodDialog(props: {
         }}
       >
         {formError ? <FormError message={formError} /> : null}
-        <Field label="Display name">
+        <FormSection title="Method">
+        <Field label="Display name" required>
           <input
             value={name}
             maxLength={80}
@@ -808,6 +865,8 @@ function PaymentMethodDialog(props: {
             <option value="OTHER">Other</option>
           </select>
         </Field>
+        </FormSection>
+        <FormSection title="Account details" description="Shown to businesses when they pay manually.">
         <Field label="Account title">
           <input
             value={accountTitle}
@@ -837,6 +896,7 @@ function PaymentMethodDialog(props: {
         <Field label="QR image URL">
           <input value={qrImageUrl} maxLength={500} onChange={(e) => setQrImageUrl(e.target.value)} />
         </Field>
+        </FormSection>
         <Field label="Display order">
           <input value={displayOrder} inputMode="numeric" onChange={(e) => setDisplayOrder(e.target.value)} />
         </Field>
@@ -912,7 +972,7 @@ export function PaymentMethods() {
       />
       {actionError ? <FormError message={actionError} /> : null}
       {loading ? (
-        <LoadingState label="Loading payment methods…" />
+        <Skeleton rows={3} height={120} />
       ) : error ? (
         <ErrorState message={error} onRetry={reload} />
       ) : (methods ?? []).length === 0 ? (

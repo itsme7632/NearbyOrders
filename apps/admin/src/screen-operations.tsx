@@ -8,6 +8,8 @@ import type {
 } from './api.js';
 import {
   Badge,
+  Card,
+  Consequence,
   DataTable,
   DefinitionList,
   Drawer,
@@ -22,6 +24,7 @@ import {
   PageHeader,
   SearchInput,
   SectionTitle,
+  Skeleton,
   Tabs,
   Toolbar,
   useAsync,
@@ -60,7 +63,9 @@ function OrderDrawer(props: { order: AdminOrder; onClose: () => void }) {
   return (
     <Drawer
       title={`Order #${shortId(o.id)}`}
-      subtitle={`Placed ${fmtDateTime(o.createdAt)}`}
+      subtitle={o.business.name}
+      meta={`Order · ${o.id}`}
+      status={<Badge value={o.status} />}
       onClose={props.onClose}
     >
       <DefinitionList
@@ -138,18 +143,21 @@ export function Orders(props: { initialStatus?: string }) {
   return (
     <>
       <PageHeader
+        kicker="Operations"
         title="Orders"
-        subtitle={loading && orders.length === 0 ? 'Loading orders…' : plural(orders.length, 'order', 'orders')}
+        subtitle={loading && orders.length === 0 ? 'Loading orders…' : `${plural(orders.length, 'order', 'orders')} in this view`}
       />
-      <Tabs
-        tabs={[{ key: '', label: 'All statuses' }, ...ORDER_STATUSES.map((s) => ({ key: s, label: statusLabel(s) }))]}
-        active={status}
-        onChange={setStatus}
-      />
+      <Toolbar>
+        <Tabs
+          tabs={[{ key: '', label: 'All statuses' }, ...ORDER_STATUSES.map((s) => ({ key: s, label: statusLabel(s) }))]}
+          active={status}
+          onChange={setStatus}
+        />
+      </Toolbar>
       {error ? (
         <ErrorState message={error} onRetry={reload} />
       ) : loading && orders.length === 0 ? (
-        <LoadingState label="Loading orders…" />
+        <Skeleton rows={6} />
       ) : (
         <DataTable<AdminOrder>
           columns={columns}
@@ -171,7 +179,9 @@ function BookingDrawer(props: { booking: AdminBooking; onClose: () => void }) {
   return (
     <Drawer
       title={`Booking #${shortId(b.id)}`}
-      subtitle={`Created ${fmtDateTime(b.createdAt)}`}
+      subtitle={b.service ? b.service.name : b.business.name}
+      meta={`Booking · ${b.id}`}
+      status={<Badge value={b.status} />}
       onClose={props.onClose}
     >
       <DefinitionList
@@ -255,18 +265,21 @@ export function Bookings(props: { initialStatus?: string }) {
   return (
     <>
       <PageHeader
+        kicker="Operations"
         title="Bookings"
-        subtitle={loading && bookings.length === 0 ? 'Loading bookings…' : plural(bookings.length, 'booking', 'bookings')}
+        subtitle={loading && bookings.length === 0 ? 'Loading bookings…' : `${plural(bookings.length, 'booking', 'bookings')} in this view`}
       />
-      <Tabs
-        tabs={[{ key: '', label: 'All statuses' }, ...BOOKING_STATUSES.map((s) => ({ key: s, label: statusLabel(s) }))]}
-        active={status}
-        onChange={setStatus}
-      />
+      <Toolbar>
+        <Tabs
+          tabs={[{ key: '', label: 'All statuses' }, ...BOOKING_STATUSES.map((s) => ({ key: s, label: statusLabel(s) }))]}
+          active={status}
+          onChange={setStatus}
+        />
+      </Toolbar>
       {error ? (
         <ErrorState message={error} onRetry={reload} />
       ) : loading && bookings.length === 0 ? (
-        <LoadingState label="Loading bookings…" />
+        <Skeleton rows={6} />
       ) : (
         <DataTable<AdminBooking>
           columns={columns}
@@ -329,20 +342,23 @@ function DocumentPreview(props: { label: string; storageKey: string; onClose: ()
   );
 }
 
-function VerificationReviewDrawer(props: {
-  app: VerificationApplication;
-  onClose: () => void;
-  onDecided: () => void;
-}) {
-  const { app } = props;
+/* ------------------------------------------------------------------
+   Verification review: a right-side drawer for simple applications,
+   and a dedicated full-page workspace when the review is complex
+   (multiple documents). Both share the same decision logic.
+------------------------------------------------------------------- */
+
+type DecisionKind = 'approve' | 'changes' | 'reject';
+
+function useVerificationDecision(app: VerificationApplication, onDecided: () => void) {
   const [reviewerMessage, setReviewerMessage] = useState('');
   const [adminNotes, setAdminNotes] = useState('');
-  const [busy, setBusy] = useState<null | 'approve' | 'changes' | 'reject'>(null);
+  const [busy, setBusy] = useState<null | DecisionKind>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ label: string; storageKey: string } | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
-  async function decide(kind: 'approve' | 'changes' | 'reject') {
+  async function decide(kind: DecisionKind) {
     if (busy) return;
     setFormError(null);
     const message = reviewerMessage.trim();
@@ -361,7 +377,7 @@ function VerificationReviewDrawer(props: {
       } else {
         await api.rejectVerification(app.id, { reviewerMessage: message, ...withNotes });
       }
-      props.onDecided();
+      onDecided();
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : 'Could not record the decision. Please try again.');
       setBusy(null);
@@ -387,34 +403,28 @@ function VerificationReviewDrawer(props: {
     }
   }
 
-  const infoItems: { label: string; value: React.ReactNode }[] = [
-    { label: 'Business', value: app.publicName ?? app.business.name },
-    { label: 'Business slug', value: <span className="nb-mono">{app.business.slug}</span> },
-  ];
-  if (app.legalName) infoItems.push({ label: 'Legal name', value: app.legalName });
-  if (app.publicName) infoItems.push({ label: 'Public name', value: app.publicName });
-  if (app.ownerName) infoItems.push({ label: 'Owner name', value: app.ownerName });
-  infoItems.push({
-    label: 'Owner email',
-    value: <span className="nb-mono">{app.business.owner.email}</span>,
-  });
-  if (app.phone) infoItems.push({ label: 'Phone', value: app.phone });
-  if (app.address) infoItems.push({ label: 'Address', value: app.address });
-  if (app.city) infoItems.push({ label: 'City', value: app.city });
-  if (app.categoryId) infoItems.push({ label: 'Category', value: <span className="nb-mono">{app.categoryId}</span> });
-  if (app.description) infoItems.push({ label: 'Description', value: app.description });
-  if (app.registrationInfo) infoItems.push({ label: 'Registration info', value: app.registrationInfo });
-  if (app.latitude != null) infoItems.push({ label: 'Latitude', value: String(app.latitude) });
-  if (app.longitude != null) infoItems.push({ label: 'Longitude', value: String(app.longitude) });
-  infoItems.push({
-    label: 'Submitted',
-    value: app.submittedAt ? fmtDateTime(app.submittedAt) : 'Not submitted yet',
-  });
-  if (app.reviewerMessage) infoItems.push({ label: 'Last reviewer message', value: app.reviewerMessage });
-  if (app.adminNotes) infoItems.push({ label: 'Internal notes', value: app.adminNotes });
+  return {
+    reviewerMessage,
+    setReviewerMessage,
+    adminNotes,
+    setAdminNotes,
+    busy,
+    formError,
+    decide,
+    preview,
+    setPreview,
+    downloadingId,
+    downloadDocument,
+  };
+}
 
-  const hasLocation = app.latitude != null || app.longitude != null || app.address != null;
-
+function VerificationDocuments(props: {
+  app: VerificationApplication;
+  downloadingId: string | null;
+  onPreview: (doc: VerificationDocument) => void;
+  onDownload: (doc: VerificationDocument) => void;
+}) {
+  const { app } = props;
   const docColumns: Column<VerificationDocument>[] = [
     {
       key: 'doc',
@@ -435,104 +445,256 @@ function VerificationReviewDrawer(props: {
           <button
             type="button"
             className="nb-btn nb-btn-secondary nb-btn-sm"
-            onClick={() => setPreview({ label: statusLabel(d.docType), storageKey: d.storageKey })}
+            onClick={() => props.onPreview(d)}
           >
             Preview
           </button>
           <button
             type="button"
             className="nb-btn nb-btn-secondary nb-btn-sm"
-            disabled={downloadingId === d.id}
-            onClick={() => downloadDocument(d)}
+            disabled={props.downloadingId === d.id}
+            onClick={() => props.onDownload(d)}
           >
-            {downloadingId === d.id ? 'Working…' : 'Download'}
+            {props.downloadingId === d.id ? 'Working…' : 'Download'}
           </button>
         </div>
       ),
     },
   ];
 
+  if (app.documents.length === 0) {
+    return (
+      <EmptyState
+        title="No documents attached"
+        body="No documents were attached to this application."
+      />
+    );
+  }
+  return <DataTable<VerificationDocument> columns={docColumns} rows={app.documents} rowKey={(d) => d.id} />;
+}
+
+function VerificationInfoItems(app: VerificationApplication): { label: string; value: React.ReactNode }[] {
+  const infoItems: { label: string; value: React.ReactNode }[] = [
+    { label: 'Business', value: app.publicName ?? app.business.name },
+    { label: 'Business slug', value: <span className="nb-mono">{app.business.slug}</span> },
+  ];
+  if (app.legalName) infoItems.push({ label: 'Legal name', value: app.legalName });
+  if (app.publicName) infoItems.push({ label: 'Public name', value: app.publicName });
+  if (app.ownerName) infoItems.push({ label: 'Owner name', value: app.ownerName });
+  infoItems.push({
+    label: 'Owner email',
+    value: <span className="nb-mono">{app.business.owner.email}</span>,
+  });
+  if (app.phone) infoItems.push({ label: 'Phone', value: app.phone });
+  if (app.address) infoItems.push({ label: 'Address', value: app.address });
+  if (app.city) infoItems.push({ label: 'City', value: app.city });
+  if (app.categoryId)
+    infoItems.push({ label: 'Category', value: <span className="nb-mono">{app.categoryId}</span> });
+  if (app.description) infoItems.push({ label: 'Description', value: app.description });
+  if (app.registrationInfo) infoItems.push({ label: 'Registration info', value: app.registrationInfo });
+  if (app.latitude != null) infoItems.push({ label: 'Latitude', value: String(app.latitude) });
+  if (app.longitude != null) infoItems.push({ label: 'Longitude', value: String(app.longitude) });
+  infoItems.push({
+    label: 'Submitted',
+    value: app.submittedAt ? fmtDateTime(app.submittedAt) : 'Not submitted yet',
+  });
+  if (app.reviewerMessage) infoItems.push({ label: 'Last reviewer message', value: app.reviewerMessage });
+  if (app.adminNotes) infoItems.push({ label: 'Internal notes', value: app.adminNotes });
+  return infoItems;
+}
+
+/** The decision form shared by the drawer and the workspace. */
+function VerificationDecisionForm(props: { decision: ReturnType<typeof useVerificationDecision> }) {
+  const d = props.decision;
   return (
-    <Drawer
-      title={app.publicName ?? app.business.name}
-      subtitle={`Verification application · ${app.business.owner.email}`}
-      onClose={props.onClose}
-    >
-      <SectionTitle>Submitted information</SectionTitle>
-      <DefinitionList items={infoItems} />
-
-      <SectionTitle>Documents ({app.documents.length})</SectionTitle>
-      {app.documents.length === 0 ? (
-        <p className="nb-hint">No documents were attached to this application.</p>
-      ) : (
-        <DataTable<VerificationDocument>
-          columns={docColumns}
-          rows={app.documents}
-          rowKey={(d) => d.id}
-        />
-      )}
-
-      {hasLocation ? (
-        <>
-          <SectionTitle>Location</SectionTitle>
-          <DefinitionList
-            items={[
-              ...(app.latitude != null ? [{ label: 'Latitude', value: String(app.latitude) }] : []),
-              ...(app.longitude != null ? [{ label: 'Longitude', value: String(app.longitude) }] : []),
-              ...(app.address ? [{ label: 'Address', value: app.address }] : []),
-            ]}
-          />
-        </>
-      ) : null}
-
-      <SectionTitle>Review</SectionTitle>
-      <p className="nb-hint">
-        Current status: <Badge value={app.status} />
-      </p>
-      <p className="nb-hint">
-        Approving grants the verified badge on this business and makes it eligible for a subscription trial.
-        The reviewer message is shown to the business owner; admin notes stay internal.
-      </p>
-      {formError ? <FormError message={formError} /> : null}
-      <Field label="Reviewer message" hint="Shown to the business owner.">
+    <>
+      <Consequence>
+        <strong>Approving</strong> grants the verified badge on this business and
+        makes it eligible for a subscription trial. The reviewer message is
+        shown to the business owner; admin notes stay internal.
+      </Consequence>
+      {d.formError ? <FormError message={d.formError} /> : null}
+      <Field
+        label="Reviewer message"
+        hint="Shown to the business owner. Required when requesting changes or rejecting."
+      >
         <textarea
           rows={3}
-          value={reviewerMessage}
-          onChange={(e) => setReviewerMessage(e.target.value)}
+          value={d.reviewerMessage}
+          onChange={(e) => d.setReviewerMessage(e.target.value)}
           placeholder="e.g. Your trade license looks good; approved."
-          disabled={busy !== null}
+          disabled={d.busy !== null}
         />
       </Field>
       <Field label="Admin notes" hint="Internal only. Never shown to the business owner.">
         <textarea
           rows={2}
-          value={adminNotes}
-          onChange={(e) => setAdminNotes(e.target.value)}
+          value={d.adminNotes}
+          onChange={(e) => d.setAdminNotes(e.target.value)}
           placeholder="Optional internal note for the audit trail."
-          disabled={busy !== null}
+          disabled={d.busy !== null}
         />
       </Field>
-      <FormActions>
-        <button type="button" className="nb-btn nb-btn-danger" disabled={busy !== null} onClick={() => decide('reject')}>
-          {busy === 'reject' ? 'Working…' : 'Reject verification'}
-        </button>
-        <button type="button" className="nb-btn nb-btn-secondary" disabled={busy !== null} onClick={() => decide('changes')}>
-          {busy === 'changes' ? 'Working…' : 'Request changes'}
-        </button>
-        <button type="button" className="nb-btn" disabled={busy !== null} onClick={() => decide('approve')}>
-          {busy === 'approve' ? 'Working…' : 'Approve'}
-        </button>
-      </FormActions>
+    </>
+  );
+}
 
-      {preview ? (
-        <DocumentPreview label={preview.label} storageKey={preview.storageKey} onClose={() => setPreview(null)} />
+function DecisionButtons(props: { busy: null | DecisionKind; onDecide: (kind: DecisionKind) => void }) {
+  const { busy, onDecide } = props;
+  return (
+    <>
+      <button
+        type="button"
+        className="nb-btn nb-btn-danger"
+        disabled={busy !== null}
+        onClick={() => onDecide('reject')}
+      >
+        {busy === 'reject' ? 'Working…' : 'Reject verification'}
+      </button>
+      <button
+        type="button"
+        className="nb-btn nb-btn-secondary"
+        disabled={busy !== null}
+        onClick={() => onDecide('changes')}
+      >
+        {busy === 'changes' ? 'Working…' : 'Request changes'}
+      </button>
+      <button type="button" className="nb-btn" disabled={busy !== null} onClick={() => onDecide('approve')}>
+        {busy === 'approve' ? 'Working…' : 'Approve'}
+      </button>
+    </>
+  );
+}
+
+/** Simple applications: review without leaving the queue context. */
+function VerificationReviewDrawer(props: {
+  app: VerificationApplication;
+  onClose: () => void;
+  onDecided: () => void;
+}) {
+  const { app } = props;
+  const decision = useVerificationDecision(app, props.onDecided);
+
+  return (
+    <Drawer
+      title={app.publicName ?? app.business.name}
+      subtitle={app.business.owner.email}
+      meta={`Application · ${app.id.slice(0, 8)}`}
+      status={<Badge value={app.status} />}
+      onClose={props.onClose}
+      actions={<DecisionButtons busy={decision.busy} onDecide={decision.decide} />}
+    >
+      <SectionTitle>Submitted information</SectionTitle>
+      <DefinitionList items={VerificationInfoItems(app)} />
+
+      <SectionTitle>Documents ({app.documents.length})</SectionTitle>
+      <VerificationDocuments
+        app={app}
+        downloadingId={decision.downloadingId}
+        onPreview={(d) => decision.setPreview({ label: statusLabel(d.docType), storageKey: d.storageKey })}
+        onDownload={decision.downloadDocument}
+      />
+
+      <SectionTitle>Review</SectionTitle>
+      <VerificationDecisionForm decision={decision} />
+
+      {decision.preview ? (
+        <DocumentPreview
+          label={decision.preview.label}
+          storageKey={decision.preview.storageKey}
+          onClose={() => decision.setPreview(null)}
+        />
       ) : null}
     </Drawer>
   );
 }
 
-export function VerificationReview() {
-  const [status, setStatus] = useState('');
+/** Complex applications (multiple documents): a dedicated review workspace
+    with a sticky decision rail, borrowed from The Ledger concept. */
+function VerificationWorkspace(props: {
+  app: VerificationApplication;
+  onBack: () => void;
+  onDecided: () => void;
+}) {
+  const { app } = props;
+  const decision = useVerificationDecision(app, props.onDecided);
+  const hasLocation = app.latitude != null || app.longitude != null || app.address != null;
+
+  return (
+    <div className="nb-workspace">
+      <div className="nb-workspace-head">
+        <button type="button" className="nb-linkbtn" onClick={props.onBack}>
+          ← Back to verification queue
+        </button>
+        <PageHeader
+          kicker="Verification workspace"
+          title={app.publicName ?? app.business.name}
+          subtitle={`${app.business.owner.email} · submitted ${
+            app.submittedAt ? fmtDate(app.submittedAt) : 'not yet'
+          }`}
+        />
+      </div>
+      <div className="nb-workspace-grid">
+        <div>
+          <Card title="Submitted information">
+            <DefinitionList items={VerificationInfoItems(app)} />
+          </Card>
+          <Card title={`Documents (${app.documents.length})`} subtitle="Preview each document before deciding.">
+            <VerificationDocuments
+              app={app}
+              downloadingId={decision.downloadingId}
+              onPreview={(d) =>
+                decision.setPreview({ label: statusLabel(d.docType), storageKey: d.storageKey })
+              }
+              onDownload={decision.downloadDocument}
+            />
+          </Card>
+          {hasLocation ? (
+            <Card title="Location">
+              <DefinitionList
+                items={[
+                  ...(app.latitude != null ? [{ label: 'Latitude', value: String(app.latitude) }] : []),
+                  ...(app.longitude != null ? [{ label: 'Longitude', value: String(app.longitude) }] : []),
+                  ...(app.address ? [{ label: 'Address', value: app.address }] : []),
+                ]}
+              />
+            </Card>
+          ) : null}
+        </div>
+        <aside className="nb-workspace-side" aria-label="Decision panel">
+          <div className="nb-decision-card">
+            <div className="nb-decision-card-head">
+              <h3>Decision</h3>
+              <p>
+                Current status: <Badge value={app.status} />
+              </p>
+            </div>
+            <div className="nb-decision-card-body">
+              <VerificationDecisionForm decision={decision} />
+            </div>
+            <div className="nb-decision-card-foot">
+              <DecisionButtons busy={decision.busy} onDecide={decision.decide} />
+            </div>
+          </div>
+        </aside>
+      </div>
+      {decision.preview ? (
+        <DocumentPreview
+          label={decision.preview.label}
+          storageKey={decision.preview.storageKey}
+          onClose={() => decision.setPreview(null)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/** Route simple reviews to the drawer, complex ones to the workspace. */
+function isComplexReview(app: VerificationApplication): boolean {
+  return app.documents.length >= 2;
+}
+export function VerificationReview(props: { initialStatus?: string }) {
+  const [status, setStatus] = useState(props.initialStatus ?? '');
   const [q, setQ] = useState('');
   const [appliedQ, setAppliedQ] = useState('');
   const [reviewId, setReviewId] = useState<string | null>(null);
@@ -594,7 +756,8 @@ export function VerificationReview() {
   return (
     <>
       <PageHeader
-        title="Verification"
+        kicker="Marketplace"
+        title="Verifications"
         subtitle="Review business verification applications. Showing the first page of the queue."
       />
       <Toolbar>
@@ -624,11 +787,16 @@ export function VerificationReview() {
             ...VERIFICATION_STATUSES.map((s) => ({ value: s, label: statusLabel(s) })),
           ]}
         />
+        <span className="nb-toolbar-end">
+          <span className="nb-result-count" aria-live="polite">
+            {loading && apps.length === 0 ? 'Loading…' : `${apps.length} in queue`}
+          </span>
+        </span>
       </Toolbar>
       {error ? (
         <ErrorState message={error} onRetry={reload} />
       ) : loading && apps.length === 0 ? (
-        <LoadingState label="Loading verification applications…" />
+        <Skeleton rows={6} />
       ) : (
         <DataTable<VerificationApplication>
           columns={columns}
@@ -639,15 +807,27 @@ export function VerificationReview() {
         />
       )}
       {selected ? (
-        <VerificationReviewDrawer
-          key={selected.id}
-          app={selected}
-          onClose={() => setReviewId(null)}
-          onDecided={() => {
-            setReviewId(null);
-            reload();
-          }}
-        />
+        isComplexReview(selected) ? (
+          <VerificationWorkspace
+            key={selected.id}
+            app={selected}
+            onBack={() => setReviewId(null)}
+            onDecided={() => {
+              setReviewId(null);
+              reload();
+            }}
+          />
+        ) : (
+          <VerificationReviewDrawer
+            key={selected.id}
+            app={selected}
+            onClose={() => setReviewId(null)}
+            onDecided={() => {
+              setReviewId(null);
+              reload();
+            }}
+          />
+        )
       ) : null}
     </>
   );

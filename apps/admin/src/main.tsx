@@ -1,24 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import * as api from './api.js';
-import { Avatar, Field, FormActions, FormError, useAsync } from './ds.js';
+import { Avatar, Field, FormActions, FormError, MeridianMark, useAsync } from './ds.js';
 import { Dashboard } from './screen-dashboard.js';
 import { Businesses, Categories, Reviews, Users } from './screen-marketplace.js';
 import { Bookings, Orders, VerificationReview } from './screen-operations.js';
 import { PaymentMethods, PaymentRequests, Subscriptions, SubscriptionPlans } from './screen-billing.js';
 import { PromotionCenter } from './promotion-center.js';
 import { AuditLog } from './screen-system.js';
-
-/** Same map-pin brand glyph the mobile app uses (single inline copy). */
-function PinIcon({ size = 16 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden focusable="false">
-      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0Z" />
-      <circle cx="12" cy="10" r="3" />
-    </svg>
-  );
-}
 
 export type Section =
   | 'dashboard'
@@ -57,14 +47,14 @@ const SECTION_LABELS: Record<Section, string> = {
   dashboard: 'Dashboard',
   users: 'Users',
   businesses: 'Businesses',
-  verifications: 'Verification',
+  verifications: 'Verifications',
   orders: 'Orders',
   bookings: 'Bookings',
   reviews: 'Reviews',
   categories: 'Categories',
   subscriptions: 'Subscriptions',
   plans: 'Plans',
-  payments: 'Payment requests',
+  payments: 'Payment review',
   paymentMethods: 'Payment methods',
   promotions: 'Promotions',
   audit: 'Audit log',
@@ -73,8 +63,8 @@ const SECTION_LABELS: Record<Section, string> = {
 /** Navigation groups. Every route is preserved; grouping is visual only. */
 const NAV_GROUPS: { label: string; sections: Section[] }[] = [
   { label: 'Overview', sections: ['dashboard'] },
-  { label: 'Marketplace', sections: ['businesses', 'categories', 'reviews'] },
-  { label: 'Operations', sections: ['orders', 'bookings', 'verifications'] },
+  { label: 'Marketplace', sections: ['businesses', 'verifications'] },
+  { label: 'Operations', sections: ['orders', 'bookings', 'reviews', 'categories'] },
   { label: 'Billing', sections: ['subscriptions', 'plans', 'payments', 'paymentMethods'] },
   { label: 'Growth', sections: ['promotions'] },
   { label: 'System', sections: ['users', 'audit'] },
@@ -82,6 +72,50 @@ const NAV_GROUPS: { label: string; sections: Section[] }[] = [
 
 function groupOf(section: Section): string {
   return NAV_GROUPS.find((g) => g.sections.includes(section))?.label ?? '';
+}
+
+/**
+ * Real queue counts for the rail badges. Every count comes from a live API
+ * call; a failed fetch simply shows no badge. Counts are never fabricated.
+ */
+function useQueueBadges(session: api.Session | null): Partial<Record<Section, number>> {
+  const [badges, setBadges] = useState<Partial<Record<Section, number>>>({});
+  useEffect(() => {
+    if (!session) return;
+    let alive = true;
+    const num = (v: unknown) => (typeof v === 'number' && v > 0 ? v : 0);
+    Promise.allSettled([
+      api.getDashboard(),
+      api.listVerifications({ status: 'SUBMITTED' }),
+      api.listVerifications({ status: 'UNDER_REVIEW' }),
+      api.listPromotionRequests('PENDING'),
+      api.listPromotionPaymentRequests({ status: 'PENDING' }),
+    ]).then(([dash, vSub, vRev, promoReq, promoPay]) => {
+      if (!alive) return;
+      const next: Partial<Record<Section, number>> = {};
+      if (dash.status === 'fulfilled') {
+        const d = dash.value;
+        if (num(d.pendingBusinesses)) next.businesses = d.pendingBusinesses;
+        if (num(d.pendingOrders)) next.orders = d.pendingOrders;
+        if (num(d.pendingBookings)) next.bookings = d.pendingBookings;
+        if (num(d.pendingSubscriptionPayments)) next.payments = d.pendingSubscriptionPayments;
+        if (num(d.hiddenReviews)) next.reviews = d.hiddenReviews;
+      }
+      const verif =
+        (vSub.status === 'fulfilled' ? vSub.value.length : 0) +
+        (vRev.status === 'fulfilled' ? vRev.value.length : 0);
+      if (verif > 0) next.verifications = verif;
+      const promo =
+        (promoReq.status === 'fulfilled' ? promoReq.value.length : 0) +
+        (promoPay.status === 'fulfilled' ? promoPay.value.items.length : 0);
+      if (promo > 0) next.promotions = promo;
+      setBadges(next);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [session]);
+  return badges;
 }
 
 /* --------------------------------- auth --------------------------------- */
@@ -110,7 +144,7 @@ function LoginScreen() {
       <form className="nb-auth-card" onSubmit={submit}>
         <div className="nb-auth-brand">
           <span className="nb-brand-mark" aria-hidden>
-            <PinIcon size={16} />
+            <MeridianMark size={20} />
           </span>
           NearbyOrders
         </div>
@@ -136,41 +170,140 @@ function LoginScreen() {
 
 /* ------------------------------ navigation ---------------------------- */
 
-function SideNav(props: { section: Section; onGo: (s: Section) => void }) {
+function SideNav(props: { section: Section; onGo: (s: Section) => void; badges: Partial<Record<Section, number>> }) {
   return (
     <>
       <div className="nb-brand">
         <span className="nb-brand-mark" aria-hidden>
-          <PinIcon size={16} />
+          <MeridianMark size={22} />
         </span>
-        <span className="nb-brand-name">
-          Nearby<b>Orders</b>
-        </span>
+        <span className="nb-brand-name">NearbyOrders</span>
       </div>
-      <p className="nb-brand-sub">Control Center</p>
+      <p className="nb-brand-sub">Operations</p>
       <nav className="nb-nav" aria-label="Admin sections">
         {NAV_GROUPS.map((g) => (
           <div key={g.label}>
             <p className="nb-nav-group-label">{g.label}</p>
-            {g.sections.map((key) => (
-              <button
-                key={key}
-                type="button"
-                className={`nb-nav-item${props.section === key ? ' active' : ''}`}
-                aria-current={props.section === key ? 'page' : undefined}
-                onClick={() => props.onGo(key)}
-              >
-                <span className="nb-nav-glyph" aria-hidden>
-                  {SECTION_ICONS[key]}
-                </span>
-                {SECTION_LABELS[key]}
-              </button>
-            ))}
+            {g.sections.map((key) => {
+              const count = props.badges[key];
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={`nb-nav-item${props.section === key ? ' active' : ''}`}
+                  aria-current={props.section === key ? 'page' : undefined}
+                  onClick={() => props.onGo(key)}
+                >
+                  <span className="nb-nav-glyph" aria-hidden>
+                    {SECTION_ICONS[key]}
+                  </span>
+                  {SECTION_LABELS[key]}
+                  {typeof count === 'number' && count > 0 ? (
+                    <span className="nb-nav-count" aria-label={`${count} pending`}>
+                      {count}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
         ))}
       </nav>
-      <div className="nb-side-foot">Marketplace operations</div>
+      <div className="nb-side-foot">ops console · v1</div>
     </>
+  );
+}
+
+/** Command-style section search in the top bar. */
+function SectionSearch(props: { onGo: (s: Section) => void }) {
+  const [q, setQ] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const matches: Section[] = q.trim()
+    ? (Object.keys(SECTION_LABELS) as Section[]).filter(
+        (s) =>
+          SECTION_LABELS[s].toLowerCase().includes(q.trim().toLowerCase()) ||
+          groupOf(s).toLowerCase().includes(q.trim().toLowerCase()),
+      )
+    : [];
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <label className="nb-topbar-search">
+        <span aria-hidden>⌕</span>
+        <span className="nb-visually-hidden">Search admin sections</span>
+        <input
+          ref={inputRef}
+          value={q}
+          placeholder="Search sections…"
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && matches.length > 0) {
+              props.onGo(matches[0]!);
+              setQ('');
+              inputRef.current?.blur();
+            } else if (e.key === 'Escape') {
+              setQ('');
+              inputRef.current?.blur();
+            }
+          }}
+          aria-expanded={matches.length > 0}
+          role="combobox"
+          aria-autocomplete="list"
+        />
+        <kbd>⌘K</kbd>
+      </label>
+      {matches.length > 0 ? (
+        <div
+          role="listbox"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 6px)',
+            left: 0,
+            right: 0,
+            background: '#fff',
+            border: '1px solid var(--line)',
+            borderRadius: 10,
+            boxShadow: 'var(--shadow)',
+            padding: 6,
+            zIndex: 50,
+          }}
+        >
+          {matches.slice(0, 6).map((s) => (
+            <button
+              key={s}
+              type="button"
+              role="option"
+              aria-selected={false}
+              className="nb-nav-item"
+              style={{ color: 'var(--ink)', width: '100%' }}
+              onClick={() => {
+                props.onGo(s);
+                setQ('');
+              }}
+            >
+              <span className="nb-nav-glyph" aria-hidden style={{ color: 'var(--muted)' }}>
+                {SECTION_ICONS[s]}
+              </span>
+              {SECTION_LABELS[s]}
+              <span className="nb-muted" style={{ marginLeft: 'auto', fontSize: 11 }}>
+                {groupOf(s)}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -184,6 +317,7 @@ export function AdminApp() {
   // Manual nav clears it so filters never leak between visits. Payment
   // triage can also carry a businessId to pre-filter the payment queue.
   const [triage, setTriage] = useState<{ section: Section; status?: string; businessId?: string } | null>(null);
+  const badges = useQueueBadges(session);
 
   const goSection = (s: Section) => {
     setTriage(null);
@@ -215,7 +349,7 @@ export function AdminApp() {
     <div className={`nb-shell${navOpen ? ' nb-nav-open' : ''}`}>
       {navOpen ? <div className="nb-nav-scrim" onClick={() => setNavOpen(false)} aria-hidden /> : null}
       <aside className="nb-side" aria-label="Admin navigation">
-        <SideNav section={section} onGo={goSection} />
+        <SideNav section={section} onGo={goSection} badges={badges} />
       </aside>
       <div className="nb-main">
         <header className="nb-topbar">
@@ -232,6 +366,7 @@ export function AdminApp() {
             <span>{groupOf(section)}</span>
             <strong>{SECTION_LABELS[section]}</strong>
           </div>
+          <SectionSearch onGo={goSection} />
           <div className="nb-topbar-spacer" />
           <div className="nb-admin-id">
             <Avatar name={session.user.email} size={32} />
@@ -258,7 +393,12 @@ export function AdminApp() {
               onOpenPayments={(businessId) => triageTo('payments', undefined, businessId)}
             />
           ) : null}
-          {section === 'verifications' ? <VerificationReview /> : null}
+          {section === 'verifications' ? (
+            <VerificationReview
+              key={triageKey('verifications')}
+              initialStatus={triage?.section === 'verifications' ? triage.status : undefined}
+            />
+          ) : null}
           {section === 'orders' ? <Orders key={triageKey('orders')} initialStatus={triage?.section === 'orders' ? triage.status : undefined} /> : null}
           {section === 'bookings' ? <Bookings key={triageKey('bookings')} initialStatus={triage?.section === 'bookings' ? triage.status : undefined} /> : null}
           {section === 'reviews' ? <Reviews key={triageKey('reviews')} initialStatus={triage?.section === 'reviews' ? (triage.status as '' | 'visible' | 'hidden' | undefined) : undefined} /> : null}

@@ -21,11 +21,12 @@ import {
   FilterSelect,
   FormActions,
   FormError,
-  LoadingState,
+  Consequence,
   Modal,
   PageHeader,
   SearchInput,
   SectionTitle,
+  Skeleton,
   Tabs,
   Toolbar,
   fmtDate,
@@ -51,13 +52,22 @@ import type { Column } from './ds.js';
 function GrowthDrawer(props: {
   title: string;
   subtitle?: string;
+  meta?: string;
+  status?: React.ReactNode;
   onClose: () => void;
   actions?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <div className="nb-drawer drawer">
-      <Drawer title={props.title} subtitle={props.subtitle} onClose={props.onClose} actions={props.actions}>
+      <Drawer
+        title={props.title}
+        subtitle={props.subtitle}
+        meta={props.meta}
+        status={props.status}
+        onClose={props.onClose}
+        actions={props.actions}
+      >
         {props.children}
       </Drawer>
     </div>
@@ -92,7 +102,7 @@ function ReceiptViewer(props: { storageKey: string; onClose: () => void }) {
       ) : url ? (
         <img className="nb-receipt receipt-img" src={url} alt="Payment receipt" />
       ) : (
-        <LoadingState label="Loading receipt…" />
+        <Skeleton rows={2} height={120} />
       )}
     </Modal>
   );
@@ -154,7 +164,7 @@ function PaymentReviewPanel(props: { paymentId: string; onDecided: () => void })
     void run(() => api.approvePromotionPayment(p.id));
   };
 
-  if (loading) return <LoadingState label="Loading payment…" />;
+  if (loading) return <Skeleton rows={4} />;
   if (error || !payment) return <ErrorState message={error ?? 'Payment not found.'} />;
   const p = payment;
 
@@ -230,10 +240,11 @@ function PaymentReviewPanel(props: { paymentId: string; onDecided: () => void })
             : []),
         ]}
       />
-      <p className="nb-hint">
+      <SectionTitle>Payment</SectionTitle>
+      <Consequence>
         Approving a payment is the only action that puts a paid promotion live. The promotion activates with server-set start and end
         dates. Rejecting keeps the application approved so the business can resubmit.
-      </p>
+      </Consequence>
       {p.status === 'PENDING' ? (
         rejecting ? (
           <>
@@ -471,7 +482,7 @@ function PromotionCatalogTab() {
       </Toolbar>
       {actionError ? <FormError message={actionError} /> : null}
       {catalog.loading ? (
-        <LoadingState label="Loading promotions…" />
+        <Skeleton rows={4} />
       ) : catalog.error ? (
         <ErrorState message={catalog.error} onRetry={catalog.reload} />
       ) : (
@@ -531,7 +542,13 @@ function RequestDrawer(props: { request: AdminPromotionRequest; onClose: () => v
   const ownerName = [owner.firstName, owner.lastName].filter(Boolean).join(' ');
 
   return (
-    <GrowthDrawer title="Promotion request" subtitle={r.business.name} onClose={props.onClose}>
+    <GrowthDrawer
+      title="Promotion request"
+      subtitle={r.business.name}
+      meta={`Request · ${r.id.slice(0, 8)}`}
+      status={<Badge value={r.status} />}
+      onClose={props.onClose}
+    >
       {error ? <FormError message={error} /> : null}
       <SectionTitle>Application</SectionTitle>
       <DefinitionList
@@ -576,11 +593,11 @@ function RequestDrawer(props: { request: AdminPromotionRequest; onClose: () => v
       {r.status === 'PENDING' ? (
         <>
           <SectionTitle>Decision</SectionTitle>
-          <p className="nb-hint">
+          <Consequence>
             {isPaid
               ? 'Approval moves this to the payment step: the owner must pay before the promotion goes live.'
               : 'Approving activates this free promotion immediately. No payment is needed.'}
-          </p>
+          </Consequence>
           <Field label="Reviewer message (optional)">
             <input value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Shown to the business owner." />
           </Field>
@@ -714,7 +731,7 @@ function PromotionRequestsTab() {
         />
       </Toolbar>
       {queue.loading ? (
-        <LoadingState label="Loading promotion requests…" />
+        <Skeleton rows={6} />
       ) : queue.error ? (
         <ErrorState message={queue.error} onRetry={queue.reload} />
       ) : (
@@ -809,7 +826,7 @@ export function PromotionPaymentsTab(props: { onPendingCount?: (n: number) => vo
         />
       </Toolbar>
       {list.loading ? (
-        <LoadingState label="Loading promotion payments…" />
+        <Skeleton rows={6} />
       ) : list.error ? (
         <ErrorState message={list.error} onRetry={list.reload} />
       ) : (
@@ -888,7 +905,7 @@ export function ActivePlacementsTab() {
         Currently live paid promotion placements. Each one went live through payment approval in the Payments tab.
       </p>
       {placements.loading ? (
-        <LoadingState label="Loading active placements…" />
+        <Skeleton rows={4} />
       ) : placements.error ? (
         <ErrorState message={placements.error} onRetry={placements.reload} />
       ) : (
@@ -1425,7 +1442,7 @@ export function FeaturedTab() {
       </Toolbar>
       {actionError ? <FormError message={actionError} /> : null}
       {list.loading ? (
-        <LoadingState label="Loading featured businesses…" />
+        <Skeleton rows={4} />
       ) : list.error ? (
         <ErrorState message={list.error} onRetry={list.reload} />
       ) : (
@@ -1498,7 +1515,7 @@ export function PromotionCenter() {
 
   return (
     <>
-      <PageHeader title="Promotions" subtitle="Growth and advertising control center." />
+      <PageHeader kicker="Growth" title="Promotions" subtitle="Growth and advertising control center." />
       <Tabs
         tabs={TABS.map((t) => ({
           key: t.key,

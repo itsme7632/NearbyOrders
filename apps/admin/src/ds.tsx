@@ -1,12 +1,39 @@
 import React from 'react';
 
 /* ------------------------------------------------------------------
-   NearbyOrders Admin Control Center — shared design primitives.
+   NearbyOrders Admin — Meridian Ops Refined design primitives.
 
    Every admin screen is composed from these primitives so the panel
    feels like ONE product. Screens must not invent their own
    spacing/typography/badge/button patterns.
 ------------------------------------------------------------------- */
+
+/* ------------------------- brand mark ------------------------------ */
+
+/**
+ * The approved Meridian N (Concept 3B) geometry, taken from
+ * apps/mobile/brand/mark.svg. Same paths, no reinterpretation.
+ * `dark` renders the porcelain-stem variant for dark surfaces.
+ */
+export function MeridianMark(props: { size?: number; dark?: boolean }) {
+  const stem = props.dark ? '#F2F5F7' : '#16222E';
+  const size = props.size ?? 24;
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 1000 1000"
+      role="img"
+      aria-label="NearbyOrders mark"
+      focusable="false"
+    >
+      <title>NearbyOrders mark, the Meridian N</title>
+      <path d="M220,80 h69.7 v620.5 h-69.7 Z" fill={stem} />
+      <path d="M220,80 L385.3,80 L711.6,623.8 L612.6,920.1 Z" fill="#E23A2E" />
+      <path d="M701.1,80 L779.9,80 L779.9,550.6 L701.1,613.3 Z" fill={stem} />
+    </svg>
+  );
+}
 
 /* ------------------------------ badges ----------------------------- */
 
@@ -88,11 +115,14 @@ export function StatusBadge(props: { value: string }) {
 export function PageHeader(props: {
   title: string;
   subtitle?: string;
+  /** Small mono kicker above the title (editorial treatment). */
+  kicker?: string;
   actions?: React.ReactNode;
 }) {
   return (
     <div className="nb-pagehead">
       <div className="nb-pagehead-text">
+        {props.kicker ? <p className="nb-kicker">{props.kicker}</p> : null}
         <h1>{props.title}</h1>
         {props.subtitle ? <p>{props.subtitle}</p> : null}
       </div>
@@ -338,6 +368,38 @@ export function ErrorState(props: { message: string; onRetry?: () => void }) {
   );
 }
 
+/**
+ * Restrained skeleton placeholder for loading tables or cards.
+ * `rows` controls how many shimmer lines render.
+ */
+export function Skeleton(props: { rows?: number; height?: number }) {
+  const rows = props.rows ?? 4;
+  const height = props.height ?? 16;
+  return (
+    <div role="status" aria-label="Loading">
+      {Array.from({ length: rows }, (_, i) => (
+        <div className="nb-skeleton-row" key={i}>
+          <div className="nb-skeleton-block" style={{ height, flex: 2 }} />
+          <div className="nb-skeleton-block" style={{ height, flex: 1 }} />
+          <div className="nb-skeleton-block" style={{ height, flex: 1 }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Plain-language consequence messaging for decision points
+ * (from The Ledger). Never speculative: state what the action does.
+ */
+export function Consequence(props: { children: React.ReactNode; info?: boolean }) {
+  return (
+    <div className={`nb-consequence${props.info ? ' nb-consequence-info' : ''}`} role="note">
+      {props.children}
+    </div>
+  );
+}
+
 /* --------------------------- overlays -------------------------------- */
 
 export function Modal(props: {
@@ -378,6 +440,10 @@ export function Modal(props: {
 export function Drawer(props: {
   title: string;
   subtitle?: string;
+  /** Mono meta line under the title (IDs, references). */
+  meta?: string;
+  /** Status chips rendered in the header band. */
+  status?: React.ReactNode;
   onClose: () => void;
   actions?: React.ReactNode;
   children: React.ReactNode;
@@ -402,6 +468,8 @@ export function Drawer(props: {
           <div>
             <h2>{props.title}</h2>
             {props.subtitle ? <p>{props.subtitle}</p> : null}
+            {props.meta ? <p className="nb-drawer-meta">{props.meta}</p> : null}
+            {props.status ? <div className="nb-drawer-status">{props.status}</div> : null}
           </div>
           <button type="button" className="nb-iconbtn" onClick={props.onClose} aria-label="Close panel">
             ✕
@@ -448,13 +516,24 @@ export function ConfirmDialog(props: {
 export function Field(props: {
   label: string;
   hint?: string;
+  /** Inline validation message shown under the control. */
+  error?: string;
+  required?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <label className="nb-field">
-      <span className="nb-field-label">{props.label}</span>
-      {props.children}
+      <span className="nb-field-label">
+        {props.label}
+        {props.required ? <span className="nb-required" aria-hidden>*</span> : null}
+      </span>
+      {React.Children.map(props.children, (child) =>
+        React.isValidElement(child) && props.error
+          ? React.cloneElement(child as React.ReactElement<{ 'aria-invalid'?: string }>, { 'aria-invalid': 'true' })
+          : child,
+      )}
       {props.hint ? <span className="nb-field-hint">{props.hint}</span> : null}
+      {props.error ? <span className="nb-field-error" role="alert">{props.error}</span> : null}
     </label>
   );
 }
@@ -469,6 +548,21 @@ export function FormError(props: { message: string }) {
 
 export function FormActions(props: { children: React.ReactNode }) {
   return <div className="nb-form-actions">{props.children}</div>;
+}
+
+/** Grouped form block with a heading and description. */
+export function FormSection(props: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="nb-form-section">
+      <h3>{props.title}</h3>
+      {props.description ? <p>{props.description}</p> : null}
+      {props.children}
+    </div>
+  );
 }
 
 /* --------------------------- content bits ----------------------------- */

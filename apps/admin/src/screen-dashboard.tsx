@@ -10,13 +10,14 @@ import {
   ErrorState,
   EmptyState,
   Badge,
+  Skeleton,
   fmtDateTime,
   useAsync,
 } from './ds.js';
 
 type AttentionRow = {
   label: string;
-  count: number;
+  count: number | null;
   hint?: string;
   section: string;
   status?: string;
@@ -32,6 +33,13 @@ function attentionRows(d: AdminDashboard): AttentionRow[] {
       status: 'PENDING',
     },
     {
+      label: 'Payment requests',
+      count: d.pendingSubscriptionPayments ?? 0,
+      hint: 'Subscription payments awaiting review',
+      section: 'payments',
+      status: 'PENDING',
+    },
+    {
       label: 'Pending orders',
       count: d.pendingOrders ?? 0,
       hint: 'Orders waiting on the business',
@@ -43,13 +51,6 @@ function attentionRows(d: AdminDashboard): AttentionRow[] {
       count: d.pendingBookings ?? 0,
       hint: 'Booking requests awaiting confirmation',
       section: 'bookings',
-      status: 'PENDING',
-    },
-    {
-      label: 'Payment requests',
-      count: d.pendingSubscriptionPayments ?? 0,
-      hint: 'Subscription payments awaiting review',
-      section: 'payments',
       status: 'PENDING',
     },
     {
@@ -69,9 +70,30 @@ function attentionRows(d: AdminDashboard): AttentionRow[] {
   ];
 }
 
+/** Queue counts that are not part of the dashboard payload, fetched live. */
+function useExtraQueues() {
+  const verif = useAsync(
+    () =>
+      Promise.all([
+        api.listVerifications({ status: 'SUBMITTED' }),
+        api.listVerifications({ status: 'UNDER_REVIEW' }),
+      ]).then(([a, b]) => a.length + b.length),
+    [],
+  );
+  const promo = useAsync(
+    () =>
+      Promise.all([
+        api.listPromotionRequests('PENDING'),
+        api.listPromotionPaymentRequests({ status: 'PENDING' }),
+      ]).then(([a, b]) => a.length + b.items.length),
+    [],
+  );
+  return { verif, promo };
+}
+
 function RecentActivity() {
   const log = useAsync(() => api.listAuditLog(''), []);
-  if (log.loading) return <LoadingState label="Loading recent activity…" />;
+  if (log.loading) return <Skeleton rows={5} />;
   if (log.error) {
     return (
       <div className="nb-state">
@@ -108,12 +130,18 @@ function RecentActivity() {
 
 export function Dashboard(props: { onTriage: (section: string, status?: string) => void }) {
   const dash = useAsync(() => api.getDashboard(), []);
+  const { verif, promo } = useExtraQueues();
 
   if (dash.loading) {
     return (
       <>
-        <PageHeader title="Dashboard" subtitle="Marketplace operations at a glance." />
-        <LoadingState label="Loading platform metrics…" />
+        <PageHeader kicker="Operations" title="Command center" subtitle="Marketplace operations at a glance." />
+        <Card title="Needs attention">
+          <Skeleton rows={4} />
+        </Card>
+        <Card title="Platform snapshot">
+          <Skeleton rows={2} height={52} />
+        </Card>
       </>
     );
   }
@@ -121,63 +149,74 @@ export function Dashboard(props: { onTriage: (section: string, status?: string) 
   if (dash.error || !dash.data) {
     return (
       <>
-        <PageHeader title="Dashboard" subtitle="Marketplace operations at a glance." />
+        <PageHeader kicker="Operations" title="Command center" subtitle="Marketplace operations at a glance." />
         <ErrorState message={dash.error ?? 'Could not load the dashboard.'} onRetry={dash.reload} />
       </>
     );
   }
 
   const d = dash.data;
-  const active = attentionRows(d).filter((r) => r.count > 0);
+  const rows: AttentionRow[] = [
+    ...attentionRows(d),
+    {
+      label: 'Verification applications',
+      count: verif.data ?? null,
+      hint: 'Submitted or under review, awaiting a decision',
+      section: 'verifications',
+      status: 'SUBMITTED',
+    },
+    {
+      label: 'Promotion queue',
+      count: promo.data ?? null,
+      hint: 'Promotion requests and payments awaiting review',
+      section: 'promotions',
+    },
+  ];
+  const active = rows.filter((r) => (r.count ?? 0) > 0);
+  const unknown = rows.filter((r) => r.count === null && !r.status);
 
   return (
     <>
-      <PageHeader title="Dashboard" subtitle="Marketplace operations at a glance." />
+      <PageHeader
+        kicker="Operations"
+        title="Command center"
+        subtitle="What needs your attention right now, and the state of the marketplace."
+      />
 
-      <Card title="Needs attention" subtitle="Queues with items waiting on an admin.">
+      <Card title="Needs attention" subtitle="Queues with items waiting on an admin. Select a queue to open it filtered.">
         {active.length === 0 ? (
           <EmptyState title="All caught up" body="No queues need attention right now." />
         ) : (
           <div className="nb-attention-list">
             {active.map((r) => (
               <AttentionItem
-                key={`${r.section}-${r.status}`}
+                key={`${r.section}-${r.status ?? 'all'}`}
                 label={r.label}
-                count={r.count}
+                count={r.count ?? undefined}
                 hint={r.hint}
                 onOpen={() => props.onTriage(r.section, r.status)}
               />
             ))}
           </div>
         )}
-        <div className="nb-attention-list">
-          <AttentionItem
-            label="Verification review queue"
-            hint="Applications awaiting a decision"
-            onOpen={() => props.onTriage('verifications')}
-          />
-          <AttentionItem
-            label="Promotion requests"
-            hint="Promotion requests awaiting review"
-            onOpen={() => props.onTriage('promotions')}
-          />
-        </div>
+        {unknown.length > 0 && (verif.error || promo.error) ? (
+          <p className="nb-hint">Some queue counts could not be loaded. The queues themselves are still available in the rail.</p>
+        ) : null}
       </Card>
 
-      <Card title="Platform totals">
+      <Card title="Platform snapshot" subtitle="Live totals from the API.">
         <div className="nb-kpi-grid">
-          <Kpi label="Users" value={d.users ?? 0} />
-          <Kpi label="Customers" value={d.customers ?? 0} />
-          <Kpi label="Business owners" value={d.businessOwners ?? 0} />
-          <Kpi label="Businesses" value={d.businesses ?? 0} />
-          <Kpi label="Active businesses" value={d.activeBusinesses ?? 0} />
+          <Kpi label="Businesses" value={d.businesses ?? 0} sub={`${d.activeBusinesses ?? 0} active`} />
+          <Kpi label="Users" value={d.users ?? 0} sub={`${d.customers ?? 0} customers · ${d.businessOwners ?? 0} owners`} />
           <Kpi label="Orders" value={d.orders ?? 0} />
           <Kpi label="Bookings" value={d.bookings ?? 0} />
           <Kpi label="Reviews" value={d.reviews ?? 0} />
+          <Kpi
+            label="Push devices"
+            value={`${d.pushDevices?.active ?? 0}/${d.pushDevices?.total ?? 0}`}
+            sub="active / total"
+          />
         </div>
-        <p className="nb-muted">
-          Push devices: {d.pushDevices?.active ?? 0}/{d.pushDevices?.total ?? 0} active
-        </p>
       </Card>
 
       <Card title="Recent activity" subtitle="Latest admin actions across the platform.">
