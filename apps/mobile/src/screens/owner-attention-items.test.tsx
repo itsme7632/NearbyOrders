@@ -140,7 +140,9 @@ describe('OwnerAttentionItems (subscription/trial states)', () => {
       ),
     );
     // The retry callback reloads the failed fetches.
-    const retry = onStatus.mock.calls.at(-1)[0].retry as () => void;
+    const lastCall = onStatus.mock.calls.at(-1);
+    if (!lastCall) throw new Error('expected onStatus to have been called');
+    const retry = lastCall[0].retry as () => void;
     vi.spyOn(api, 'getBusinessSubscription').mockResolvedValue(emptyState());
     retry();
     await waitFor(() =>
