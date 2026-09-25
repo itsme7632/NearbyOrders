@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { getMyBusinesses, getVerification, getBusinessSubscription, listPaymentRequests, type Business } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, Loading } from '../components/ui.js';
@@ -217,63 +217,81 @@ export function OwnerAttentionItems(props: {
   /** Render only the rows (no labelled section wrapper) for embedding inside
       another section, e.g. the Overview's "Needs attention". */
   bare?: boolean;
+  /** Reports loading/error/item-count so an embedding section can gate its
+      own all-clear state instead of assuming healthy while still loading. */
+  onStatus?: (s: { loading: boolean; error: boolean; count: number; retry: () => void }) => void;
 }) {
   const verification = useAsyncData(() => getVerification(props.businessId), [props.businessId]);
   const subscription = useAsyncData(() => getBusinessSubscription(props.businessId), [props.businessId]);
   const requests = useAsyncData(() => listPaymentRequests(props.businessId), [props.businessId]);
 
-  if (verification.loading || subscription.loading || requests.loading) return null;
-  if (verification.error || subscription.error || requests.error) return null;
+  const loading = verification.loading || subscription.loading || requests.loading;
+  const error = verification.error || subscription.error || requests.error;
 
+  // Compute items before the early returns so the status callback always
+  // reflects the real state (loading → error → items).
   const items: { title: string; subtitle: string; onClick: () => void }[] = [];
+  if (!loading && !error) {
+    const verificationStatus = verification.data?.application?.status ?? null;
+    if (verificationStatus !== 'APPROVED') {
+      items.push({
+        title: 'Complete verification',
+        subtitle:
+          verificationStatus === 'SUBMITTED' || verificationStatus === 'UNDER_REVIEW'
+            ? 'Your application is under review'
+            : verificationStatus === 'CHANGES_REQUESTED'
+              ? 'The review team asked for changes'
+              : 'Get the verified badge for your business',
+        onClick: props.onOpenVerification,
+      });
+    }
 
-  const verificationStatus = verification.data?.application?.status ?? null;
-  if (verificationStatus !== 'APPROVED') {
-    items.push({
-      title: 'Complete verification',
-      subtitle:
-        verificationStatus === 'SUBMITTED' || verificationStatus === 'UNDER_REVIEW'
-          ? 'Your application is under review'
-          : verificationStatus === 'CHANGES_REQUESTED'
-            ? 'The review team asked for changes'
-            : 'Get the verified badge for your business',
-      onClick: props.onOpenVerification,
-    });
+    const state = subscription.data;
+    const sub = state?.subscription ?? null;
+    const trialStatus = state?.trialStatus ?? null;
+    if (trialStatus === 'ELIGIBLE' && sub?.status !== 'TRIAL' && sub?.status !== 'ACTIVE') {
+      items.push({
+        title: 'Start your free trial',
+        subtitle: 'Try every feature free before you pay',
+        onClick: props.onOpenSubscription,
+      });
+    }
+
+    const latestRequest = (requests.data ?? [])[0] ?? null;
+    const trialDaysLeft = state?.trial?.daysRemaining ?? null;
+    const needsPlanAttention =
+      sub?.status === 'EXPIRED' ||
+      sub?.status === 'SUSPENDED' ||
+      (sub?.status === 'TRIAL' && trialDaysLeft !== null && trialDaysLeft <= 3) ||
+      latestRequest?.status === 'REJECTED';
+    if (needsPlanAttention) {
+      items.push({
+        title: 'Your plan needs attention',
+        subtitle:
+          sub?.status === 'EXPIRED'
+            ? 'Your subscription has expired'
+            : sub?.status === 'SUSPENDED'
+              ? 'Payment verification in progress'
+              : latestRequest?.status === 'REJECTED'
+                ? 'Your last payment was rejected'
+                : 'Your free trial ends soon',
+        onClick: props.onOpenSubscription,
+      });
+    }
   }
 
-  const state = subscription.data;
-  const sub = state?.subscription ?? null;
-  const trialStatus = state?.trialStatus ?? null;
-  if (trialStatus === 'ELIGIBLE' && sub?.status !== 'TRIAL' && sub?.status !== 'ACTIVE') {
-    items.push({
-      title: 'Start your free trial',
-      subtitle: 'Try every feature free before you pay',
-      onClick: props.onOpenSubscription,
-    });
-  }
+  const retry = () => {
+    verification.reload();
+    subscription.reload();
+    requests.reload();
+  };
+  const onStatus = props.onStatus;
+  useEffect(() => {
+    onStatus?.({ loading, error: Boolean(error), count: items.length, retry });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, error, items.length]);
 
-  const latestRequest = (requests.data ?? [])[0] ?? null;
-  const trialDaysLeft = state?.trial?.daysRemaining ?? null;
-  const needsPlanAttention =
-    sub?.status === 'EXPIRED' ||
-    sub?.status === 'SUSPENDED' ||
-    (sub?.status === 'TRIAL' && trialDaysLeft !== null && trialDaysLeft <= 3) ||
-    latestRequest?.status === 'REJECTED';
-  if (needsPlanAttention) {
-    items.push({
-      title: 'Your plan needs attention',
-      subtitle:
-        sub?.status === 'EXPIRED'
-          ? 'Your subscription has expired'
-          : sub?.status === 'SUSPENDED'
-            ? 'Payment verification in progress'
-            : latestRequest?.status === 'REJECTED'
-              ? 'Your last payment was rejected'
-              : 'Your free trial ends soon',
-      onClick: props.onOpenSubscription,
-    });
-  }
-
+  if (loading || error) return null;
   if (items.length === 0) return null;
 
   const rows = items.map((item) => (

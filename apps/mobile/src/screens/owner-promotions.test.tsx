@@ -302,4 +302,12 @@ describe('OwnerPromotions (my requests lifecycle)', () => {
     const req = await screen.findByRole('region', { name: 'Category boost' });
     expect(req.textContent).toContain('Your last payment was rejected');
   });
+
+  it('explains CANCELLED requests instead of showing only a badge', async () => {
+    requestsSpy.mockResolvedValue([{ ...base, lifecycleState: 'CANCELLED', status: 'CANCELLED' }]);
+    render(<OwnerPromotions businessId="biz-1" />);
+    fireEvent.click(await screen.findByRole('radio', { name: 'My requests' }));
+    const req = await screen.findByRole('region', { name: 'Category boost' });
+    expect(req.textContent).toContain('This request was cancelled');
+  });
 });

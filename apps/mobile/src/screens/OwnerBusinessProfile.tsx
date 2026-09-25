@@ -26,7 +26,7 @@ import { Stars } from '../components/ReviewForm.js';
  */
 export function OwnerBusinessProfile(props: {
   onOpenDashboard: () => void;
-  onOpenBusinessScreen: (businessId: string, screen: 'subscription' | 'verification' | 'promotions') => void;
+  onOpenBusinessScreen: (businessId: string, screen: 'subscription' | 'subscription-payment-history' | 'verification' | 'promotions') => void;
   onEditProfile: () => void;
   onChangePassword: () => void;
   onOpenNotifications: () => void;
@@ -54,7 +54,7 @@ export function OwnerBusinessProfile(props: {
   const active = businesses.data.find((b) => b.id === selectedId) ?? businesses.data[0];
   const place = [active.locality, active.city].filter(Boolean).join(', ');
   const category = active.categories[0]?.name;
-  const open = (screen: 'subscription' | 'verification' | 'promotions') =>
+  const open = (screen: 'subscription' | 'subscription-payment-history' | 'verification' | 'promotions') =>
     props.onOpenBusinessScreen(active.id, screen);
 
   return (
@@ -86,7 +86,7 @@ export function OwnerBusinessProfile(props: {
       <OwnerPlanCard
         businessId={active.id}
         onManagePlan={() => open('subscription')}
-        onViewPayments={() => open('subscription')}
+        onViewPayments={() => open('subscription-payment-history')}
       />
 
       {businesses.data.length > 1 ? (

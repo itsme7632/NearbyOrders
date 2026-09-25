@@ -62,9 +62,10 @@ export function OwnerSubscription(props: {
   const [error, setError] = useState<string | null>(null);
   const [trialNotice, setTrialNotice] = useState<string | null>(null);
 
-  if (subscription.loading || plans.loading) return <Loading label="Loading subscription…" />;
+  if (subscription.loading || plans.loading || requests.loading) return <Loading label="Loading subscription…" />;
   if (subscription.error) return <ErrorState message={subscription.error} onRetry={subscription.reload} />;
   if (plans.error) return <ErrorState message={plans.error} onRetry={plans.reload} />;
+  if (requests.error) return <ErrorState message={requests.error} onRetry={requests.reload} />;
 
   const state = subscription.data;
   const sub = state?.subscription ?? null;

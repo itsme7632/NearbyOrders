@@ -4,7 +4,7 @@
 
 /* The sticky action bar sits above the floating bottom nav — keep the last
    of the scrollable content clear of it. */
-.biz-detail { padding-bottom: calc(170px + env(safe-area-inset-bottom)); overflow-x: clip; }
+.biz-detail { padding-bottom: calc(200px + env(safe-area-inset-bottom)); overflow-x: clip; }
 
 /* ---- Atlas hero: confident identity over the media ---- */
 .biz-detail .biz-hero-name {
@@ -238,14 +238,14 @@
   margin-top: 10px;
 }
 .biz-detail .pill {
-  min-height: 36px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   padding: 7px 12px;
   font-size: 12.5px;
 }
 .biz-detail .pill-action {
-  min-height: 40px;
+  min-height: 44px;
   font-weight: 800;
   color: var(--action-strong);
   border-color: var(--action-soft);

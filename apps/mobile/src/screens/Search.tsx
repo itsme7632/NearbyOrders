@@ -105,7 +105,9 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
   }, [page.data]);
 
   const loadMore = async () => {
-    const cursor = page.data?.nextCursor;
+    // Paginate from the LAST loaded page, not the first: after the first
+    // extra page lands, its cursor (possibly null) is the source of truth.
+    const cursor = (extraPages.at(-1) ?? page.data)?.nextCursor;
     if (!cursor || loadingMore) return;
     setLoadingMore(true);
     setMoreError(null);
@@ -172,7 +174,7 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
     }
     return groups;
   }, [results]);
-  const hasMore = Boolean(page.data?.nextCursor);
+  const hasMore = Boolean((extraPages.at(-1) ?? page.data)?.nextCursor);
   const total = page.data?.total ?? 0;
   const effectiveSort = page.data?.sort ?? sort;
   const searched = query.length > 0;

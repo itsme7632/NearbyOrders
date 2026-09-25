@@ -91,7 +91,7 @@ export function OwnerHours(props: { businessId: string }) {
           return (
             <li key={day} className={`hours-row${dayError ? ' hours-row-invalid' : ''}`}>
               <span className="hours-day">{DAY_LABELS[day]}</span>
-              <Toggle checked={!d.isClosed} onChange={(v) => update(day, { isClosed: !v, opensAt: v ? d.opensAt ?? '09:00' : undefined, closesAt: v ? d.closesAt ?? '18:00' : undefined })} label="" />
+              <Toggle checked={!d.isClosed} onChange={(v) => update(day, { isClosed: !v, opensAt: v ? d.opensAt ?? '09:00' : undefined, closesAt: v ? d.closesAt ?? '18:00' : undefined })} label={`${DAY_LABELS[day]} open`} />
               {d.isClosed ? (
                 <span className="hours-closed">Closed</span>
               ) : (

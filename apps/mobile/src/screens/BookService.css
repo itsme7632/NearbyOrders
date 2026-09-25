@@ -318,9 +318,6 @@
 
 /* 360px: keep the step names readable, slots in two columns. */
 @media (max-width: 400px) {
-  .booking-screen .book-step-name {
-    font-size: 11px;
-  }
   .booking-screen .slot-grid {
     grid-template-columns: repeat(2, 1fr);
   }

@@ -250,8 +250,8 @@ export function CollectionsView(props: {
                   onClick={() => unfile(b.id)}
                   style={{
                     position: 'absolute', right: 2, top: '50%', transform: 'translateY(-50%)',
-                    width: 36, height: 36, borderRadius: '50%', background: 'var(--card)',
-                    border: '1px solid var(--border)', alignItems: 'center', justifyContent: 'center',
+                    width: 44, height: 44, borderRadius: '50%', background: 'var(--card)',
+                    border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}
                 >
                   <ShelvesIcon size={16} />

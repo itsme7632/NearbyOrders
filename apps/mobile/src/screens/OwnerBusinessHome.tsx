@@ -14,10 +14,8 @@ import {
   AlertIcon,
   BookingsIcon,
   CheckIcon,
-  ExploreIcon,
   HeartIcon,
   ImageIcon,
-  InfoIcon,
   OrdersIcon,
   PinIcon,
   StarIcon,
@@ -152,6 +150,18 @@ function OverviewBody(props: {
         onOpenOrder={props.onOpenOrder}
       />
 
+      {/* Plan: the single subscription entry point on this screen. Sits
+          directly after Needs attention per the Overview hierarchy. The real
+          plan, price, trial and payment state come from OwnerPlanCard. */}
+      <section aria-label="Your plan" className="ov-section">
+        <h2 className="ov-section-title">Your plan</h2>
+        <OwnerPlanCard
+          businessId={active.id}
+          onManagePlan={() => onOpen(`${base}/subscription`)}
+          onViewPayments={() => onOpen(`${base}/subscription-payment-history`)}
+        />
+      </section>
+
       {/* Today's activity: today's orders, bookings and collected revenue,
           plus what's up next — all from the live overview. */}
       <TodayActivity
@@ -164,17 +174,6 @@ function OverviewBody(props: {
       {/* Performance: server-computed monthly figures plus the real rating.
           Restrained snapshot, not a dashboard. */}
       <PerformanceSection businessId={active.id} business={active} />
-
-      {/* Plan: the single subscription entry point on this screen. The real
-          plan, price, trial and payment state come from OwnerPlanCard. */}
-      <section aria-label="Your plan" className="ov-section">
-        <h2 className="ov-section-title">Your plan</h2>
-        <OwnerPlanCard
-          businessId={active.id}
-          onManagePlan={() => onOpen(`${base}/subscription`)}
-          onViewPayments={() => onOpen(`${base}/subscription`)}
-        />
-      </section>
 
       <QuickActions base={base} onOpen={onOpen} />
 
@@ -195,15 +194,14 @@ function OverviewBody(props: {
       <OvSection label="Grow">
         <OwnerHubRow icon={<CheckIcon size={18} />} title="Verification" subtitle="Get the verified badge on your listing" onClick={() => onOpen(`${base}/verification`)} />
         <OwnerHubRow icon={<StarIcon size={18} />} title="Promotions" subtitle="Deals and offers to attract customers" onClick={() => onOpen(`${base}/promotions`)} />
+        <OwnerHubRow icon={<HeartIcon size={18} />} title="Reviews" subtitle="What customers say about you" onClick={() => onOpen(`${base}/reviews`)} />
       </OvSection>
 
-      <OvSection label="Account & settings">
-        <OwnerHubRow icon={<HeartIcon size={18} />} title="Reviews" subtitle="What customers say about you" onClick={() => onOpen(`${base}/reviews`)} />
-        <OwnerHubRow icon={<AlertIcon size={18} />} title="Customer payments" subtitle="Verify customer payment proofs" onClick={() => onOpen(`${base}/payments`)} />
-        <OwnerHubRow icon={<CheckIcon size={18} />} title="Business payment methods" subtitle="Channels customers pay you through" onClick={() => onOpen(`${base}/payment-methods`)} />
-        <OwnerHubRow icon={<ExploreIcon size={18} />} title="Delivery & COD" subtitle="Own-rider delivery and cash on delivery" onClick={() => onOpen(`${base}/delivery`)} />
-        <OwnerHubRow icon={<InfoIcon size={18} />} title="Service advance settings" subtitle="Per-service advance requirements" onClick={() => onOpen(`${base}/advances`)} />
-        <OwnerHubRow icon={<HelpIcon size={18} />} title="Business settings" subtitle="Delivery, COD and payment channels" onClick={() => onOpen(`${base}/settings`)} />
+      {/* Account: a single entry into Business settings, which hosts the
+          remaining destinations. Overview stays a command center, not a
+          settings directory. */}
+      <OvSection label="Account">
+        <OwnerHubRow icon={<HelpIcon size={18} />} title="Business settings" subtitle="Delivery, COD, payments and advances" onClick={() => onOpen(`${base}/settings`)} />
       </OvSection>
     </div>
   );
@@ -413,7 +411,7 @@ function PerformanceSection({ businessId, business }: { businessId: string; busi
           </div>
           <div className="metric-tile">
             <span className="metric-tile-num metric-tile-money">
-              <Money minor={analytics.data.orders.revenueMinor + analytics.data.bookings.revenueMinor} currency="PKR" />
+              <Money minor={analytics.data.orders.revenueMinor + analytics.data.bookings.revenueMinor} currency={business.currency ?? 'PKR'} />
             </span>
             <span className="metric-tile-label">Revenue</span>
             <span className="metric-tile-sub">Collected this month</span>
@@ -440,6 +438,10 @@ function OverviewAttention(props: {
   onOpenOrder: (id: string) => void;
 }) {
   const { businessId, overview, onOpen, base } = props;
+  // Warnings from the live verification/subscription/payment state. The
+  // all-clear below is gated on these being loaded — never assume healthy
+  // while they are still loading or have failed.
+  const [warnings, setWarnings] = useState<{ loading: boolean; error: boolean; count: number; retry: () => void } | null>(null);
 
   if (overview.loading) return <ListSkeleton count={1} />;
   if (overview.error) return <ErrorState message={overview.error} onRetry={overview.reload} />;
@@ -487,8 +489,9 @@ function OverviewAttention(props: {
           bare
           onOpenVerification={() => onOpen(`${base}/verification`)}
           onOpenSubscription={() => onOpen(`${base}/subscription`)}
+          onStatus={setWarnings}
         />
-        {attention.length ? (
+        {attention.length > 0 ? (
           <div className="activity-card">
             {attention.map((a) => (
               <button key={a.key} type="button" className="activity-row attention-row" onClick={a.onClick}>
@@ -507,11 +510,18 @@ function OverviewAttention(props: {
               </button>
             ))}
           </div>
-        ) : (
+        ) : null}
+        {/* The all-clear is honest only when the warning sources have loaded
+            with zero items — never while loading or after a fetch error. */}
+        {!warnings || warnings.loading ? (
+          <ListSkeleton count={1} />
+        ) : warnings.error ? (
+          <ErrorState message="Could not check verification and plan status." onRetry={warnings.retry} />
+        ) : attention.length === 0 && warnings.count === 0 ? (
           <p className="calm-note" role="status">
             <CheckIcon size={16} /> All caught up. Nothing needs your attention right now.
           </p>
-        )}
+        ) : null}
       </section>
       {renderProfileGaps(o.profileMissing, base, onOpen)}
     </>

@@ -119,9 +119,10 @@ describe('PromotionPaymentFlow (opening)', () => {
     expect(screen.getByText(/approved your request for/)).toBeTruthy();
     // Server amount due, never a client-typed number.
     expect(screen.getByText('Rs 1,999')).toBeTruthy();
-    // Admin-configured pay-in channels, never hardcoded.
-    expect(await screen.findByText('Payment methods')).toBeTruthy();
-    expect(screen.getAllByText('03000000000').length).toBeGreaterThan(0);
+    // Admin-configured pay-in channels, never hardcoded: selectable once, with
+    // only the selected method's account details shown.
+    expect(await screen.findByRole('heading', { name: 'Payment method' })).toBeTruthy();
+    expect(screen.getAllByText('03000000000').length).toBe(1);
     expect(paymentsSpy).toHaveBeenCalledWith('biz-1', 'req-pay');
   });
 

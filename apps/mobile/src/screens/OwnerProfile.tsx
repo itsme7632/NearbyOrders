@@ -138,6 +138,8 @@ export function OwnerProfile(props: { business: Business; onSaved: () => void })
       <Field label="Categories">
         {categories.loading ? (
           <Loading label="Loading categories…" />
+        ) : categories.error ? (
+          <ErrorState message={categories.error} onRetry={categories.reload} />
         ) : (
           <div className="chip-row">
             {categories.data?.map((c) => (

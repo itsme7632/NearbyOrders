@@ -116,4 +116,37 @@ describe('OwnerAttentionItems (subscription/trial states)', () => {
       expect(container.textContent).toBe('');
     });
   });
+
+  it('reports status so an embedding section can gate its all-clear', async () => {
+    const onStatus = vi.fn();
+    render(<OwnerAttentionItems {...props} onStatus={onStatus} />);
+    // Loading first: an embedding Overview must not show "all caught up" yet.
+    await waitFor(() => expect(onStatus).toHaveBeenCalledWith(expect.objectContaining({ loading: true })));
+    // Then loaded with zero items and no error.
+    await waitFor(() =>
+      expect(onStatus).toHaveBeenLastCalledWith(
+        expect.objectContaining({ loading: false, error: false, count: 0 }),
+      ),
+    );
+  });
+
+  it('reports errors so an embedding section shows retry instead of all-clear', async () => {
+    const onStatus = vi.fn();
+    vi.spyOn(api, 'getBusinessSubscription').mockRejectedValue(new Error('boom'));
+    render(<OwnerAttentionItems {...props} onStatus={onStatus} />);
+    await waitFor(() =>
+      expect(onStatus).toHaveBeenLastCalledWith(
+        expect.objectContaining({ loading: false, error: true }),
+      ),
+    );
+    // The retry callback reloads the failed fetches.
+    const retry = onStatus.mock.calls.at(-1)[0].retry as () => void;
+    vi.spyOn(api, 'getBusinessSubscription').mockResolvedValue(emptyState());
+    retry();
+    await waitFor(() =>
+      expect(onStatus).toHaveBeenLastCalledWith(
+        expect.objectContaining({ loading: false, error: false, count: 0 }),
+      ),
+    );
+  });
 });

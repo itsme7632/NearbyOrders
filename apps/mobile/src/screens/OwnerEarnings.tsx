@@ -92,7 +92,7 @@ function EarningsForBusiness(props: { businessId: string; switcher?: React.React
         ) : null}
         {e.inProgress.orders > 0 ? (
           <>
-            <h2>In progress</h2>
+            <h3>In progress</h3>
             <div className="cart-summary">
               <div className="cart-line">
                 <span>Active orders ({e.inProgress.orders})</span>

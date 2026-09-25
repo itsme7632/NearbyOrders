@@ -311,14 +311,13 @@ export function OwnerLocation(props: { businessId: string }) {
           e.preventDefault();
           void runAddressSearch();
         }}
-        style={{ marginTop: 10, display: 'flex', gap: 8 }}
+        className="loc-search-row"
       >
         <input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search your address…"
           aria-label="Search address"
-          style={{ flex: 1 }}
         />
         <Button type="submit" sm disabled={searching || searchQuery.trim() === ''}>
           {searching ? 'Searching…' : 'Search'}

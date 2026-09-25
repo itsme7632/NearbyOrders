@@ -387,6 +387,12 @@ function MyPromotionRequests(props: {
                   : ' Free promotions activate directly on approval.'}
               </p>
             ) : null}
+
+            {r.lifecycleState === 'CANCELLED' ? (
+              <p className="hint" style={{ marginTop: 8 }}>
+                This request was cancelled. It will not activate.
+              </p>
+            ) : null}
           </section>
         ))}
       </div>

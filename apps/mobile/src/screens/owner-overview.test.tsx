@@ -270,7 +270,7 @@ describe('business overview (redesigned hub)', () => {
     click('Orders', '/owner/biz-1/orders');
   });
 
-  it('groups management into Manage, Catalog, Grow, and Account & settings', async () => {
+  it('groups management into Manage, Catalog, Grow, and Account', async () => {
     const onOpen = vi.fn();
     await renderHome({ onOpen });
     await screen.findByText('Total bookings'); // page loaded
@@ -278,7 +278,7 @@ describe('business overview (redesigned hub)', () => {
     const manage = screen.getByRole('region', { name: 'Manage' });
     const catalog = screen.getByRole('region', { name: 'Catalog' });
     const grow = screen.getByRole('region', { name: 'Grow' });
-    const account = screen.getByRole('region', { name: 'Account & settings' });
+    const account = screen.getByRole('region', { name: 'Account' });
 
     const clickIn = (region: HTMLElement, name: string | RegExp, path: string) => {
       fireEvent.click(within(region).getByRole('button', { name }));
@@ -294,13 +294,12 @@ describe('business overview (redesigned hub)', () => {
 
     clickIn(grow, /Verification/, '/owner/biz-1/verification');
     clickIn(grow, /Promotions/, '/owner/biz-1/promotions');
+    clickIn(grow, /Reviews/, '/owner/biz-1/reviews');
 
-    clickIn(account, /Reviews/, '/owner/biz-1/reviews');
-    clickIn(account, /Customer payments/, '/owner/biz-1/payments');
-    clickIn(account, /Business payment methods/, '/owner/biz-1/payment-methods');
-    clickIn(account, /Delivery & COD/, '/owner/biz-1/delivery');
-    clickIn(account, /Service advance settings/, '/owner/biz-1/advances');
+    // Account is a single entry into Business settings — the Overview stays a
+    // command center, not a settings directory.
     clickIn(account, /Business settings/, '/owner/biz-1/settings');
+    expect(within(account).queryAllByRole('button').length).toBe(1);
   });
 
   it('shows the business switcher only when the owner has several businesses', async () => {

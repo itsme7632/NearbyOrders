@@ -219,4 +219,28 @@ describe('SearchScreen (Phase 14 unified search)', () => {
       window.localStorage.removeItem('nearbyorders.recentSearches');
     }
   });
+
+  it('Load more paginates from the latest page and stops when its cursor is null', async () => {
+    // First page carries a cursor; the second (last) page has none.
+    vi.mocked(api.searchMarketplace)
+      .mockResolvedValueOnce(page([bizResult], { nextCursor: 'cursor-1', total: 2 }))
+      .mockResolvedValueOnce(page([svcResult], { nextCursor: null, total: 2 }));
+    render(<SearchScreen initialQuery="grill" onBack={() => {}} onOpenBusiness={() => {}} />);
+
+    const loadMore = await screen.findByRole('button', { name: /load more results/i });
+    fireEvent.click(loadMore);
+
+    // The follow-up request uses the first page's cursor, and both pages render.
+    await waitFor(() =>
+      expect(api.searchMarketplace).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: 'cursor-1' })),
+    );
+    await screen.findByText('Oil change');
+
+    // The last page reported no further cursor, so the button must disappear —
+    // it must never re-request the same page and duplicate results.
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /load more results/i })).not.toBeInTheDocument(),
+    );
+    expect(api.searchMarketplace).toHaveBeenCalledTimes(2);
+  });
 });

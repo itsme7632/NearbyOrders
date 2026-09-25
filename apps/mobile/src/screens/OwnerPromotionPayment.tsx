@@ -181,7 +181,7 @@ export function PromotionPaymentFlow(props: {
       ) : (
         <>
           <div className="pay-block">
-            <h3 className="pay-block-title">Payment methods</h3>
+            <h3 className="pay-block-title">Payment method</h3>
             {methods.loading ? (
               <Loading label="Loading payment methods…" />
             ) : methods.error ? (
@@ -189,28 +189,47 @@ export function PromotionPaymentFlow(props: {
             ) : methodList.length === 0 ? (
               <p className="pay-empty">No payment methods are available right now. Please try again later.</p>
             ) : (
-              <ul className="pay-method-list">
-                {methodList.map((m) => (
-                  <li key={m.id} className="pay-method">
-                    <span className="pay-method-name">{m.name}</span>
-                    <div className="pay-details">
-                      <div className="pay-detail-row">
-                        <span className="pay-detail-label">Account title</span>
-                        <span className="pay-detail-value">{m.accountTitle}</span>
-                      </div>
-                      <div className="pay-detail-row">
-                        <span className="pay-detail-label">
-                          {m.type === 'BANK_TRANSFER' ? 'IBAN / account' : 'Number'}
-                        </span>
-                        <span className="pay-detail-value pay-detail-mono">
-                          {m.type === 'BANK_TRANSFER' && m.iban ? m.iban : m.accountNumber}
-                        </span>
-                      </div>
+              <>
+                {/* Selectable method chips once; only the selected method's
+                    account details show below — mirroring the subscription
+                    payment screen. */}
+                <div className="field">
+                  <span className="label" id="promo-pay-method-label">
+                    Payment method
+                  </span>
+                  <div role="group" aria-labelledby="promo-pay-method-label">
+                    {methodList.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        className={`chip${selectedMethod?.id === m.id ? ' chip-active' : ''}`}
+                        onClick={() => setMethodId(m.id)}
+                      >
+                        {m.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {selectedMethod ? (
+                  <div className="pay-details">
+                    <div className="pay-detail-row">
+                      <span className="pay-detail-label">Account title</span>
+                      <span className="pay-detail-value">{selectedMethod.accountTitle}</span>
                     </div>
-                    {m.instructions ? <p className="hint">{m.instructions}</p> : null}
-                  </li>
-                ))}
-              </ul>
+                    <div className="pay-detail-row">
+                      <span className="pay-detail-label">
+                        {selectedMethod.type === 'BANK_TRANSFER' ? 'IBAN / account' : 'Number'}
+                      </span>
+                      <span className="pay-detail-value pay-detail-mono">
+                        {selectedMethod.type === 'BANK_TRANSFER' && selectedMethod.iban
+                          ? selectedMethod.iban
+                          : selectedMethod.accountNumber}
+                      </span>
+                    </div>
+                    {selectedMethod.instructions ? <p className="hint">{selectedMethod.instructions}</p> : null}
+                  </div>
+                ) : null}
+              </>
             )}
           </div>
 
@@ -221,18 +240,6 @@ export function PromotionPaymentFlow(props: {
             </div>
           ) : methodList.length > 0 ? (
             <div className="edit-block">
-              <Field label="Payment method">
-                {methodList.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    className={`chip${selectedMethod?.id === m.id ? ' chip-active' : ''}`}
-                    onClick={() => setMethodId(m.id)}
-                  >
-                    {m.name}
-                  </button>
-                ))}
-              </Field>
               <p className="hint">Pay exactly the amount due to the account above, then submit your proof below.</p>
               <Field label="Transaction reference" hint="From your payment app or bank slip. We match it against your receipt.">
                 <input

@@ -117,6 +117,7 @@ export function OwnerCustomerPayments(props: { businessId: string }) {
   const [mInstructions, setMInstructions] = useState('');
   const [mError, setMError] = useState<string | null>(null);
   const [mBusy, setMBusy] = useState(false);
+  const [deactivateError, setDeactivateError] = useState<string | null>(null);
 
   const queue = useAsyncData(
     () => listOwnerPayments('PENDING_VERIFICATION'),
@@ -211,6 +212,14 @@ export function OwnerCustomerPayments(props: { businessId: string }) {
           These channels are shown to customers at checkout. NearbyOrders never handles the money: customers pay you
           directly.
         </p>
+        {deactivateError ? (
+          <p className="form-error" role="alert">
+            {deactivateError}{' '}
+            <button type="button" className="link-btn" style={{ display: 'inline', margin: 0 }} onClick={() => setDeactivateError(null)}>
+              Dismiss
+            </button>
+          </p>
+        ) : null}
         {methods.loading ? (
           <Loading label="Loading methods…" />
         ) : methods.error ? (
@@ -231,11 +240,12 @@ export function OwnerCustomerPayments(props: { businessId: string }) {
                   <Button
                     sm
                     variant="ghost"
-                    onClick={() =>
+                    onClick={() => {
+                      setDeactivateError(null);
                       void deactivatePayInMethod(props.businessId, m.id)
                         .then(reload)
-                        .catch(() => undefined)
-                    }
+                        .catch(() => setDeactivateError(`Could not deactivate ${m.displayName}. Please try again.`));
+                    }}
                   >
                     Deactivate
                   </Button>

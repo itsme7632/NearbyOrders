@@ -152,6 +152,12 @@ main {
   width: 100%;
 }
 
+/* Auth flow: no bottom nav is rendered, so the nav clearance would be dead
+   whitespace at the bottom of sign-in/register screens. */
+main.auth-mode {
+  padding-bottom: calc(24px + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)));
+}
+
 /* Edge-to-edge scroll clipping boundary. The app scrolls the DOCUMENT inside
    an edge-to-edge WebView with a transparent Android status bar, so without
    a real boundary every scrolled element — in-flow content and
@@ -299,6 +305,12 @@ nav button.active { color: var(--primary); font-weight: 800; }
 
 /* ---------------- sections & headings ---------------- */
 .section-head { display: flex; align-items: baseline; justify-content: space-between; margin: 20px 0 10px; }
+/* 360px: Explore's result-count string can crowd the section heading — let it
+   wrap to its own line on narrow screens. */
+@media (max-width: 400px) {
+  .explore-screen .section-head { flex-wrap: wrap; row-gap: 4px; }
+  .explore-screen .section-head .biz-distance { flex-basis: 100%; }
+}
 .section-head h2, .card h2 { font-size: 17px; margin: 0; }
 h1 {
   font-size: clamp(20px, 5.5vw, 23px);
@@ -672,6 +684,7 @@ p { overflow-wrap: break-word; }
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 999px;
+  min-height: 44px;
   padding: 10px 14px;
   font-size: 14px;
   font-weight: 600;
@@ -690,7 +703,7 @@ p { overflow-wrap: break-word; }
   font-size: 13px;
   font-weight: 600;
   color: var(--navy);
-  min-height: 38px;
+  min-height: 44px;
 }
 .chip-active { background: var(--primary); border-color: var(--primary); color: #fff; }
 .pill {
@@ -1150,6 +1163,7 @@ p { overflow-wrap: break-word; }
 .loc-use-btn {
   position: absolute; top: 10px; right: 10px; z-index: 5;
   display: inline-flex; align-items: center; gap: 6px;
+  min-height: 44px;
   background: var(--card); border: 1px solid var(--border); border-radius: 999px;
   padding: 8px 12px; font-size: 12.5px; font-weight: 700; color: var(--ink);
   box-shadow: var(--shadow);
@@ -1158,7 +1172,11 @@ p { overflow-wrap: break-word; }
 .loc-pinned-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 14px; box-shadow: var(--shadow); }
 .loc-pinned-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .loc-pinned-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; font-size: 14.5px; color: var(--ink); }
-.loc-pinned-edit { background: none; border: none; padding: 4px 6px; font-size: 13px; font-weight: 700; color: var(--action); cursor: pointer; }
+.loc-pinned-edit { background: none; border: none; min-height: 44px; padding: 4px 6px; font-size: 13px; font-weight: 700; color: var(--action); cursor: pointer; }
+/* Address search row: the input must shrink below its intrinsic width on
+   narrow screens instead of pushing the Search button out. */
+.loc-search-row { margin-top: 10px; display: flex; gap: 8px; }
+.loc-search-row > input { flex: 1 1 auto; min-width: 0; }
 .loc-pinned-label { font-size: 13.5px; color: var(--ink-2); margin: 6px 0 0; }
 .loc-coords { display: flex; gap: 16px; margin-top: 10px; }
 .loc-coords > span { display: flex; flex-direction: column; gap: 1px; }
@@ -1494,14 +1512,14 @@ nav.business-nav .nav-item.active {
   outline: none;
 }
 .password-slot { position: relative; display: flex; align-items: center; flex: 1; min-width: 0; }
-.password-slot input { padding-right: 40px; }
+.password-slot input { padding-right: 44px; }
 .password-toggle {
   position: absolute;
   right: 0;
   top: 50%;
   transform: translateY(-50%);
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 10px;
   display: inline-flex;
   align-items: center;
@@ -1710,6 +1728,10 @@ button.hub-row:active { background: var(--bg); }
 .hours-editor { list-style: none; margin: 10px 0 0; padding: 0; }
 .hours-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 8px 0; border-bottom: 1px dashed var(--border); }
 .hours-row:last-child { border-bottom: 0; }
+/* The day name is already shown in .hours-day; the switch's own label is
+   screen-reader-only. The row keeps a 44px target. */
+.hours-row .toggle { min-height: 44px; }
+.hours-row .toggle-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .hours-day { width: 42px; font-weight: 700; font-size: 13.5px; }
 .hours-closed { color: var(--muted); font-size: 13.5px; }
 .hours-times { display: flex; gap: 8px; margin-left: auto; }
@@ -3093,7 +3115,7 @@ nav.business-nav-v3 .nav-item {
   gap: 2px;
   padding: 6px 2px 5px;
   border-radius: 13px;
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--muted);
 }
@@ -3209,7 +3231,7 @@ nav.business-nav-v3 .nav-item.active {
   justify-content: center;
 }
 .category-rail-name {
-  font-size: 10.5px;
+  font-size: 12.5px;
   font-weight: 700;
   color: var(--ink-2);
   max-width: 68px;
@@ -3465,6 +3487,12 @@ nav.business-nav-v3 .nav-item.active {
   box-shadow: var(--shadow);
   z-index: 2;
 }
+/* 44px hit area over the 36px visual: the only way back from a business page. */
+.back-float::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+}
 .biz-hero-overlay { position: absolute; left: 0; right: 0; bottom: 0; padding: 16px; color: #fff; }
 .biz-hero-overlay-badges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 .biz-hero-overlay .badge-verified { background: rgba(255, 255, 255, 0.92); color: var(--brand-strong); }
@@ -3518,7 +3546,7 @@ nav.business-nav-v3 .nav-item.active {
   justify-content: center;
   flex: 0 0 auto;
 }
-.book-step-name { font-size: 11.5px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+.book-step-name { font-size: 12px; font-weight: 700; color: var(--muted); white-space: nowrap; }
 .book-step-bar { flex: 1; height: 2px; background: var(--border); border-radius: 2px; margin: 0 2px; }
 .book-step-now .book-step-dot { background: var(--brand); border-color: var(--brand); color: #fff; }
 .book-step-now .book-step-name { color: var(--brand-strong); }
@@ -3629,7 +3657,7 @@ nav.business-nav-v3 .nav-item.active {
   flex: 0 0 auto;
 }
 .bk-date-num { font-size: 17px; font-weight: 800; color: var(--brand-strong); line-height: 1; }
-.bk-date-month { font-size: 9.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--action); margin-top: 2px; }
+.bk-date-month { font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--action); margin-top: 2px; }
 .bk-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .bk-service { font-size: 14.5px; font-weight: 800; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bk-biz { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); min-width: 0; }
@@ -3640,9 +3668,9 @@ nav.business-nav-v3 .nav-item.active {
 .booking-detail-when { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .booking-detail-when .bk-date { width: 54px; padding: 9px 0 8px; }
 .booking-detail-when .bk-date-num { font-size: 21px; }
-.booking-detail-when-main { display: flex; flex-direction: column; gap: 1px; }
+.booking-detail-when-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .booking-detail-when-time { font-size: 17px; font-weight: 800; color: var(--ink); }
-.booking-detail-when-day { font-size: 12.5px; color: var(--muted); }
+.booking-detail-when-day { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
 
 /* ---- Profile: identity band ---- */
 .me-band {
@@ -3677,6 +3705,7 @@ nav.business-nav-v3 .nav-item.active {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-height: 44px;
   background: #fff;
   color: var(--brand-strong);
   font-size: 12px;
@@ -3727,7 +3756,7 @@ nav.business-nav-v3 .nav-item.active {
   .spotlight-card { grid-template-columns: 96px 1fr; }
   .spotlight-media { min-height: 100px; }
   .biz-action-bar .biz-action { padding: 10px 12px; font-size: 12.5px; }
-  .book-step-name { font-size: 10px; }
+  /* Step labels stay readable at 12px on small screens; the flex bar absorbs it. */
   .bk-date { width: 42px; }
   .biz-row-media { width: 56px; height: 56px; }
   .biz-row { grid-template-columns: 56px 1fr auto; }
@@ -3769,7 +3798,7 @@ nav.business-nav-v3 .nav-item.active {
   display: flex; align-items: center; gap: 4px;
 }
 .fav-action-btn {
-  width: 36px; height: 36px; border-radius: 50%;
+  width: 44px; height: 44px; border-radius: 50%;
   background: var(--card); border: 1px solid var(--border);
   display: inline-flex; align-items: center; justify-content: center;
   color: var(--ink-soft); cursor: pointer; padding: 0;
@@ -3778,6 +3807,7 @@ nav.business-nav-v3 .nav-item.active {
 .fav-action-btn.fav-heart { color: var(--brand); }
 .collection-pick {
   display: flex; align-items: center; gap: 10px; width: 100%;
+  min-height: 44px;
   background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-md);
   padding: 10px 12px; cursor: pointer; text-align: left;
 }
@@ -4531,7 +4561,7 @@ nav.nav-v3, nav.business-nav-v3 {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-height: 40px;
+  min-height: 44px;
   padding: 9px 14px;
   border-radius: 9px;
   font-size: 13.5px;
@@ -4547,13 +4577,19 @@ nav.nav-v3, nav.business-nav-v3 {
 }
 .segmented-option:active { transform: scale(0.98); }
 
-/* Phase 3D: accessible toggle switch. 52x32 track, 48px vertical target. */
+/* Phase 3D: accessible toggle switch. 52x32 track with an expanded 48px
+   vertical hit area (the track itself stays 32px tall visually). */
 .toggle {
   flex: none;
   width: 52px; height: 32px; border-radius: 999px;
   background: var(--border); border: none; cursor: pointer;
   position: relative; padding: 0;
   transition: background 0.15s ease;
+}
+.toggle::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
 }
 .toggle:disabled { opacity: 0.55; cursor: default; }
 .toggle-on { background: var(--brand); }
@@ -4660,8 +4696,9 @@ nav.nav-v3, nav.business-nav-v3 {
   font: inherit;
   background: none;
   border: 0;
-  padding: 2px 4px;
-  margin: -2px -4px;
+  min-height: 44px;
+  padding: 10px 4px;
+  margin: -10px -4px;
   border-radius: 8px;
   cursor: pointer;
   text-align: left;
@@ -4729,7 +4766,7 @@ nav.nav-v3, nav.business-nav-v3 {
 }
 .home-context-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .home-context-card-kicker {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -5187,7 +5224,7 @@ nav.nav-v3, nav.business-nav-v3 {
   cursor: pointer;
 }
 .featured-chip {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -5292,7 +5329,7 @@ nav.nav-v3, nav.business-nav-v3 {
   color: var(--brand);
 }
 .discover-kind {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -5324,6 +5361,9 @@ nav.nav-v3, nav.business-nav-v3 {
   font-weight: 800;
   color: var(--ink);
   margin-top: 4px;
+  max-width: 100%;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 .discover-meta .money { font-weight: 800; }
 
@@ -6197,7 +6237,7 @@ nav.nav-v3, nav.business-nav-v3 {
   padding: 3px;
 }
 .explore-screen .segmented-option {
-  min-height: 40px;
+  min-height: 44px;
   padding: 8px 20px;
   border-radius: 999px;
   font-size: 14px;
@@ -6313,7 +6353,7 @@ nav.nav-v3, nav.business-nav-v3 {
 }
 .map-preview-actions .btn {
   min-width: 76px;
-  min-height: 40px;
+  min-height: 44px;
 }
 .map-preview-actions .btn-primary {
   background: var(--action);
