@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { CloseIcon } from './icons.js';
+import { useOverlayBackHandler } from '../androidBack.js';
 
 /* ==================================================================
    Warm Proximity core primitives (Phase 1).
@@ -16,6 +17,8 @@ import { CloseIcon } from './icons.js';
  * - role="dialog" + aria-modal with labelled title
  * - Focus moves to the close action on open and returns on close
  * - Escape and backdrop tap dismiss (unless `persistent`)
+ * - Android system back dismisses too (unless `persistent`), via the
+ *   central back handler — sheets never navigate away underneath
  * - Body scroll is locked while open; safe-area inset is padded
  * - Content scrolls inside `.sheet-body`
  */
@@ -34,6 +37,11 @@ export function Sheet(props: {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
+
+  // System back dismisses an open non-persistent sheet before navigating.
+  // Persistent sheets own their flow (same as Escape/backdrop): they do not
+  // register, so back navigates history as usual.
+  useOverlayBackHandler(open && !persistent, onClose);
 
   useEffect(() => {
     if (!open) return;

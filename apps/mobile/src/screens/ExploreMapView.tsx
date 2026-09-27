@@ -6,6 +6,7 @@ import type { LatLng } from '../maps/provider.js';
 import { hasCoordinates, formatDistanceKm } from '../location.js';
 import { RatingChip } from '../components/ui.js';
 import { ExploreIcon } from '../components/icons.js';
+import { useOverlayBackHandler } from '../androidBack.js';
 
 /**
  * Explore map view (Phase 12). Renders the discovery result set as business
@@ -73,6 +74,9 @@ export function ExploreMapView(props: {
 
   const selected = props.results.find((b) => b.id === props.selectedId) ?? null;
   const selectable = props.results.filter((b) => hasCoordinates(b));
+
+  // System back dismisses the marker preview dialog before navigating away.
+  useOverlayBackHandler(selected !== null, () => props.onSelect(null));
 
   return (
     <div className="explore-map-wrap" style={{ position: 'relative' }}>

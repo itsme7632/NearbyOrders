@@ -41,8 +41,14 @@ import {
 import { useUnreadNotifications } from './useUnreadNotifications.js';
 import { usePushRegistration } from './usePushRegistration.js';
 import { applyNativeStatusBarInset } from './statusBar.js';
+import { initAndroidBackNavigation } from './androidBack.js';
 
 initModeSessionSync();
+
+// Android system back-button handling: overlays dismiss first, then WebView
+// history goes back, then the tab root, and only at the genuine root with no
+// history does the app background. Central, route-agnostic, no-op on web/iOS.
+initAndroidBackNavigation();
 
 // Android status-bar guarantee: measure the real native inset (WindowInsets)
 // as early as possible so `--native-statusbar-height` is available to the
