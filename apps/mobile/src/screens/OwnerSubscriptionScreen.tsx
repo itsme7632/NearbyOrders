@@ -36,8 +36,9 @@ function GiftGlyph() {
 
 /**
  * My Subscription: a clean summary/dashboard. Current plan (name, price,
- * billing period), subscription status (Active / Trial / Payment required),
- * trial remaining or renewal info, payment status, then navigation rows to
+ * billing period), honest subscription status (Free trial / Active / Plan
+ * expired / Plan cancelled / Subscription suspended / No plan yet), trial
+ * remaining or plan-end info, payment status, then navigation rows to
  * the five dedicated routes — Plan details, Change plan, Payment methods,
  * Make a payment, Payment history — plus a short honest explanation of the
  * manual payment flow. None of the five destinations render inline here.
@@ -100,6 +101,9 @@ export function OwnerSubscription(props: {
   // business may start its one trial; ACTIVE/EXPIRED/CONVERTED means the
   // trial was already used; anything else means not available right now.
   const trialStatus = state?.trialStatus ?? null;
+  // Listing-approval state (Business.status): the trial CTA requires
+  // APPROVED — verification alone is not enough.
+  const businessStatus = state?.businessStatus ?? null;
   const trialWindow = state?.trial ?? null;
   const trialDaysLeft =
     trialWindow?.daysRemaining ??
@@ -107,6 +111,8 @@ export function OwnerSubscription(props: {
       ? Math.max(0, Math.ceil((new Date(sub.trialEndAt).getTime() - Date.now()) / 86_400_000))
       : null);
   const renewalDate = sub ? new Date(sub.currentPeriodEndAt).toLocaleDateString() : null;
+  // A live subscription (TRIAL or ACTIVE) hides the trial offer section.
+  const hasLiveSubscription = sub !== null && (sub.status === 'TRIAL' || sub.status === 'ACTIVE');
 
   // Defensive: the payment history must be an array before indexing — a
   // non-array wire shape must never throw during render.
@@ -122,14 +128,28 @@ export function OwnerSubscription(props: {
           : 'Last payment request was cancelled'
     : 'No payments submitted yet';
 
-  // Only the server's explicit ineligible verdict hides the CTA. With no
-  // trial status yet there is no signal either way, so the trial stays
-  // offered and applyTrial's 403/409 carries the server's reason.
-  const ineligibilityReason =
-    trialStatus && trialStatus !== 'ELIGIBLE'
+  // P2 §9: the free-trial CTA is offerable only when the business is listed
+  // (APPROVED), the trial is ELIGIBLE, no live subscription exists, and the
+  // plan carries a trial window. The server enforces the same gate — this is
+  // presentation only, and applyTrial's 403/409 still carries the server's
+  // reason for anything missed here.
+  const trialOfferable =
+    businessStatus === 'APPROVED' && trialStatus === 'ELIGIBLE' && !hasLiveSubscription && plan.trialDays > 0;
+  // P2 §7: verified (hence trial-eligible) but still waiting for listing
+  // approval — explain the wait instead of offering the trial.
+  const waitingForListingApproval =
+    businessStatus !== null &&
+    businessStatus !== 'APPROVED' &&
+    trialStatus === 'ELIGIBLE' &&
+    !hasLiveSubscription;
+  // Why the trial is not offerable, when it is not a wait-for-approval case.
+  const trialUnavailableReason =
+    !hasLiveSubscription && !trialOfferable && !waitingForListingApproval && plan.trialDays > 0
       ? trialStatus === 'ACTIVE' || trialStatus === 'EXPIRED' || trialStatus === 'CONVERTED'
         ? 'Your free trial has already been used for this business.'
-        : 'A free trial is not available for this business right now.'
+        : trialStatus === 'ELIGIBLE'
+          ? 'Your business must be approved before you can start the free trial.'
+          : 'A free trial is not available for this business right now.'
       : null;
 
   const startTrial = async () => {
@@ -140,7 +160,7 @@ export function OwnerSubscription(props: {
     try {
       const result = await applyTrial(props.businessId, plan.slug);
       setTrialNotice(
-        `Free trial started. It ends on ${result.trialEndAt ? new Date(result.trialEndAt).toLocaleDateString() : 'the end of the trial period'}. Add a payment before then to stay active.`,
+        `Free trial started. It ends on ${result.trialEndAt ? new Date(result.trialEndAt).toLocaleDateString() : 'the end of the trial period'}. Submit your payment before then to continue without interruption.`,
       );
       subscription.reload();
     } catch (e) {
@@ -192,12 +212,28 @@ export function OwnerSubscription(props: {
             <span className={`badge ${HUB_STATUS_BADGE[hubStatus]}`}>{HUB_STATUS_LABEL[hubStatus]}</span>
             {hubStatus === 'TRIAL' && trialDaysLeft !== null ? (
               <span>
-                {trialDaysLeft} day{trialDaysLeft === 1 ? '' : 's'} remaining (trial ends{' '}
-                {trialWindow?.endsAt ? new Date(trialWindow.endsAt).toLocaleDateString() : 'soon'})
+                {trialDaysLeft <= 3
+                  ? trialDaysLeft === 0
+                    ? 'Your trial ends today.'
+                    : trialDaysLeft === 1
+                      ? 'Your trial ends tomorrow.'
+                      : `Your trial ends in ${trialDaysLeft} days.`
+                  : `${trialDaysLeft} days remaining `}
+                {trialDaysLeft > 3 && trialWindow?.endsAt ? (
+                  <span>(trial ends {new Date(trialWindow.endsAt).toLocaleDateString()})</span>
+                ) : null}
               </span>
             ) : null}
-            {hubStatus === 'ACTIVE' && renewalDate ? <span>Renews {renewalDate}</span> : null}
-            {hubStatus === 'PAYMENT_REQUIRED' && renewalDate ? <span>Ended {renewalDate}</span> : null}
+            {hubStatus === 'ACTIVE' && renewalDate ? <span>Plan active until {renewalDate}</span> : null}
+            {hubStatus === 'EXPIRED' ? (
+              <span>
+                {trialStatus === 'EXPIRED'
+                  ? 'Your free trial has ended.'
+                  : 'Your plan has expired.'}
+              </span>
+            ) : null}
+            {hubStatus === 'CANCELLED' && renewalDate ? <span>Access until {renewalDate}</span> : null}
+            {hubStatus === 'SUSPENDED' ? <span>Contact the NearbyOrders team if you think this is a mistake.</span> : null}
           </p>
           <div className="pay-details" style={{ marginTop: 10 }}>
             <div className="pay-detail-row">
@@ -214,16 +250,14 @@ export function OwnerSubscription(props: {
         </div>
       </section>
 
-      {/* Free trial: server-authoritative. The banner shows only while the
-          trial is actually offerable; the trial days always come from the
-          working plan, never from client constants. A plan with zero trial
-          days must never advertise a "0-day free trial". */}
-      {hubStatus === 'PAYMENT_REQUIRED' && plan.trialDays > 0 ? (
-        ineligibilityReason ? (
-          <p className="hint sub-note" role="status">
-            {ineligibilityReason}
-          </p>
-        ) : (
+      {/* Free trial: server-authoritative. The offer shows only while the
+          business is listed (APPROVED) and the trial is ELIGIBLE with no live
+          subscription; a verified-but-unlisted business sees the waiting
+          state instead. The trial days always come from the working plan,
+          never from client constants. A plan with zero trial days must never
+          advertise a "0-day free trial". */}
+      {!hasLiveSubscription && plan.trialDays > 0 ? (
+        trialOfferable ? (
           <section className="sub-trial-card" aria-label="Free trial">
             <div className="sub-trial-hero">
               <span className="sub-trial-icon" aria-hidden>
@@ -240,10 +274,31 @@ export function OwnerSubscription(props: {
               {busy ? 'Starting…' : `Start ${plan.trialDays}-day free trial`}
             </Button>
             <p className="sub-trial-fine">
-              The trial includes everything in the {plan.name} plan. The team activates it on our side after you apply.
+              The trial includes everything in the {plan.name} plan. Your trial starts immediately when you
+              apply. No payment required.
             </p>
           </section>
-        )
+        ) : waitingForListingApproval ? (
+          <section className="sub-trial-card" aria-label="Waiting for listing approval">
+            <div className="sub-trial-main">
+              <span className="sub-trial-title">Waiting for listing approval</span>
+              <span className="sub-trial-sub">
+                Your business is verified, but it still needs listing approval before customers can find it.
+                You&rsquo;ll be able to start your free trial once it&rsquo;s approved.
+              </span>
+            </div>
+          </section>
+        ) : hubStatus === 'EXPIRED' ? (
+          <p className="hint sub-note" role="status">
+            {trialStatus === 'EXPIRED'
+              ? 'Your free trial has ended. Your business is still here. Choose a plan to continue your subscription.'
+              : 'Your plan has expired. Choose a plan to continue your subscription.'}
+          </p>
+        ) : trialUnavailableReason ? (
+          <p className="hint sub-note" role="status">
+            {trialUnavailableReason}
+          </p>
+        ) : null
       ) : null}
 
       {/* Navigation rows: each opens its own dedicated route. None of the

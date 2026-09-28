@@ -69,6 +69,7 @@ beforeEach(() => {
     planPriceMinorSnapshot: null,
     verificationStatus: null,
     trialStatus: null,
+    businessStatus: 'APPROVED',
   } as unknown as api.BusinessSubscriptionState);
   vi.spyOn(api, 'listPaymentRequests').mockResolvedValue([]);
   vi.spyOn(api, 'getVerification').mockResolvedValue({ application: null, documents: [] });

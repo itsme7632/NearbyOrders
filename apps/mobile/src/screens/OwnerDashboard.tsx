@@ -249,12 +249,25 @@ export function OwnerAttentionItems(props: {
     const state = subscription.data;
     const sub = state?.subscription ?? null;
     const trialStatus = state?.trialStatus ?? null;
-    if (trialStatus === 'ELIGIBLE' && sub?.status !== 'TRIAL' && sub?.status !== 'ACTIVE') {
-      items.push({
-        title: 'Start your free trial',
-        subtitle: 'Try every feature free before you pay',
-        onClick: props.onOpenSubscription,
-      });
+    const businessStatus = state?.businessStatus ?? null;
+    const noLiveSub = sub?.status !== 'TRIAL' && sub?.status !== 'ACTIVE';
+    // P2 §9: the trial CTA only when the business is listed (APPROVED). A
+    // verified-but-unlisted business gets the waiting state instead — never
+    // a trial offer it cannot use.
+    if (trialStatus === 'ELIGIBLE' && noLiveSub) {
+      if (businessStatus === 'APPROVED') {
+        items.push({
+          title: 'Start your free trial',
+          subtitle: 'Your trial starts immediately. No payment required',
+          onClick: props.onOpenSubscription,
+        });
+      } else if (businessStatus !== null) {
+        items.push({
+          title: 'Waiting for listing approval',
+          subtitle: 'Your business is verified. It needs listing approval before customers can find it.',
+          onClick: props.onOpenVerification,
+        });
+      }
     }
 
     const latestRequest = (requests.data ?? [])[0] ?? null;
@@ -271,7 +284,7 @@ export function OwnerAttentionItems(props: {
           sub?.status === 'EXPIRED'
             ? 'Your subscription has expired'
             : sub?.status === 'SUSPENDED'
-              ? 'Payment verification in progress'
+              ? 'Your subscription is suspended'
               : latestRequest?.status === 'REJECTED'
                 ? 'Your last payment was rejected'
                 : 'Your free trial ends soon',

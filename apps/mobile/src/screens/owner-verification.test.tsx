@@ -49,6 +49,18 @@ beforeEach(() => {
   vi.clearAllMocks();
   verificationSpy = vi.spyOn(api, 'getVerification').mockResolvedValue(verificationState(null));
   vi.spyOn(api, 'listCategories').mockResolvedValue(categories);
+  // Business-level state for the verification-vs-listing messaging.
+  vi.spyOn(api, 'getBusinessSubscription').mockResolvedValue({
+    businessId: 'biz-1',
+    subscription: null,
+    status: null,
+    trial: null,
+    planNameSnapshot: null,
+    planPriceMinorSnapshot: null,
+    verificationStatus: null,
+    trialStatus: null,
+    businessStatus: 'PENDING',
+  });
   // Spy every verification function up front so each test only adjusts the
   // already-installed mocks with mockResolvedValue/mockRejectedValue.
   draftSpy = vi.spyOn(api, 'updateVerificationDraft').mockResolvedValue(draftApp);
@@ -118,7 +130,10 @@ describe('OwnerVerification (status and explainer)', () => {
     verificationSpy.mockResolvedValue(verificationState({ ...draftApp, status: 'APPROVED' }, [doc]));
     render(<OwnerVerification businessId="biz-1" />);
     expect(await screen.findByText('Approved')).toBeTruthy();
-    expect(screen.getByText(/Your business is verified/)).toBeTruthy();
+    // Verified but listing-pending: honest waiting copy, never "live".
+    expect(screen.getAllByText(/Your business is verified/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Waiting for listing approval')).toBeTruthy();
+    expect(screen.queryByText(/Your business is live/)).toBeNull();
   });
 });
 

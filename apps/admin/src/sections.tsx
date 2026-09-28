@@ -297,7 +297,7 @@ function VerificationDetailModal(props: { applicationId: string; onClose: () => 
               </label>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button className="btn btn-sm" disabled={busy} onClick={() => void decide('approve')}>
-                  {busy ? 'Working…' : 'Approve'}
+                  {busy ? 'Working…' : 'Approve verification'}
                 </button>
                 <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => void decide('changes')}>
                   Request changes

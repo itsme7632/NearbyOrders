@@ -40,9 +40,9 @@ const REF = 'TX-100000-TEST';
 let refCounter = 0;
 const runRef = (label: string): string => `${label}-${Date.now()}-${++refCounter}`;
 
-/** Starts a trial through the authoritative apply route (grants eligibility first). */
+/** Starts a trial through the authoritative apply route (grants eligibility and listing approval first). */
 async function startTrial(token: string, businessId: string, planSlug = 'nearbyorders-business') {
-  await prisma.business.update({ where: { id: businessId }, data: { trialStatus: 'ELIGIBLE' } });
+  await prisma.business.update({ where: { id: businessId }, data: { trialStatus: 'ELIGIBLE', status: 'APPROVED' } });
   const res = await app.inject({
     method: 'POST',
     url: `/api/v1/businesses/${businessId}/subscription/trial/apply`,

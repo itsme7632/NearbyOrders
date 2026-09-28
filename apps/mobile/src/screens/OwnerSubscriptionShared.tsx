@@ -74,25 +74,39 @@ export function setStoredPlanSlug(businessId: string, slug: string): void {
 
 /* ------------------------------ labels ---------------------------- */
 
-/** Hub summary status: Active / Trial / Payment required. */
-export type HubStatus = 'TRIAL' | 'ACTIVE' | 'PAYMENT_REQUIRED';
+/**
+ * Hub summary status, mapped 1:1 from the server's subscription row — never
+ * collapsed. P2: EXPIRED / CANCELLED / SUSPENDED / no-subscription each say
+ * what they are; none of them is "Payment required".
+ */
+export type HubStatus = 'TRIAL' | 'ACTIVE' | 'EXPIRED' | 'CANCELLED' | 'SUSPENDED' | 'NONE';
 
 export function hubStatusFor(sub: Subscription | null): HubStatus {
-  if (sub?.status === 'TRIAL') return 'TRIAL';
-  if (sub?.status === 'ACTIVE') return 'ACTIVE';
-  return 'PAYMENT_REQUIRED';
+  if (!sub) return 'NONE';
+  if (sub.status === 'TRIAL') return 'TRIAL';
+  if (sub.status === 'ACTIVE') return 'ACTIVE';
+  if (sub.status === 'EXPIRED') return 'EXPIRED';
+  if (sub.status === 'CANCELLED') return 'CANCELLED';
+  if (sub.status === 'SUSPENDED') return 'SUSPENDED';
+  return 'NONE';
 }
 
 export const HUB_STATUS_LABEL: Record<HubStatus, string> = {
-  TRIAL: 'Trial',
+  TRIAL: 'Free trial',
   ACTIVE: 'Active',
-  PAYMENT_REQUIRED: 'Payment required',
+  EXPIRED: 'Plan expired',
+  CANCELLED: 'Plan cancelled',
+  SUSPENDED: 'Subscription suspended',
+  NONE: 'No plan yet',
 };
 
 export const HUB_STATUS_BADGE: Record<HubStatus, string> = {
   TRIAL: 'badge-open',
   ACTIVE: 'badge-open',
-  PAYMENT_REQUIRED: 'badge-warn',
+  EXPIRED: 'badge-warn',
+  CANCELLED: 'badge-closed',
+  SUSPENDED: 'badge-warn',
+  NONE: 'badge-neutral',
 };
 
 /** Server detail statuses, kept for records that carry them. */

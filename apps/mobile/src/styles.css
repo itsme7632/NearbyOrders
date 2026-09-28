@@ -1200,6 +1200,7 @@ p { overflow-wrap: break-word; }
 .sub-badge[data-status='TRIAL'] { background: #ecfdf5; color: #047857; }
 .sub-badge[data-status='EXPIRED'],
 .sub-badge[data-status='CANCELLED'] { background: #fef2f2; color: #b91c1c; }
+.sub-badge[data-status='SUSPENDED'] { background: #fffbeb; color: #b45309; }
 .badge-badge-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .business-nav nav,
 nav.business-nav {
@@ -2402,7 +2403,8 @@ input[aria-invalid='true'] { border-color: #b91c1c; }
 }
 .plan-card[data-status='TRIAL'] .plan-card-badge { background: rgba(52, 211, 153, 0.25); color: #6ee7b7; }
 .plan-card[data-status='ACTIVE'] .plan-card-badge { background: rgba(52, 211, 153, 0.25); color: #6ee7b7; }
-.plan-card[data-status='PENDING'] .plan-card-badge { background: rgba(251, 191, 36, 0.25); color: #fcd34d; }
+.plan-card[data-status='PENDING'] .plan-card-badge,
+.plan-card[data-status='SUSPENDED'] .plan-card-badge { background: rgba(251, 191, 36, 0.25); color: #fcd34d; }
 .plan-card[data-status='EXPIRED'], .plan-card[data-status='CANCELLED'] { background: #7f1d1d; }
 .plan-card[data-status='EXPIRED'] .plan-card-badge, .plan-card[data-status='CANCELLED'] .plan-card-badge { background: rgba(255, 255, 255, 0.16); color: #fecaca; }
 

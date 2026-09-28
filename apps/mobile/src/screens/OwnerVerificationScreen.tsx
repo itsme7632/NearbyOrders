@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import {
   getVerification,
+  getBusinessSubscription,
   updateVerificationDraft,
   submitVerification,
   uploadVerificationDocument,
   listCategories,
+  type BusinessSubscriptionState,
   type Category,
   type VerificationApplication,
   type VerificationDocument,
@@ -68,6 +70,12 @@ function validateDraft(form: {
 export function OwnerVerification(props: { businessId: string }) {
   const state = useAsyncData(() => getVerification(props.businessId), [props.businessId]);
   const categories = useAsyncData<Category[]>(() => listCategories(), []);
+  // Business-level state (listing approval + trial eligibility) so the screen
+  // can explain verification vs. listing approval from server truth.
+  const subscription = useAsyncData<BusinessSubscriptionState | null>(
+    () => getBusinessSubscription(props.businessId),
+    [props.businessId],
+  );
 
   const [form, setForm] = useState({
     legalName: '',
@@ -112,11 +120,19 @@ export function OwnerVerification(props: { businessId: string }) {
     }
   }, [editable, hydratedFor, props.businessId, application]);
 
-  if (state.loading || categories.loading) return <Loading label="Loading verification…" />;
+  if (state.loading || categories.loading || subscription.loading) return <Loading label="Loading verification…" />;
   if (state.error) return <ErrorState message={state.error} onRetry={state.reload} />;
   if (categories.error) return <ErrorState message={categories.error} onRetry={categories.reload} />;
 
   const documents: VerificationDocument[] = state.data?.documents ?? [];
+  // P2 §5/§7: verification (documents reviewed) and listing approval
+  // (Business.status APPROVED — visible to customers) are separate steps.
+  const businessStatus = subscription.data?.businessStatus ?? null;
+  const trialStatus = subscription.data?.trialStatus ?? null;
+  const verificationApproved = status === 'APPROVED';
+  const listingApproved = businessStatus === 'APPROVED';
+  const verifiedButNotLive = verificationApproved && businessStatus !== null && !listingApproved;
+  const live = verificationApproved && listingApproved;
 
   const set = (key: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
@@ -236,6 +252,34 @@ export function OwnerVerification(props: { businessId: string }) {
         {locked && status !== 'APPROVED' ? (
           <p className="hint">Your application is with the review team. You will be contacted with the decision.</p>
         ) : null}
+        {/* P2 §5: the relationship between verification, listing approval,
+            and the trial — stated plainly, never conflating verified with
+            live. */}
+        {!application ? (
+          <p className="hint" role="status">
+            Complete verification to unlock your free trial. Once your business is verified and approved for
+            listing, you can choose a plan and start your free trial.
+          </p>
+        ) : null}
+        {verifiedButNotLive ? (
+          <p className="hint" role="status">
+            <strong>Verification approved.</strong> Your business is verified. It is still waiting for listing
+            approval before customers can find it.
+          </p>
+        ) : null}
+        {verifiedButNotLive ? (
+          <p className="sub-state-line" role="status">
+            <span className="badge badge-warn">Waiting for listing approval</span>
+          </p>
+        ) : null}
+        {live ? (
+          <p className="hint" role="status">
+            Your business is live and visible to customers.
+            {trialStatus === 'ELIGIBLE'
+              ? ' You can now start your free trial from the Subscription screen.'
+              : null}
+          </p>
+        ) : null}
       </section>
 
       {/* Why / what / what-next explainer. */}
@@ -252,9 +296,16 @@ export function OwnerVerification(props: { businessId: string }) {
           attached automatically.
         </p>
         <h3 className="owner-section-title" style={{ margin: '10px 0 6px' }}>What happens after you submit</h3>
+        <p className="muted" style={{ margin: '0 0 8px' }}>
+          The NearbyOrders team reviews your details and documents. You will be contacted with the decision.
+          Approval here means <strong>verification</strong>: your business information and documents have been
+          reviewed.
+        </p>
+        <h3 className="owner-section-title" style={{ margin: '10px 0 6px' }}>Verification is not the same as listing</h3>
         <p className="muted" style={{ margin: 0 }}>
-          The NearbyOrders team reviews your details and documents, usually within a few working days. You will
-          be contacted with the decision. Approved businesses show the verified badge immediately.
+          Verification does not by itself make your business visible to customers. A separate{' '}
+          <strong>listing approval</strong> is required before customers can find you. Once your business is
+          verified and approved for listing, you can choose a plan and start your free trial.
         </p>
       </section>
 
@@ -376,11 +427,22 @@ export function OwnerVerification(props: { businessId: string }) {
         </>
       ) : null}
 
-      {status === 'APPROVED' ? (
-        <p className="save-ok" role="status">
-          <CheckIcon size={15} /> Your business is verified. The badge shows on your business profile.
-        </p>
-      ) : null}
+        {status === 'APPROVED' && !verifiedButNotLive && !live ? (
+          <p className="save-ok" role="status">
+            <CheckIcon size={15} /> Your business is verified. The badge shows on your business profile.
+          </p>
+        ) : null}
+        {verifiedButNotLive ? (
+          <p className="save-ok" role="status">
+            <CheckIcon size={15} /> Your business is verified. The badge shows on your business profile once
+            listing approval completes.
+          </p>
+        ) : null}
+        {live ? (
+          <p className="save-ok" role="status">
+            <CheckIcon size={15} /> Your business is verified and live. The badge shows on your business profile.
+          </p>
+        ) : null}
     </div>
   );
 }

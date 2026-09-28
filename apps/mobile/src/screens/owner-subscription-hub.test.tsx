@@ -56,6 +56,7 @@ const liveTrialState: BusinessSubscriptionState = {
   planPriceMinorSnapshot: 299900,
   verificationStatus: null,
   trialStatus: 'ACTIVE',
+  businessStatus: 'APPROVED',
 };
 
 const eligibleState: BusinessSubscriptionState = {
@@ -67,6 +68,7 @@ const eligibleState: BusinessSubscriptionState = {
   planPriceMinorSnapshot: null,
   verificationStatus: null,
   trialStatus: 'ELIGIBLE',
+  businessStatus: 'APPROVED',
 };
 
 const rowBy = (title: string) => screen.findByRole('button', { name: (n: string) => n.startsWith(title) });
@@ -86,7 +88,7 @@ describe('OwnerSubscription hub (summary)', () => {
     const text = summary.textContent?.replace(/ /g, ' ') ?? '';
     expect(text).toContain('NearbyOrders Business');
     expect(text).toContain('Rs 2,999');
-    expect(text).toContain('Trial');
+    expect(text).toContain('Free trial');
     expect(text).toContain('30 days remaining');
     expect(text).toContain('No payments submitted yet');
   });
@@ -137,17 +139,19 @@ describe('OwnerSubscription hub (summary)', () => {
     await waitFor(() => expect(reloadSpy.mock.calls.length).toBeGreaterThanOrEqual(2));
   });
 
-  it('shows Payment required when there is no live subscription', async () => {
+  it('shows "No plan yet" (never a generic "Payment required") when there is no live subscription', async () => {
     vi.spyOn(api, 'getBusinessSubscription').mockResolvedValue({ ...eligibleState });
     render(<OwnerSubscription businessId="biz-1" onOpen={vi.fn()} />);
     const summary = await screen.findByLabelText('My subscription');
-    expect(summary.textContent).toContain('Payment required');
+    expect(summary.textContent).toContain('No plan yet');
+    expect(summary.textContent).not.toContain('Payment required');
   });
 
   it('explains honestly when the trial was already used', async () => {
     vi.spyOn(api, 'getBusinessSubscription').mockResolvedValue({
       ...eligibleState,
       trialStatus: 'EXPIRED',
+      businessStatus: 'APPROVED',
     });
     render(<OwnerSubscription businessId="biz-1" onOpen={vi.fn()} />);
     expect(await screen.findByText('Your free trial has already been used for this business.')).toBeTruthy();

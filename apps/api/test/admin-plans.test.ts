@@ -57,7 +57,7 @@ describe('admin subscription plan management', () => {
     const admin = await registerAdminAndLogin(app);
     const owner = await registerAndLogin(app, 'BUSINESS_OWNER');
     const business = await createBusiness(app, owner.token);
-    await prisma.business.update({ where: { id: business.id }, data: { trialStatus: 'ELIGIBLE' } });
+    await prisma.business.update({ where: { id: business.id }, data: { trialStatus: 'ELIGIBLE', status: 'APPROVED' } });
     await app.inject({
       method: 'POST',
       url: `/api/v1/businesses/${business.id}/subscription/trial/apply`,
@@ -104,7 +104,7 @@ describe('admin subscription plan management', () => {
     const admin = await registerAdminAndLogin(app);
     const owner = await registerAndLogin(app, 'BUSINESS_OWNER');
     const business = await createBusiness(app, owner.token);
-    await prisma.business.update({ where: { id: business.id }, data: { trialStatus: 'ELIGIBLE' } });
+    await prisma.business.update({ where: { id: business.id }, data: { trialStatus: 'ELIGIBLE', status: 'APPROVED' } });
     await app.inject({
       method: 'POST',
       url: `/api/v1/businesses/${business.id}/subscription/trial/apply`,

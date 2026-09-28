@@ -126,7 +126,7 @@ describe('verification review (real client, real server envelope)', () => {
     expect(c.textContent).toContain('TRADE LICENSE');
     expect(c.textContent).toContain('PENDING');
 
-    const approveBtn = Array.from(c.querySelectorAll('button')).find((b) => b.textContent === 'Approve')!;
+    const approveBtn = Array.from(c.querySelectorAll('button')).find((b) => b.textContent === 'Approve verification')!;
     await act(async () => {
       approveBtn.click();
     });

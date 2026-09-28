@@ -31,6 +31,7 @@ const noSubState: BusinessSubscriptionState = {
   planPriceMinorSnapshot: null,
   verificationStatus: null,
   trialStatus: 'ELIGIBLE',
+  businessStatus: 'APPROVED',
 };
 
 const method: PaymentMethod = {

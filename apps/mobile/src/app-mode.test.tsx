@@ -33,6 +33,7 @@ beforeEach(() => {
     planPriceMinorSnapshot: null,
     verificationStatus: null,
     trialStatus: null,
+    businessStatus: 'APPROVED',
   });
 });
 

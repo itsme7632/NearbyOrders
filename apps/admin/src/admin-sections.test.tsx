@@ -257,7 +257,7 @@ describe('admin verification review', () => {
     expect(c.textContent).toContain('Cozy cafe');
     expect(c.textContent).toContain('verified badge');
 
-    const approveBtn = Array.from(c.querySelectorAll('button')).find((b) => b.textContent === 'Approve')!;
+    const approveBtn = Array.from(c.querySelectorAll('button')).find((b) => b.textContent === 'Approve verification')!;
     await act(async () => {
       approveBtn.click();
     });

@@ -164,7 +164,7 @@ describe('admin business DTO', () => {
   it('includes verificationStatus, trialStatus and the evaluated subscriptionStatus', async () => {
     const admin = await registerAdminAndLogin(app);
     const { token, businessId } = await ownerWithBusiness();
-    await prisma.business.update({ where: { id: businessId }, data: { trialStatus: 'ELIGIBLE' } });
+    await prisma.business.update({ where: { id: businessId }, data: { trialStatus: 'ELIGIBLE', status: 'APPROVED' } });
     await app.inject({
       method: 'POST',
       url: `/api/v1/businesses/${businessId}/subscription/trial/apply`,

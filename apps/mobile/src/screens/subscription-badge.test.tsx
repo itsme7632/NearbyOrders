@@ -42,6 +42,7 @@ const stateOf = (row: Subscription | null, patch: Partial<BusinessSubscriptionSt
   planPriceMinorSnapshot: row?.planPriceMinorSnapshot ?? null,
   verificationStatus: null,
   trialStatus: null,
+  businessStatus: 'APPROVED',
   ...patch,
 });
 
@@ -130,7 +131,7 @@ describe('subscription badge', () => {
     const { SubscriptionBadge } = await import('./subscription-badge.js');
     render(<SubscriptionBadge businessId="biz-1" />);
     expect(await screen.findByText(/Business Plan: Active/)).toBeTruthy();
-    expect(screen.getByText(/Renews/)).toBeTruthy();
+    expect(screen.getByText(/Plan active until/)).toBeTruthy();
   });
 
   it('shows the expired state instead of a generic row', async () => {

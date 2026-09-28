@@ -58,6 +58,7 @@ const noTrialState: BusinessSubscriptionState = {
   planPriceMinorSnapshot: null,
   verificationStatus: null,
   trialStatus: null,
+  businessStatus: 'APPROVED',
 };
 
 const eligibleState: BusinessSubscriptionState = { ...noTrialState, trialStatus: 'ELIGIBLE' };
@@ -93,6 +94,8 @@ beforeEach(() => {
 
 describe('OwnerSubscription (no subscription yet)', () => {
   it('applies the trial with the selected plan slug and reloads the status', async () => {
+    // The trial CTA is gated on listing approval + trial eligibility.
+    vi.spyOn(api, 'getBusinessSubscription').mockResolvedValue({ ...eligibleState });
     const applySpy = vi.spyOn(api, 'applyTrial').mockResolvedValue({ ...trialRow });
     const reloadSpy = vi.spyOn(api, 'getBusinessSubscription');
     render(<OwnerSubscription businessId="biz-1" />);
@@ -105,6 +108,8 @@ describe('OwnerSubscription (no subscription yet)', () => {
   });
 
   it('surfaces the server ineligibility reason verbatim when the trial is refused', async () => {
+    // The trial CTA is gated on listing approval + trial eligibility.
+    vi.spyOn(api, 'getBusinessSubscription').mockResolvedValue({ ...eligibleState });
     vi.spyOn(api, 'applyTrial').mockRejectedValue(
       new api.ApiError(409, 'TRIAL_ALREADY_USED', 'A free trial was already used for this business.'),
     );

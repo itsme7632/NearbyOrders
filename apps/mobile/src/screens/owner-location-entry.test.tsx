@@ -22,6 +22,7 @@ vi.mock('../api.js', async (importOriginal) => ({
     planPriceMinorSnapshot: null,
     verificationStatus: null,
     trialStatus: null,
+    businessStatus: 'APPROVED',
   }),
 }));
 

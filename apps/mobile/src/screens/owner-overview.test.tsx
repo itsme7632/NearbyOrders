@@ -91,6 +91,7 @@ const subscriptionState = (patch: Partial<BusinessSubscriptionState> = {}): Busi
   planPriceMinorSnapshot: 299900,
   verificationStatus: null,
   trialStatus: null,
+  businessStatus: 'APPROVED',
   ...patch,
 });
 

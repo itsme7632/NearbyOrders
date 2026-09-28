@@ -67,6 +67,7 @@ beforeEach(() => {
     planPriceMinorSnapshot: 299900,
     verificationStatus: null,
     trialStatus: 'CONVERTED',
+    businessStatus: 'APPROVED',
   } satisfies api.BusinessSubscriptionState);
   vi.spyOn(api, 'listPaymentRequests').mockResolvedValue([]);
 });

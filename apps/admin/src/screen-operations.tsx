@@ -560,7 +560,7 @@ function DecisionButtons(props: { busy: null | DecisionKind; onDecide: (kind: De
         {busy === 'changes' ? 'Working…' : 'Request changes'}
       </button>
       <button type="button" className="nb-btn" disabled={busy !== null} onClick={() => onDecide('approve')}>
-        {busy === 'approve' ? 'Working…' : 'Approve'}
+        {busy === 'approve' ? 'Working…' : 'Approve verification'}
       </button>
     </>
   );

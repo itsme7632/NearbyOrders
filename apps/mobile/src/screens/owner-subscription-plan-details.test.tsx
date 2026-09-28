@@ -66,6 +66,7 @@ const activeState: BusinessSubscriptionState = {
   planPriceMinorSnapshot: 299900,
   verificationStatus: null,
   trialStatus: 'CONVERTED',
+  businessStatus: 'APPROVED',
 };
 
 beforeEach(() => {

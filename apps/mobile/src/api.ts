@@ -451,6 +451,8 @@ export type BusinessSubscriptionState = {
   planPriceMinorSnapshot: number | null;
   verificationStatus: string | null;
   trialStatus: string | null;
+  /** Listing-approval state (Business.status): the trial CTA requires APPROVED. */
+  businessStatus: string | null;
 };
 
 /** Current subscription state for an owned business (server evaluates expiry). */

@@ -14,6 +14,8 @@ export function SubscriptionBadge(props: { businessId: string; variant?: 'line' 
     : null;
   const renews = new Date(s.currentPeriodEndAt).toLocaleDateString();
 
+  // P2 §11/§12: each state says what it is — no "Payment required"
+  // collapse, no "Renews" for manual billing.
   const copy = (() => {
     if (s.status === 'TRIAL')
       return {
@@ -22,12 +24,12 @@ export function SubscriptionBadge(props: { businessId: string; variant?: 'line' 
         sub: daysRemaining !== null ? `${daysRemaining} day${daysRemaining === 1 ? '' : 's'} remaining` : 'Trial in progress',
       };
     if (s.status === 'ACTIVE')
-      return { status: 'ACTIVE' as const, title: 'Business Plan', sub: `Active · Renews ${renews}` };
+      return { status: 'ACTIVE' as const, title: 'Business Plan', sub: `Active · Plan active until ${renews}` };
     if (s.status === 'CANCELLED')
       return { status: 'CANCELLED' as const, title: 'Plan Cancelled', sub: `Access until ${renews}` };
     if (s.status === 'SUSPENDED')
-      return { status: 'PENDING' as const, title: 'Plan Pending', sub: 'Payment verification in progress' };
-    return { status: 'EXPIRED' as const, title: 'Plan Expired', sub: 'Renew to continue' };
+      return { status: 'SUSPENDED' as const, title: 'Subscription Suspended', sub: 'Your subscription is suspended' };
+    return { status: 'EXPIRED' as const, title: 'Plan Expired', sub: 'Choose a plan to continue' };
   })();
 
   // Hero variant: the navy plan card used on the business dashboard.
@@ -126,10 +128,10 @@ export function OwnerPlanCard(props: {
       : s.status === 'ACTIVE'
         ? 'Active'
         : s.status === 'SUSPENDED'
-          ? 'Payment verification in progress'
+          ? 'Subscription suspended'
           : s.status === 'CANCELLED'
             ? 'Cancelled'
-            : 'Expired';
+            : 'Plan expired';
 
   return (
     <section className="opc-card" aria-label="NearbyOrders plan">
@@ -147,11 +149,14 @@ export function OwnerPlanCard(props: {
         <span className={`badge ${statusBadge}`}>{statusText}</span>
       </div>
       <p className="opc-sub" role="status">
-        {s?.status === 'ACTIVE' ? <span>Renews {new Date(s.currentPeriodEndAt).toLocaleDateString()}</span> : null}
+        {s?.status === 'ACTIVE' ? <span>Plan active until {new Date(s.currentPeriodEndAt).toLocaleDateString()}</span> : null}
         {s?.status === 'TRIAL' && trialWindow?.endsAt ? (
           <span>Trial ends {new Date(trialWindow.endsAt).toLocaleDateString()}</span>
         ) : null}
-        {!s ? <span>Pick a plan to unlock bookings, orders and visibility.</span> : null}
+        {/* P2 §13: customer visibility is controlled by listing approval
+            (Business.status), never by the subscription — so the card must
+            not claim a plan unlocks visibility. */}
+        {!s ? <span>Choose a plan to continue after your trial.</span> : null}
       </p>
       <div className="pay-details opc-pay">
         <div className="pay-detail-row">

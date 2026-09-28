@@ -16,6 +16,7 @@ const emptyState = (patch: Partial<BusinessSubscriptionState> = {}): BusinessSub
   planPriceMinorSnapshot: null,
   verificationStatus: null,
   trialStatus: null,
+  businessStatus: 'APPROVED',
   ...patch,
 });
 
@@ -68,6 +69,7 @@ describe('OwnerAttentionItems (subscription/trial states)', () => {
         },
         status: 'EXPIRED',
         trialStatus: 'EXPIRED',
+        businessStatus: 'APPROVED',
       }),
     );
     render(<OwnerAttentionItems {...props} />);
@@ -93,6 +95,7 @@ describe('OwnerAttentionItems (subscription/trial states)', () => {
         status: 'TRIAL',
         trial: { startsAt: '2026-09-20T00:00:00.000Z', endsAt: '2026-09-24T00:00:00.000Z', daysRemaining: 2 },
         trialStatus: 'ACTIVE',
+        businessStatus: 'APPROVED',
       }),
     );
     render(<OwnerAttentionItems {...props} />);

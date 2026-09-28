@@ -1210,9 +1210,11 @@ export async function buildApp(): Promise<FastifyInstance> {
    * and trial status so the owner screen can render them in one round trip.
    * Opportunistic lazy expiry: a past-period TRIAL row is normalized to
    * EXPIRED on read (no background job), which also moves the business's
-   * trialStatus from ACTIVE to EXPIRED. While a live trial is in its last
-   * 48 hours, a best-effort TRIAL_ENDING_SOON notification is sent once —
-   * notification failures never fail the read.
+   * trialStatus from ACTIVE to EXPIRED. A TRIAL → EXPIRED transition fires a
+   * one-time TRIAL_EXPIRED notification (the (userId, type, entityId) unique
+   * index makes it idempotent across repeated reads). While a live trial is
+   * in its last 48 hours, a best-effort TRIAL_ENDING_SOON notification is
+   * sent once — notification failures never fail the read.
    */
   app.get('/api/v1/businesses/:id/subscription', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
     const id = (q.params as { id: string }).id;
@@ -1220,6 +1222,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     // Opportunistic lazy expiry: normalize a past-period TRIAL/ACTIVE row so
     // reads are consistent even without a background job.
     const current = await latestSubscription(id);
+    // Capture trial-ness before the transition mutates the in-memory row:
+    // only a TRIAL → EXPIRED transition earns the TRIAL_EXPIRED notice.
+    const expiredTrialRow = current !== null && current.status === 'TRIAL';
     if (current && evaluateSubscription(current) === 'EXPIRED' && LIVE_SUBSCRIPTION_STATUSES.includes(current.status)) {
       await prisma.$transaction([
         prisma.businessSubscription.update({ where: { id: current.id }, data: { status: 'EXPIRED' } }),
@@ -1229,6 +1234,24 @@ export async function buildApp(): Promise<FastifyInstance> {
       ]);
       current.status = 'EXPIRED';
       business.trialStatus = business.trialStatus === 'ACTIVE' ? 'EXPIRED' : business.trialStatus;
+      // Best-effort TRIAL_EXPIRED: once, when the trial actually expires.
+      // Idempotent by construction — the notification's (userId, type,
+      // entityId) unique index silently drops replays — and failures never
+      // fail the read (createNotifications swallows them standalone). It is
+      // awaited (unlike the ending-soon path) because this transition runs
+      // once per subscription and callers should observe the notification.
+      if (expiredTrialRow) {
+        await createNotifications(prisma, [
+          {
+            userId: business.ownerId,
+            type: NOTIFICATION_TYPES.TRIAL_EXPIRED,
+            title: 'Trial expired',
+            message: `Your free trial of ${current.plan.name} has ended. Your business is still here. Choose a plan to continue your subscription.`,
+            entityType: 'BusinessSubscription',
+            entityId: current.id,
+          },
+        ]);
+      }
     }
     const now = new Date();
     // Best-effort TRIAL_ENDING_SOON: once, while the trial is in its last 48
@@ -1250,7 +1273,7 @@ export async function buildApp(): Promise<FastifyInstance> {
             userId: business.ownerId,
             type: NOTIFICATION_TYPES.TRIAL_ENDING_SOON,
             title: 'Trial ending soon',
-            message: `Your ${current.plan.name} trial ends in ${remainingDays} day(s). Submit a payment to keep your listing active.`,
+            message: `Your ${current.plan.name} trial ends in ${remainingDays} day(s). Choose a plan to continue your subscription.`,
             entityType: 'BusinessSubscription',
             entityId: current.id,
           },
@@ -1276,6 +1299,9 @@ export async function buildApp(): Promise<FastifyInstance> {
         planPriceMinorSnapshot: sub?.planPriceMinorSnapshot ?? null,
         verificationStatus: business.verificationStatus,
         trialStatus: business.trialStatus,
+        // Listing-approval state, so owner screens can gate the trial CTA and
+        // explain verification-vs-listing without a second round trip.
+        businessStatus: business.status,
       },
     };
   });
@@ -1283,9 +1309,10 @@ export async function buildApp(): Promise<FastifyInstance> {
   /**
    * Starts the chosen plan's free trial. The business must be trial-eligible
    * (an admin grants eligibility after review; new businesses are
-   * NOT_ELIGIBLE and trials never auto-start), the plan must exist and carry
-   * a trial window, and no live (TRIAL/ACTIVE) subscription may exist. The
-   * trial is one-time per business: applying flips trialStatus to ACTIVE, so
+   * NOT_ELIGIBLE and trials never auto-start) AND listed (Business.status
+   * APPROVED — an eligible but invisible PENDING business must not consume
+   * its one-time trial), the plan must exist and carry a trial window, and
+   * no live (TRIAL/ACTIVE) subscription may exist. The trial is one-time per business: applying flips trialStatus to ACTIVE, so
    * a second apply is rejected. One live subscription per business is enforced
    * the same way double-booking is: a transaction-scoped advisory lock keyed
    * on the business id, a re-check inside the lock, then insert. Dates are
@@ -1301,14 +1328,23 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (plan.trialDays <= 0) return r.status(400).send({ error: { code: 'TRIAL_NOT_AVAILABLE', message: 'This plan has no trial' } });
     if (business.trialStatus !== 'ELIGIBLE')
       return r.status(403).send({ error: { code: 'NOT_ELIGIBLE', message: 'This business is not eligible for a free trial' } });
+    // P2: a trial may only start for a listed (APPROVED) business. An
+    // eligible-but-invisible PENDING business must not consume its one-time
+    // trial. The authoritative check is re-done inside the advisory-lock
+    // transaction below; this is the fast fail.
+    if (business.status !== 'APPROVED')
+      return r.status(403).send({ error: { code: 'BUSINESS_NOT_APPROVED', message: 'Your business must be approved before you can start the free trial.' } });
     const now = new Date();
     const trialEnd = new Date(now.getTime() + plan.trialDays * 86_400_000);
     try {
       const created = await prisma.$transaction(async (tx) => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${id}))`;
         // Re-check everything inside the lock — the authoritative state.
-        const gate = await tx.business.findUniqueOrThrow({ where: { id }, select: { trialStatus: true, ownerId: true } });
+        // The listing-approval gate lives here too so there is no race
+        // between approval and trial activation.
+        const gate = await tx.business.findUniqueOrThrow({ where: { id }, select: { trialStatus: true, ownerId: true, status: true } });
         if (gate.trialStatus !== 'ELIGIBLE') throw Object.assign(new Error('not-eligible'), { code: 'NOT_ELIGIBLE' });
+        if (gate.status !== 'APPROVED') throw Object.assign(new Error('not-approved'), { code: 'BUSINESS_NOT_APPROVED' });
         const existing = await tx.businessSubscription.findFirst({
           where: { businessId: id, status: { in: [...LIVE_SUBSCRIPTION_STATUSES] } },
           select: { id: true },
@@ -1359,6 +1395,8 @@ export async function buildApp(): Promise<FastifyInstance> {
         return r.status(409).send({ error: { code: 'ALREADY_SUBSCRIBED', message: 'This business already has an active or trial subscription' } });
       if ((e as { code?: string }).code === 'NOT_ELIGIBLE')
         return r.status(403).send({ error: { code: 'NOT_ELIGIBLE', message: 'This business is not eligible for a free trial' } });
+      if ((e as { code?: string }).code === 'BUSINESS_NOT_APPROVED')
+        return r.status(403).send({ error: { code: 'BUSINESS_NOT_APPROVED', message: 'Your business must be approved before you can start the free trial.' } });
       if ((e as { code?: string }).code === 'TRIAL_NOT_AVAILABLE')
         return r.status(400).send({ error: { code: 'TRIAL_NOT_AVAILABLE', message: 'This plan has no trial' } });
       throw e;

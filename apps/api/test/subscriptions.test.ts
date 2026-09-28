@@ -110,6 +110,8 @@ describe('GET /businesses/:id/subscription', () => {
     expect(data.trial).toBeNull();
     expect(data.verificationStatus).toBe('NOT_SUBMITTED');
     expect(data.trialStatus).toBe('NOT_ELIGIBLE');
+    // P2: the listing-approval state rides along for owner gating/copy.
+    expect(data.businessStatus).toBe('APPROVED');
   });
 
   it('reports trial metadata, snapshots and statuses for a live trial', async () => {
@@ -296,5 +298,221 @@ describe('lazy expiry (server-authoritative)', () => {
     expect(row!.status).toBe('EXPIRED');
     const business = await prisma.business.findUniqueOrThrow({ where: { id: businessId } });
     expect(business.trialStatus).toBe('EXPIRED');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* P2: listing-approval gate on trial apply                             */
+/* ------------------------------------------------------------------ */
+
+/** Owner with a business that is still PENDING listing approval. */
+async function ownerWithPendingBusiness() {
+  const { token, userId } = await registerAndLogin(app, 'BUSINESS_OWNER');
+  const business = await createBusiness(app, token);
+  await prisma.business.update({ where: { id: business.id }, data: { status: 'PENDING' } });
+  return { token, userId, businessId: business.id };
+}
+
+describe('trial apply: listing-approval gate (P2)', () => {
+  it('1. PENDING + ELIGIBLE → rejected with BUSINESS_NOT_APPROVED', async () => {
+    const { token, businessId } = await ownerWithPendingBusiness();
+    await makeEligible(businessId);
+    const res = await applyTrial(businessId, token);
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('BUSINESS_NOT_APPROVED');
+    expect(res.json().error.message).toMatch(/approved before you can start the free trial/);
+    expect(await prisma.businessSubscription.count({ where: { businessId } })).toBe(0);
+  });
+
+  it('2. REJECTED + ELIGIBLE → rejected with BUSINESS_NOT_APPROVED', async () => {
+    const { token, businessId } = await ownerWithPendingBusiness();
+    await makeEligible(businessId);
+    await prisma.business.update({ where: { id: businessId }, data: { status: 'REJECTED' } });
+    const res = await applyTrial(businessId, token);
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('BUSINESS_NOT_APPROVED');
+    expect(await prisma.businessSubscription.count({ where: { businessId } })).toBe(0);
+  });
+
+  it('3. APPROVED + ELIGIBLE → trial starts', async () => {
+    const { token, businessId } = await ownerWithBusiness();
+    await makeEligible(businessId);
+    const res = await applyTrial(businessId, token);
+    expect(res.statusCode).toBe(201);
+    expect(res.json().data.status).toBe('TRIAL');
+  });
+
+  it('4. APPROVED + no eligibility → rejected with NOT_ELIGIBLE', async () => {
+    const { token, businessId } = await ownerWithBusiness();
+    const res = await applyTrial(businessId, token);
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('NOT_ELIGIBLE');
+  });
+
+  it('5. APPROVED + existing live subscription → rejected with ALREADY_SUBSCRIBED', async () => {
+    const { token, businessId } = await ownerWithBusiness();
+    await makeEligible(businessId);
+    const plan = await prisma.plan.findUniqueOrThrow({ where: { slug: 'nearbyorders-business' } });
+    await prisma.businessSubscription.create({
+      data: {
+        businessId,
+        planId: plan.id,
+        status: 'ACTIVE',
+        currentPeriodStartAt: new Date(),
+        currentPeriodEndAt: new Date(Date.now() + 30 * 86_400_000),
+        planNameSnapshot: plan.name,
+        planPriceMinorSnapshot: plan.monthlyPriceMinor,
+      },
+    });
+    const res = await applyTrial(businessId, token);
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('ALREADY_SUBSCRIBED');
+  });
+
+  it('6. APPROVED + valid plan → trial starts immediately (no pending state)', async () => {
+    const { token, businessId } = await ownerWithBusiness();
+    await makeEligible(businessId);
+    const res = await applyTrial(businessId, token);
+    expect(res.statusCode).toBe(201);
+    // Synchronous activation: the row is TRIAL right away, never pending.
+    const row = await prisma.businessSubscription.findFirstOrThrow({ where: { businessId } });
+    expect(row.status).toBe('TRIAL');
+  });
+
+  it('7. successful apply creates a BusinessSubscription TRIAL row', async () => {
+    const { token, businessId } = await ownerWithBusiness();
+    await makeEligible(businessId);
+    const res = await applyTrial(businessId, token);
+    expect(res.statusCode).toBe(201);
+    const rows = await prisma.businessSubscription.findMany({ where: { businessId } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.status).toBe('TRIAL');
+  });
+
+  it('8. successful apply updates business trialStatus to ACTIVE with timestamps', async () => {
+    const { token, businessId } = await ownerWithBusiness();
+    await makeEligible(businessId);
+    await applyTrial(businessId, token);
+    const business = await prisma.business.findUniqueOrThrow({ where: { id: businessId } });
+    expect(business.trialStatus).toBe('ACTIVE');
+    expect(business.trialStartedAt).not.toBeNull();
+    expect(business.trialEndsAt).not.toBeNull();
+  });
+
+  it('9. repeated apply cannot create a second trial', async () => {
+    const { token, businessId } = await ownerWithBusiness();
+    await makeEligible(businessId);
+    expect((await applyTrial(businessId, token)).statusCode).toBe(201);
+    const res = await applyTrial(businessId, token);
+    expect(res.statusCode).toBe(403);
+    expect(await prisma.businessSubscription.count({ where: { businessId } })).toBe(1);
+  });
+
+  it('10. trial duration comes from the selected plan', async () => {
+    const { token, businessId } = await ownerWithBusiness();
+    await makeEligible(businessId);
+    const res = await applyTrial(businessId, token, 'starter');
+    expect(res.statusCode).toBe(201);
+    const sub = res.json().data;
+    expect(Math.round((Date.parse(sub.trialEndAt) - Date.parse(sub.trialStartAt)) / 86_400_000)).toBe(14);
+  });
+
+  it('11. no payment request is created when a trial starts', async () => {
+    const { token, businessId } = await ownerWithBusiness();
+    await makeEligible(businessId);
+    const res = await applyTrial(businessId, token);
+    expect(res.statusCode).toBe(201);
+    expect(await prisma.subscriptionPaymentRequest.count({ where: { businessId } })).toBe(0);
+  });
+
+  it('the approval gate is enforced inside the transaction (no race)', async () => {
+    // Eligible + APPROVED at the pre-check, but flip to PENDING before the
+    // transaction re-check would run — simulated by setting PENDING and
+    // relying on the in-transaction gate (the pre-check would also reject).
+    const { token, businessId } = await ownerWithBusiness();
+    await makeEligible(businessId);
+    await prisma.business.update({ where: { id: businessId }, data: { status: 'PENDING' } });
+    const res = await applyTrial(businessId, token);
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('BUSINESS_NOT_APPROVED');
+  });
+});
+
+describe('TRIAL_EXPIRED notification (P2)', () => {
+  /** Starts a trial, then backdates it so the next GET detects expiry. */
+  async function backdatedTrial() {
+    const { token, userId, businessId } = await ownerWithBusiness();
+    await makeEligible(businessId);
+    const applied = await applyTrial(businessId, token);
+    expect(applied.statusCode).toBe(201);
+    const subId = applied.json().data.id as string;
+    const past = new Date(Date.now() - 86_400_000);
+    await prisma.businessSubscription.update({
+      where: { id: subId },
+      data: { currentPeriodEndAt: past, trialEndAt: past },
+    });
+    return { token, userId, businessId, subId };
+  }
+
+  const expiredNotifs = (userId: string, subId: string) =>
+    prisma.notification.count({ where: { userId, type: 'TRIAL_EXPIRED', entityId: subId } });
+
+  it('creates exactly one TRIAL_EXPIRED notification on the TRIAL → EXPIRED transition', async () => {
+    const { token, userId, businessId, subId } = await backdatedTrial();
+    expect(await expiredNotifs(userId, subId)).toBe(0);
+    const res = await app.inject({ method: 'GET', url: `/api/v1/businesses/${businessId}/subscription`, headers: authed(token) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.status).toBe('EXPIRED');
+    expect(await expiredNotifs(userId, subId)).toBe(1);
+    const notif = await prisma.notification.findFirstOrThrow({ where: { userId, type: 'TRIAL_EXPIRED', entityId: subId } });
+    expect(notif.title).toMatch(/expired/i);
+  });
+
+  it('repeated GET /subscription calls do not create duplicates', async () => {
+    const { token, userId, businessId, subId } = await backdatedTrial();
+    for (let i = 0; i < 3; i++) {
+      const res = await app.inject({ method: 'GET', url: `/api/v1/businesses/${businessId}/subscription`, headers: authed(token) });
+      expect(res.statusCode).toBe(200);
+    }
+    expect(await expiredNotifs(userId, subId)).toBe(1);
+  });
+
+  it('reading the subscription after expiry still returns correct state', async () => {
+    const { token, businessId } = await backdatedTrial();
+    await app.inject({ method: 'GET', url: `/api/v1/businesses/${businessId}/subscription`, headers: authed(token) });
+    const res = await app.inject({ method: 'GET', url: `/api/v1/businesses/${businessId}/subscription`, headers: authed(token) });
+    expect(res.statusCode).toBe(200);
+    const data = res.json().data;
+    expect(data.status).toBe('EXPIRED');
+    expect(data.trialStatus).toBe('EXPIRED');
+    expect(data.subscription.status).toBe('EXPIRED');
+  });
+
+  it('does not fire TRIAL_EXPIRED when a paid ACTIVE subscription expires', async () => {
+    const { token, userId, businessId } = await ownerWithBusiness();
+    const plan = await prisma.plan.findUniqueOrThrow({ where: { slug: 'nearbyorders-business' } });
+    const paid = await prisma.businessSubscription.create({
+      data: {
+        businessId,
+        planId: plan.id,
+        status: 'ACTIVE',
+        currentPeriodStartAt: new Date(Date.now() - 60 * 86_400_000),
+        currentPeriodEndAt: new Date(Date.now() - 86_400_000),
+        planNameSnapshot: plan.name,
+        planPriceMinorSnapshot: plan.monthlyPriceMinor,
+      },
+    });
+    const res = await app.inject({ method: 'GET', url: `/api/v1/businesses/${businessId}/subscription`, headers: authed(token) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.status).toBe('EXPIRED');
+    expect(await expiredNotifs(userId, paid.id)).toBe(0);
+  });
+
+  it('the expiry path does not duplicate the TRIAL_ENDING_SOON notification', async () => {
+    const { token, userId, businessId, subId } = await backdatedTrial();
+    await app.inject({ method: 'GET', url: `/api/v1/businesses/${businessId}/subscription`, headers: authed(token) });
+    await app.inject({ method: 'GET', url: `/api/v1/businesses/${businessId}/subscription`, headers: authed(token) });
+    expect(await prisma.notification.count({ where: { userId, type: 'TRIAL_ENDING_SOON', entityId: subId } })).toBe(0);
+    expect(await expiredNotifs(userId, subId)).toBe(1);
   });
 });

@@ -84,6 +84,7 @@ const subscribedState: BusinessSubscriptionState = {
   planPriceMinorSnapshot: 299900,
   verificationStatus: null,
   trialStatus: 'CONVERTED',
+  businessStatus: 'APPROVED',
 };
 
 const radioBy = (nameStart: string) => screen.findByRole('radio', { name: (n: string) => n.startsWith(nameStart) });
