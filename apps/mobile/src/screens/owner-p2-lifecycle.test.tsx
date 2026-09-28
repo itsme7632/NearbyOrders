@@ -161,8 +161,10 @@ describe('OwnerSubscriptionScreen: honest copy (§10-§12, §15-§16)', () => {
       }),
     );
     const { container } = render(<OwnerSubscription businessId="biz-1" />);
-    await screen.findByText('Free trial');
-    expect(screen.getByText(/12 days remaining/i)).toBeTruthy();
+    // P4: the hub summary and the trial detail panel both badge the trial.
+    await screen.findAllByText('Free trial');
+    // P4: the hub summary and the trial detail panel both show the countdown.
+    expect(screen.getAllByText(/12 days remaining/i).length).toBeGreaterThanOrEqual(1);
     expect(container.textContent).not.toMatch(/renews/i);
   });
 

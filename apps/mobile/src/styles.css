@@ -5015,6 +5015,59 @@ nav.nav-v3, nav.business-nav-v3 {
   margin: 8px 0 0;
 }
 
+/* P4: trial-flow confirmation panel — the selected plan's trial terms before
+   the Start CTA. Solid card, strong price hierarchy, honest fine print. */
+.sub-trial-confirm {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.sub-trial-confirm-title {
+  font-weight: 800;
+  font-size: 18px;
+  color: var(--ink);
+  margin: 0 0 6px;
+}
+.sub-trial-confirm-line {
+  font-size: 14px;
+  color: var(--ink);
+  margin: 4px 0;
+}
+.sub-trial-confirm-line .muted { color: var(--ink-2); }
+.sub-trial-confirm .btn { margin-top: 12px; }
+
+/* P4: business allowance line on trial plan cards (P3 server data). */
+.plan-option-allowance {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink-2);
+  margin-top: 2px;
+}
+
+/* P4: trial plan-card top row must wrap long names at 360px, never overflow. */
+.sub-trial-card .plan-option-top { flex-wrap: wrap; }
+.sub-trial-card .plan-option-name { min-width: 0; overflow-wrap: anywhere; }
+
+/* P4: trial-ending-soon panel — honest continuation copy, no renew language. */
+.sub-trial-ending {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.sub-trial-ending-title {
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--ink);
+  margin: 0 0 4px;
+}
+.sub-trial-ending-sub {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin: 0 0 10px;
+}
+
 /* Live plan catalog. The highlighted (Recommended) plan gets the burgundy
    border, warm tint and stronger treatment; the others stay quiet. */
 .sub-plan-list { display: flex; flex-direction: column; gap: 12px; }

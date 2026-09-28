@@ -134,7 +134,7 @@ describe('OwnerSubscription hub (summary)', () => {
     const applySpy = vi.spyOn(api, 'applyTrial').mockResolvedValue({ ...trialRow });
     const reloadSpy = vi.spyOn(api, 'getBusinessSubscription');
     render(<OwnerSubscription businessId="biz-1" onOpen={vi.fn()} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Start 30-day free trial' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start 30-Day Free Trial' }));
     await waitFor(() => expect(applySpy).toHaveBeenCalledWith('biz-1', 'nearbyorders-business'));
     expect(await screen.findByText(/Free trial started/)).toBeTruthy();
     await waitFor(() => expect(reloadSpy.mock.calls.length).toBeGreaterThanOrEqual(2));

@@ -100,7 +100,7 @@ describe('OwnerSubscription (no subscription yet)', () => {
     const applySpy = vi.spyOn(api, 'applyTrial').mockResolvedValue({ ...trialRow });
     const reloadSpy = vi.spyOn(api, 'getBusinessSubscription');
     render(<OwnerSubscription businessId="biz-1" />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Start 30-day free trial' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start 30-Day Free Trial' }));
     // The chosen plan slug travels to the API — the server decides eligibility.
     await waitFor(() => expect(applySpy).toHaveBeenCalledWith('biz-1', 'nearbyorders-business'));
     expect(await screen.findByText(/Free trial started/)).toBeTruthy();
@@ -115,7 +115,7 @@ describe('OwnerSubscription (no subscription yet)', () => {
       new api.ApiError(409, 'TRIAL_ALREADY_USED', 'A free trial was already used for this business.'),
     );
     render(<OwnerSubscription businessId="biz-1" />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Start 30-day free trial' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Start 30-Day Free Trial' }));
     expect(await screen.findByText(/A free trial was already used for this business\./)).toBeTruthy();
   });
 
