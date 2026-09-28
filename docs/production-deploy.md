@@ -121,8 +121,8 @@ Seed reference data — categories and plans — exactly once. **Never run the
 demo seeds (`SEED_DEMO_DATA`) in production:**
 
 ```sh
-docker compose -f docker-compose.prod.yml run --rm api node apps/api/node_modules/.bin/tsx apps/api/prisma/seed-categories.ts
-docker compose -f docker-compose.prod.yml run --rm api node apps/api/node_modules/.bin/tsx apps/api/prisma/seed-plans.ts
+docker compose -f docker-compose.prod.yml run --rm api ./apps/api/node_modules/.bin/tsx apps/api/prisma/seed-categories.ts
+docker compose -f docker-compose.prod.yml run --rm api ./apps/api/node_modules/.bin/tsx apps/api/prisma/seed-plans.ts
 ```
 
 Create the first admin (interactive hidden prompt preferred; env vars are the
@@ -131,7 +131,7 @@ non-interactive path — the script never logs the password):
 ```sh
 docker compose -f docker-compose.prod.yml run --rm \
   -e ADMIN_EMAIL=ops@example.com -e ADMIN_PASSWORD='...' \
-  api node apps/api/node_modules/.bin/tsx apps/api/scripts/create-admin.ts
+  api ./apps/api/node_modules/.bin/tsx apps/api/scripts/create-admin.ts
 ```
 
 See `docs/admin-provisioning.md` for the full provisioning policy.

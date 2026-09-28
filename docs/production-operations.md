@@ -42,9 +42,9 @@ docker compose -f docker-compose.prod.yml run --rm migrate
 
 ```sh
 docker compose -f docker-compose.prod.yml up -d db
-docker compose -f docker-compose.prod.yml run --rm api node node_modules/.bin/tsx apps/api/prisma/seed-categories.ts
-docker compose -f docker-compose.prod.yml run --rm api node node_modules/.bin/tsx apps/api/prisma/seed-plans.ts
-docker compose -f docker-compose.prod.yml run --rm -e ADMIN_EMAIL=ops@example.com -e ADMIN_PASSWORD='...' api node node_modules/.bin/tsx apps/api/scripts/create-admin.ts
+docker compose -f docker-compose.prod.yml run --rm api ./apps/api/node_modules/.bin/tsx apps/api/prisma/seed-categories.ts
+docker compose -f docker-compose.prod.yml run --rm api ./apps/api/node_modules/.bin/tsx apps/api/prisma/seed-plans.ts
+docker compose -f docker-compose.prod.yml run --rm -e ADMIN_EMAIL=ops@example.com -e ADMIN_PASSWORD='...' api ./apps/api/node_modules/.bin/tsx apps/api/scripts/create-admin.ts
 docker compose -f docker-compose.prod.yml up -d
 ```
 
