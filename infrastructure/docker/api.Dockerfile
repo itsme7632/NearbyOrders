@@ -22,4 +22,7 @@ COPY --from=build /app/node_modules node_modules
 COPY --from=build /app/apps/api apps/api
 COPY --from=build /root/.cache/prisma /root/.cache/prisma
 EXPOSE 3000
-CMD ["node","apps/api/dist/server.js"]
+# NOTE: tsconfig includes ["src","prisma","scripts"], so tsc's common root is
+# apps/api/ and the compiled server lands at dist/src/server.js (not
+# dist/server.js). Keep this in sync with the build output.
+CMD ["node","apps/api/dist/src/server.js"]
