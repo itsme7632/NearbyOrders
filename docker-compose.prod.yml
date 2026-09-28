@@ -64,7 +64,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in the production environment}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set JWT_ACCESS_SECRET in the production environment}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in the production environment}
-      CORS_ORIGIN: ${CORS_ORIGIN:?Set CORS_ORIGIN in the production environment (the public admin origin, e.g. https://admin.example.com)}
+      CORS_ORIGIN: ${CORS_ORIGIN:?Set CORS_ORIGIN in the production environment (comma-separated: the public admin origin plus the Capacitor Android WebView origin, e.g. https://admin.example.com,http://localhost)}
       RECEIPTS_DIR: /var/nearbyorders/receipts
       UPLOADS_DIR: /var/nearbyorders/uploads
       RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}

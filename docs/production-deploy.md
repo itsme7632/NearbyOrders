@@ -61,7 +61,7 @@ Copy `.env.example` and fill in real values:
 | `DATABASE_URL` | yes | Must match the `db` credentials, host `db`, e.g. `postgresql://nearbyorders:<pw>@db:5432/nearbyorders?schema=public` |
 | `JWT_ACCESS_SECRET` | yes | ≥ 32 random chars; dev defaults/placeholders rejected |
 | `JWT_REFRESH_SECRET` | yes | ≥ 32 random chars, different from access |
-| `CORS_ORIGIN` | yes | Public admin origin, e.g. `https://admin.nearbyorders.com` (comma-separated if several; `*` rejected) |
+| `CORS_ORIGIN` | yes | Comma-separated API caller origins: the public admin origin **plus** the Capacitor Android WebView origin, e.g. `https://admin.nearbyorders.com,http://localhost` (`*` rejected) |
 | `RATE_LIMIT_MAX` / `AUTH_RATE_LIMIT_MAX` | no | defaults `100` / `10` |
 | `FCM_PROJECT_ID` / `FCM_SERVICE_ACCOUNT_B64` | no | push silently disabled when unset |
 | `VITE_API_BASE_URL` | no | default `/api/v1` (same-origin through nginx) |
