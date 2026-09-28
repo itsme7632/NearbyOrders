@@ -7,19 +7,25 @@ each step gates the next, and the API fail-fasts on unsafe configuration.
 ## Topology
 
 ```
-internet ──▶ host nginx:80/443 ──▶ 127.0.0.1:3100 (NearbyOrders nginx)
-                                      ├── /api/v1/* ──▶ api:3000 (Fastify)
-                                      ├── /healthz ───▶ api:3000/health
-                                      └── /* ─────────▶ admin SPA
-                                NearbyOrders api ──▶ db:5432 (PostgreSQL 16)
+internet ──▶ host nginx:80/443 (owns public ports; also serves BrokerMAIL,
+│                                untouched by this stack)
+│   ├── nearbyorders.com / www.nearbyorders.com ──▶ 127.0.0.1:3100 ──▶ public website (static, apps/website)
+│   ├── admin.nearbyorders.com ──▶ 127.0.0.1:3100 ──┬── /* ────────▶ admin SPA (static, SPA fallback)
+│   │                                               └── /api/v1/* ──▶ api:3000 (Fastify, NODE_ENV=production)
+│   └── api.nearbyorders.com ──▶ 127.0.0.1:3100 ──▶ api:3000 (Fastify)
+api ──▶ db:5432 (PostgreSQL 16)
+```
 
 The Contabo VPS may already host other applications. NearbyOrders therefore
 never binds Docker nginx directly to host ports 80/443; `docker-compose.prod.yml`
 binds it to `127.0.0.1:3100`. The existing host nginx remains the public TLS
-entry point and proxies `nearbyorders.com`, `www.nearbyorders.com`, and
-`api.nearbyorders.com` to that port. See
+entry point and proxies `nearbyorders.com`, `www.nearbyorders.com`,
+`admin.nearbyorders.com`, and `api.nearbyorders.com` to that port; the
+container routes by Host header (see `infrastructure/nginx.conf`). See
 `infrastructure/host-nginx/nearbyorders.conf.example`.
-```
+
+There is ONE admin panel, served from `admin.nearbyorders.com`. It governs
+the whole app + website ecosystem; no separate website CMS exists.
 
 Receipt/verification files are stored in the `receipts_data` volume mounted
 at `/var/nearbyorders/receipts` and served only through the API's authorized
@@ -37,8 +43,12 @@ proxy layer — do not add one.
 - A host directory is not needed for receipts or images: the named volumes
   `receipts_data` and `uploads_data` persist them. **Back these volumes up
   with the database.**
-- TLS termination above nginx (host firewall / certbot) or extend
-  `infrastructure/nginx.conf` with a 443 server block.
+- TLS terminates on the host's Nginx (certbot, a host step, see section 2).
+  Do not add 443 blocks to `infrastructure/nginx.conf`; the container only
+  ever sees plain HTTP from the host proxy. Never touch BrokerMAIL's
+  certificates.
+- DNS (host step, not done through this repository):
+  `@`, `www`, `admin`, `api` → `158.220.115.242`.
 
 ## 1. Configure the environment
 
@@ -51,7 +61,7 @@ Copy `.env.example` and fill in real values:
 | `DATABASE_URL` | yes | Must match the `db` credentials, host `db`, e.g. `postgresql://nearbyorders:<pw>@db:5432/nearbyorders?schema=public` |
 | `JWT_ACCESS_SECRET` | yes | ≥ 32 random chars; dev defaults/placeholders rejected |
 | `JWT_REFRESH_SECRET` | yes | ≥ 32 random chars, different from access |
-| `CORS_ORIGIN` | yes | Public admin origin, e.g. `https://admin.example.com` (comma-separated if several; `*` rejected) |
+| `CORS_ORIGIN` | yes | Public admin origin, e.g. `https://admin.nearbyorders.com` (comma-separated if several; `*` rejected) |
 | `RATE_LIMIT_MAX` / `AUTH_RATE_LIMIT_MAX` | no | defaults `100` / `10` |
 | `FCM_PROJECT_ID` / `FCM_SERVICE_ACCOUNT_B64` | no | push silently disabled when unset |
 | `VITE_API_BASE_URL` | no | default `/api/v1` (same-origin through nginx) |
@@ -75,7 +85,11 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-Do not replace existing site configs. After DNS points the three hostnames at the VPS, issue TLS certificates with the host's normal Certbot workflow.
+Do not replace existing site configs (BrokerMAIL's included). After DNS points the four hostnames at the VPS, issue TLS certificates with the host's normal Certbot workflow:
+
+```sh
+certbot --nginx -d nearbyorders.com -d www.nearbyorders.com -d admin.nearbyorders.com -d api.nearbyorders.com
+```
 
 ## 3. Build
 
@@ -83,8 +97,11 @@ Do not replace existing site configs. After DNS points the three hostnames at th
 docker compose -f docker-compose.prod.yml build
 ```
 
-`VITE_API_BASE_URL` is a build arg for the nginx image: pass an absolute API
-origin only when the admin is NOT served through this same nginx.
+`VITE_API_BASE_URL` is a build arg for the nginx image: the default `/api/v1`
+is correct because the admin SPA is served from `admin.nearbyorders.com`
+through the same nginx, which proxies `/api/v1` to the API (same origin).
+Pass an absolute API origin only when the admin is NOT served through this
+same nginx.
 
 ## 4. Start the database, then initialize it (first deploy only)
 
@@ -132,20 +149,32 @@ Startup order is enforced by compose:
 3. `api` starts only after migrations succeed, with `NODE_ENV=production`.
    Missing/unsafe `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, or `CORS_ORIGIN`
    crashes the container immediately with a descriptive error (secret values
-   are never logged) — fix the environment and restart.
-4. `nginx` serves the admin SPA and proxies `/api/v1` to the API.
+   are never logged); fix the environment and restart.
+4. `nginx` serves the public website (`nearbyorders.com`, `www`),
+   the admin SPA (`admin.nearbyorders.com`, with `/api/v1` proxied to the
+   API), and the API (`api.nearbyorders.com`), routing by Host header.
 
 ## 6. Verify
 
 ```sh
-curl -s http://localhost/healthz            # {"status":"ok"} via nginx -> api
-curl -s http://localhost/api/v1/ | head -c 200
+# via the container's loopback binding (Host header selects the virtual host)
+curl -s -H 'Host: nearbyorders.com' http://127.0.0.1:3100/ | head -c 120
+curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: www.nearbyorders.com' http://127.0.0.1:3100/            # 200
+curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: admin.nearbyorders.com' http://127.0.0.1:3100/           # 200 (admin SPA)
+curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: admin.nearbyorders.com' http://127.0.0.1:3100/api/v1/     # API through admin host
+curl -s -H 'Host: admin.nearbyorders.com' http://127.0.0.1:3100/healthz                                     # {"status":"ok"} via nginx -> api
+curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: api.nearbyorders.com' http://127.0.0.1:3100/api/v1/       # 200/401 (API intact)
+curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: api.nearbyorders.com' http://127.0.0.1:3100/healthz       # {"status":"ok"}
+curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: evil.example' http://127.0.0.1:3100/                      # 444 (unknown host refused)
+curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: nearbyorders.com' http://127.0.0.1:3100/og-cover.png     # 200 (OG image)
+curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: nearbyorders.com' http://127.0.0.1:3100/api/v1/           # 404 (website never proxies to the API)
 docker compose -f docker-compose.prod.yml logs migrate   # "All migrations have been successfully applied" (or "No pending migrations")
 docker compose -f docker-compose.prod.yml exec api sh -c 'touch /var/nearbyorders/receipts/.writetest && rm /var/nearbyorders/receipts/.writetest && echo receipts-writable'
 ```
 
-Load the admin in a browser: same-origin `/api/v1` calls flow through nginx,
-so no CORS configuration beyond `CORS_ORIGIN` is needed.
+Load the website at `https://nearbyorders.com` and the admin at
+`https://admin.nearbyorders.com`: same-origin `/api/v1` calls flow through
+nginx, so no CORS configuration beyond `CORS_ORIGIN` is needed.
 
 ## Updating
 

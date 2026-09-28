@@ -11,7 +11,10 @@
 #   3. `api` starts only after migrations complete successfully.
 #      With NODE_ENV=production the API fail-fasts on missing/unsafe
 #      JWT secrets or CORS_ORIGIN (see resolveServerConfig in server.ts).
-#   4. `nginx` serves the admin SPA and proxies /api/v1 to the API.
+#   4. `nginx` serves the public website (nearbyorders.com + www), the admin
+#      SPA (admin.nearbyorders.com, with /api/v1 proxied to the API), and the
+#      API (api.nearbyorders.com), routing by Host header
+#      (see infrastructure/nginx.conf). It binds 127.0.0.1:3100 ONLY.
 #
 # First-time database initialization (run once, in this order):
 #   docker compose -f docker-compose.prod.yml up -d db
@@ -91,7 +94,11 @@ services:
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
     restart: unless-stopped
-    # The Contabo VPS already has a host-level nginx on 80/443 for BrokerMAIL.\n    # Bind NearbyOrders nginx only to loopback on a dedicated host port; the\n    # host nginx will terminate TLS and proxy nearbyorders.com/api.nearbyorders.com\n    # traffic here. Never bind this service directly to public 80/443.\n    ports: ["127.0.0.1:3100:80"]
+    # The Contabo VPS already has a host-level nginx on 80/443 for BrokerMAIL.
+    # Bind NearbyOrders nginx only to loopback on a dedicated host port; the
+    # host nginx will terminate TLS and proxy the NearbyOrders hostnames here.
+    # Never bind this service directly to public 80/443.
+    ports: ["127.0.0.1:3100:80"]
     depends_on:
       - api
 

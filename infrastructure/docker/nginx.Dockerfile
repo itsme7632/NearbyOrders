@@ -1,9 +1,11 @@
 # Builds the NearbyOrders admin SPA and serves it behind nginx, which also
-# reverse-proxies /api/v1 to the API container (see infrastructure/nginx.conf).
+# serves the public website (apps/website) and reverse-proxies /api/v1 to the
+# API container (see infrastructure/nginx.conf).
 #
 # VITE_API_BASE_URL is a build arg: the default '/api/v1' means "same origin",
-# i.e. the admin talks to the API through this nginx. Pass an absolute API
-# origin only for topologies without the same-origin proxy, e.g.
+# i.e. the admin talks to the API through this nginx on admin.nearbyorders.com.
+# Pass an absolute API origin only for topologies without the same-origin
+# proxy, e.g.
 #   --build-arg VITE_API_BASE_URL=https://api.example.com/api/v1
 FROM node:24-alpine AS admin-build
 RUN corepack enable
@@ -18,5 +20,8 @@ RUN pnpm --filter @nearbyorders/admin build
 
 FROM nginx:1.27-alpine
 COPY infrastructure/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=admin-build /app/apps/admin/dist /usr/share/nginx/html
+# Admin SPA -> served on admin.nearbyorders.com (the ONE unified admin panel).
+COPY --from=admin-build /app/apps/admin/dist /usr/share/nginx/html/admin
+# Public website -> served on nearbyorders.com + www.nearbyorders.com.
+COPY apps/website /usr/share/nginx/html/website
 EXPOSE 80

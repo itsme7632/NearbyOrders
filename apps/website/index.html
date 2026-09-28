@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NearbyOrders: Discover, Order &amp; Book Nearby</title>
+<meta name="description" content="NearbyOrders is the local marketplace app for Android. Discover nearby businesses, place orders, and make bookings, all in one place.">
+<link rel="canonical" href="https://nearbyorders.com/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="NearbyOrders">
+<meta property="og:title" content="NearbyOrders: Discover, Order &amp; Book Nearby">
+<meta property="og:description" content="Discover nearby businesses, place orders, and make bookings, all from one Android app.">
+<meta property="og:url" content="https://nearbyorders.com/">
+<meta property="og:image" content="https://nearbyorders.com/og-cover.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NearbyOrders wordmark with the Meridian N mark">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   NEARBYORDERS · FINAL PRODUCTION WEBSITE
+   Foundation: Concept 01 "Product First" + restrained local-
+   discovery influence from Concept 02.
+   Brand: MERIDIAN N / ATLAS REFINED
+   Tokens: Porcelain #F2F5F7 · Slate #16222E · Ember #E23A2E
+   Type: Bricolage Grotesque (display) · Inter (body) ·
+         JetBrains Mono (meta labels)
+   ============================================================ */
+:root{
+  --porcelain:#F2F5F7;
+  --porcelain-deep:#E7ECF0;
+  --porcelain-card:#FFFFFF;
+  --slate:#16222E;
+  --slate-soft:#22313F;
+  --slate-mute:#8FA0AF;
+  --ink:#16222E;
+  --muted:#5B6D7D;
+  --ember:#E23A2E;
+  --ember-deep:#C22E24;
+  --line:#DCE3E9;
+  --line-dark:#2B3B4A;
+  --radius:20px;
+  --radius-lg:28px;
+  --font-display:"Bricolage Grotesque",system-ui,sans-serif;
+  --font-body:"Inter",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,monospace;
+  --shadow-card:0 1px 2px rgba(22,34,46,.05),0 12px 32px -12px rgba(22,34,46,.18);
+  --shadow-phone:0 2px 6px rgba(22,34,46,.25),0 40px 80px -24px rgba(22,34,46,.45);
+  --maxw:1200px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--font-body);
+  background:var(--porcelain);
+  color:var(--ink);
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+img,svg{display:block;max-width:100%}
+a{color:inherit;text-decoration:none}
+button{font:inherit;cursor:pointer}
+::selection{background:var(--ember);color:#fff}
+:focus-visible{outline:3px solid var(--ember);outline-offset:3px;border-radius:6px}
+
+.skip-link{
+  position:absolute;left:-9999px;top:0;background:var(--slate);color:#fff;
+  padding:12px 20px;border-radius:0 0 12px 0;z-index:200;font-weight:600;
+}
+.skip-link:focus{left:0}
+
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 32px}
+section{position:relative}
+.eyebrow{
+  font-family:var(--font-mono);font-size:12px;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--ember);font-weight:500;
+  display:flex;align-items:center;gap:12px;margin-bottom:20px;
+}
+.eyebrow::before{content:"";width:28px;height:2px;background:var(--ember)}
+h1,h2{font-family:var(--font-display);font-weight:800;letter-spacing:-.02em;line-height:1.04}
+h2{font-size:clamp(34px,4.4vw,56px);margin-bottom:18px}
+.lede{font-size:clamp(16px,1.6vw,19px);color:var(--muted);max-width:56ch}
+
+/* ---------- Buttons ---------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:10px;
+  min-height:52px;padding:0 30px;border-radius:999px;font-weight:600;font-size:16px;
+  border:2px solid transparent;transition:transform .18s ease,box-shadow .18s ease,background .18s ease;
+  white-space:nowrap;
+}
+.btn-ember{background:var(--ember);color:#fff}
+.btn-ember:hover{background:var(--ember-deep);transform:translateY(-2px);box-shadow:0 12px 24px -10px rgba(226,58,46,.55)}
+.btn-outline{border-color:var(--line);color:var(--ink);background:transparent}
+.btn-outline:hover{border-color:var(--slate);transform:translateY(-2px)}
+.btn-porcelain{background:var(--porcelain);color:var(--slate)}
+.btn-porcelain:hover{transform:translateY(-2px);box-shadow:0 12px 24px -10px rgba(0,0,0,.35)}
+.btn-outline-light{border-color:var(--line-dark);color:var(--porcelain)}
+.btn-outline-light:hover{border-color:var(--porcelain);transform:translateY(-2px)}
+
+/* ---------- Header ---------- */
+.site-header{
+  position:sticky;top:0;z-index:100;
+  background:rgba(242,245,247,.86);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--line);
+}
+.nav{display:flex;align-items:center;justify-content:space-between;height:72px}
+.brand{display:flex;align-items:center;gap:11px;font-family:var(--font-display);font-weight:800;font-size:21px;letter-spacing:-.01em}
+.brand-mark{
+  width:34px;height:34px;border-radius:10px;background:var(--slate);color:#fff;
+  display:grid;place-items:center;font-family:var(--font-display);font-weight:800;font-size:20px;
+  position:relative;overflow:hidden;
+}
+.brand-mark::after{content:"";position:absolute;left:6px;right:6px;bottom:7px;height:3px;background:var(--ember);transform:skewX(-24deg);border-radius:2px}
+.nav-links{display:flex;align-items:center;gap:34px;list-style:none}
+.nav-links a{font-weight:500;font-size:15px;color:var(--muted);transition:color .15s}
+.nav-links a:hover{color:var(--ink)}
+.nav-cta{display:flex;align-items:center;gap:12px}
+.nav-cta .btn{min-height:44px;padding:0 22px;font-size:15px}
+.nav-toggle{display:none;background:none;border:0;width:44px;height:44px;position:relative}
+.nav-toggle span,.nav-toggle span::before,.nav-toggle span::after{
+  content:"";display:block;width:22px;height:2px;background:var(--slate);border-radius:2px;position:absolute;left:11px;transition:transform .2s,opacity .2s;
+}
+.nav-toggle span{top:21px}
+.nav-toggle span::before{top:-7px;left:0}
+.nav-toggle span::after{top:7px;left:0}
+
+/* ---------- Hero ---------- */
+.hero{padding:96px 0 110px;overflow:hidden}
+.hero-grid{display:grid;grid-template-columns:1.02fr .98fr;gap:48px;align-items:center}
+.hero h1{font-size:clamp(48px,6.2vw,88px);margin:0 0 24px}
+.hero h1 .ember{color:var(--ember)}
+.hero .lede{margin-bottom:36px}
+.hero-ctas{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:28px}
+.hero-meta{font-family:var(--font-mono);font-size:12px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase}
+.hero-visual{position:relative;display:flex;justify-content:center}
+
+/* ---------- Phone mockup component ---------- */
+.phone{
+  width:min(300px,72vw);aspect-ratio:300/614;border-radius:48px;position:relative;z-index:1;
+  background:#0C141C;padding:13px;box-shadow:var(--shadow-phone);
+}
+.phone::before{ /* side button */
+  content:"";position:absolute;right:-3px;top:150px;width:3px;height:74px;border-radius:2px;background:#0C141C;
+}
+.phone-screen{
+  width:100%;height:100%;border-radius:36px;overflow:hidden;background:var(--porcelain-deep);
+  position:relative;
+}
+/* App screen, drawn from the real NearbyOrders mobile app (see assets/screens/SCREEN_SOURCES.md).
+   Drop a PNG at the slot path; no code changes needed. */
+.phone-shot{width:100%;height:100%;object-fit:cover;display:block;background:var(--porcelain-deep)}
+
+/* floating cards around hero phone */
+.float-card{
+  position:absolute;z-index:2;background:#fff;border:1px solid var(--line);border-radius:18px;
+  box-shadow:var(--shadow-card);padding:14px 16px;display:flex;gap:12px;align-items:center;
+  animation:floaty 6s ease-in-out infinite;
+}
+.float-card .fc-icon{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;flex:none}
+.float-card h5{font-size:13px;font-weight:700}
+.float-card p{font-size:11.5px;color:var(--muted)}
+.fc-order{top:16%;left:-4%}
+.fc-book{bottom:14%;right:-6%;animation-delay:3s}
+@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+
+/* ---------- Reveal on scroll ---------- */
+.reveal{opacity:0;transform:translateY(28px);transition:opacity .7s ease,transform .7s ease}
+.reveal.in{opacity:1;transform:none}
+
+/* ---------- Section scaffolding ---------- */
+.section{padding:110px 0}
+.section-head{max-width:720px;margin-bottom:64px}
+.section-head.center{margin-left:auto;margin-right:auto;text-align:center}
+.section-head.center .eyebrow{justify-content:center}
+.section-head.center .eyebrow::after{content:"";width:28px;height:2px;background:var(--ember)}
+.section-head.center .lede{margin:0 auto}
+
+/* ---------- S2: Product moments (editorial rows, not cards) ---------- */
+.moment-rows{border-top:1px solid var(--line)}
+.moment-row{
+  display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center;
+  padding:52px 0;border-bottom:1px solid var(--line);
+}
+.moment-row:nth-child(even) .moment-text{order:2}
+.moment-row:nth-child(even) .shot-slot{justify-self:end;width:100%}
+.moment-num{font-family:var(--font-mono);font-size:12px;letter-spacing:.2em;color:var(--ember);margin-bottom:16px}
+.moment-row h3{font-family:var(--font-display);font-size:clamp(26px,2.8vw,34px);font-weight:700;letter-spacing:-.01em;margin-bottom:12px}
+.moment-row p{color:var(--muted);font-size:16px;max-width:44ch}
+/* App screen (wide crop), drawn from the real NearbyOrders mobile app.
+   Drop a PNG at the slot path; no code changes needed. */
+.shot-slot{
+  border-radius:16px;overflow:hidden;border:1px solid var(--line);
+  aspect-ratio:4/3;background:var(--porcelain-deep);box-shadow:var(--shadow-card);
+  max-width:480px;
+}
+.shot-slot img{width:100%;height:100%;object-fit:cover;display:block}
+.duo-order .shot-slot{border-color:var(--line-dark)}
+.pill{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:4px 10px;border-radius:999px;background:rgba(226,58,46,.12);color:var(--ember);margin-left:auto;flex:none}
+.pill.slate{background:var(--slate);color:#fff}
+
+/* ---------- S3: Local discovery ---------- */
+.discovery{background:var(--slate);color:var(--porcelain);overflow:hidden}
+.discovery .wrap{padding-top:110px;padding-bottom:110px}
+.discovery .eyebrow{color:var(--ember)}
+.discovery h2{color:#fff}
+.discovery .lede{color:var(--slate-mute)}
+.discovery-grid{display:grid;grid-template-columns:1fr 1.1fr;gap:64px;align-items:center;margin-top:8px}
+.map-panel{
+  background:#0E1822;border:1px solid var(--line-dark);border-radius:var(--radius-lg);
+  padding:28px;position:relative;overflow:hidden;
+}
+.map-panel svg.map{width:100%;height:auto;border-radius:12px}
+.map-legend{display:flex;justify-content:space-between;align-items:center;margin-top:16px}
+.map-legend span{font-family:var(--font-mono);font-size:11px;letter-spacing:.16em;color:var(--slate-mute);text-transform:uppercase}
+.cat-chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+.cat-chips button{
+  background:transparent;border:1px solid var(--line-dark);color:var(--porcelain);
+  font-size:13.5px;font-weight:600;padding:10px 18px;border-radius:999px;
+  transition:background .15s,border-color .15s;display:inline-flex;align-items:center;gap:8px;
+}
+.cat-chips button:hover,.cat-chips button.on{background:var(--ember);border-color:var(--ember);color:#fff}
+.cat-chips button .cdot{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.7}
+.pin{transform-box:fill-box;transform-origin:center;animation:pinpulse 2.6s ease-out infinite}
+@keyframes pinpulse{0%{opacity:.9;transform:scale(.6)}70%{opacity:0;transform:scale(2.1)}100%{opacity:0;transform:scale(2.1)}}
+.discovery-points{list-style:none;margin-top:34px;display:grid;gap:18px}
+.discovery-points li{display:flex;gap:16px;align-items:flex-start}
+.discovery-points .dp-icon{
+  width:42px;height:42px;border-radius:13px;background:rgba(226,58,46,.14);color:var(--ember);
+  display:grid;place-items:center;flex:none;
+}
+.discovery-points b{color:#fff;font-size:16px;display:block;margin-bottom:2px}
+.discovery-points p{color:var(--slate-mute);font-size:14.5px}
+
+/* ---------- S4: Orders + Bookings ---------- */
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.duo-card{
+  border-radius:var(--radius-lg);padding:48px 44px;position:relative;overflow:hidden;
+  display:flex;flex-direction:column;gap:8px;min-height:560px;
+}
+.duo-order{background:var(--slate);color:var(--porcelain)}
+.duo-book{background:var(--porcelain-card);border:1px solid var(--line);box-shadow:var(--shadow-card)}
+.duo-card .kicker{font-family:var(--font-mono);font-size:12px;letter-spacing:.24em;text-transform:uppercase;margin-bottom:10px}
+.duo-order .kicker{color:var(--ember)}
+.duo-book .kicker{color:var(--ember)}
+.duo-card h3{font-family:var(--font-display);font-size:clamp(28px,3vw,38px);font-weight:800;letter-spacing:-.015em;line-height:1.1}
+.duo-order h3{color:#fff}
+.duo-card>p{font-size:15.5px;margin-bottom:8px}
+.duo-order>p{color:var(--slate-mute)}
+.duo-book>p{color:var(--muted)}
+.duo-ui{margin-top:auto;background:rgba(255,255,255,.04);border:1px solid var(--line-dark);border-radius:18px;padding:20px}
+.duo-book .duo-ui{background:var(--porcelain);border-color:var(--line)}
+
+/* ---------- S5: For businesses ---------- */
+.business{background:var(--porcelain-deep);border-radius:28px;margin:0 20px}
+.business .wrap{padding-top:110px;padding-bottom:110px}
+.biz-grid{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center}
+.owner-dash{
+  background:var(--slate);border-radius:var(--radius-lg);padding:30px;color:var(--porcelain);
+  box-shadow:var(--shadow-card);border:1px solid var(--line-dark);
+}
+.od-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px}
+.od-head b{font-family:var(--font-display);font-size:18px;color:#fff}
+.od-head span{font-family:var(--font-mono);font-size:11px;letter-spacing:.14em;color:var(--slate-mute);text-transform:uppercase}
+.od-kpis{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
+.od-kpi{background:var(--slate-soft);border:1px solid var(--line-dark);border-radius:14px;padding:14px 16px}
+.od-kpi small{font-size:11px;color:var(--slate-mute);text-transform:uppercase;letter-spacing:.1em;display:block;margin-bottom:4px}
+.od-kpi b{font-family:var(--font-display);font-size:22px;color:#fff}
+.od-kpi b em{font-style:normal;color:var(--ember);font-size:14px}
+.od-note{font-size:11px;color:var(--slate-mute);text-align:center;margin:16px 0 0;letter-spacing:.06em}
+.od-orders{display:grid;gap:10px}
+.od-order{background:var(--slate-soft);border:1px solid var(--line-dark);border-radius:14px;padding:13px 16px;display:flex;align-items:center;gap:12px}
+.od-order .oid{font-family:var(--font-mono);font-size:12px;color:var(--slate-mute)}
+.od-order b{font-size:13.5px;color:#fff;display:block}
+.od-order small{font-size:11.5px;color:var(--slate-mute)}
+.biz-list{list-style:none;margin:30px 0 36px;display:grid;gap:16px}
+.biz-list li{display:flex;gap:14px;align-items:flex-start;font-size:15.5px}
+.biz-list .tick{
+  width:28px;height:28px;border-radius:50%;background:rgba(226,58,46,.12);color:var(--ember);
+  display:grid;place-items:center;flex:none;font-weight:700;font-size:14px;margin-top:2px;
+}
+.biz-list p{color:var(--muted)}
+.biz-list b{color:var(--ink)}
+
+/* ---------- S6: One connected platform ---------- */
+.platform-diagram{max-width:640px;margin:0 auto;text-align:center}
+.plat-node{
+  border:2px solid var(--line);border-radius:var(--radius);background:#fff;
+  padding:26px 30px;box-shadow:var(--shadow-card);position:relative;
+}
+.plat-node .pn-tag{font-family:var(--font-mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--ember);display:block;margin-bottom:8px}
+.plat-node h3{font-family:var(--font-display);font-size:26px;font-weight:800}
+.plat-node p{color:var(--muted);font-size:14.5px;margin-top:6px}
+.plat-core{border-color:var(--slate);background:var(--slate);color:#fff}
+.plat-core h3{color:#fff}
+.plat-core p{color:var(--slate-mute)}
+.plat-core .brand-mark{margin:0 auto 14px}
+.plat-link{display:flex;flex-direction:column;align-items:center;padding:6px 0;color:var(--ember)}
+.plat-link .pline{width:0;height:30px;border-left:2px dashed var(--ember);opacity:.7}
+.plat-admin{
+  margin-top:34px;border:1px dashed var(--line);border-radius:var(--radius);padding:26px 30px;
+  background:var(--porcelain-card);
+}
+.plat-admin .pn-tag{font-family:var(--font-mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:8px}
+.plat-admin p{color:var(--muted);font-size:14.5px;max-width:46ch;margin:6px auto 0}
+.admin-list{
+  margin-top:18px;font-family:var(--font-mono);font-size:12.5px;letter-spacing:.06em;
+  color:var(--muted);line-height:2.1;
+}
+.admin-list b{color:var(--ink);font-weight:500}
+
+/* ---------- S7: App CTA ---------- */
+.app-cta{background:var(--slate);color:#fff;overflow:hidden;position:relative}
+.app-cta .wrap{padding-top:110px;padding-bottom:110px;display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center}
+.app-cta h2{color:#fff}
+.app-cta h2 .ember{color:var(--ember)}
+.app-cta .lede{color:var(--slate-mute);margin-bottom:36px}
+.app-cta .hero-ctas{margin-bottom:0}
+
+/* ---------- Footer ---------- */
+.site-footer{border-top:1px solid var(--line);padding:72px 0 36px;background:var(--porcelain)}
+.footer-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:40px;margin-bottom:56px}
+.footer-brand p{color:var(--muted);font-size:14.5px;margin:16px 0 20px;max-width:30ch}
+.footer-domains{font-family:var(--font-mono);font-size:12px;color:var(--muted);display:grid;gap:6px}
+.footer-domains b{color:var(--ink);font-weight:500}
+.footer-col h4{font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:18px}
+.footer-col ul{list-style:none;display:grid;gap:12px}
+.footer-col a{font-size:15px;color:var(--ink)}
+.footer-col a:hover{color:var(--ember)}
+.footer-bottom{border-top:1px solid var(--line);padding-top:28px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+.footer-bottom p{font-size:13.5px;color:var(--muted)}
+
+/* ---------- Responsive ---------- */
+@media (max-width:1024px){
+  .hero{padding:72px 0 88px}
+  .hero-grid{grid-template-columns:1fr;gap:64px}
+  .hero-visual{order:2}
+  .hero-copy{max-width:640px}
+  .discovery-grid{grid-template-columns:1fr;gap:48px}
+  .biz-grid{grid-template-columns:1fr;gap:48px}
+  .app-cta .wrap{grid-template-columns:1fr;gap:64px}
+  .moment-row{grid-template-columns:1fr;gap:28px;padding:40px 0}
+  .moment-row:nth-child(even) .moment-text{order:0}
+  .moment-row:nth-child(even) .shot-slot{justify-self:start}
+  .moment-row .shot-slot{max-width:560px}
+  .duo{grid-template-columns:1fr}
+  .duo-card{min-height:0}
+  .footer-grid{grid-template-columns:1fr 1fr}
+}
+@media (max-width:768px){
+  .wrap{padding:0 22px}
+  .section{padding:80px 0}
+  .nav-links,.nav-cta{display:none}
+  .nav-toggle{display:block}
+  .site-header.nav-open .nav-links{
+    display:flex;position:absolute;top:72px;left:0;right:0;flex-direction:column;align-items:stretch;
+    background:var(--porcelain);border-bottom:1px solid var(--line);padding:12px 22px 20px;gap:0;
+  }
+  .site-header.nav-open .nav-links a{display:block;padding:14px 0;border-bottom:1px solid var(--line);font-size:17px;color:var(--ink)}
+  .site-header.nav-open .nav-cta{display:flex;position:absolute;top:328px;left:0;right:0;padding:4px 22px 20px;background:var(--porcelain);border-bottom:1px solid var(--line)}
+  .site-header.nav-open .nav-cta .btn{flex:1}
+  .site-header.nav-open .nav-toggle span{background:transparent}
+  .site-header.nav-open .nav-toggle span::before{transform:translateY(7px) rotate(45deg)}
+  .site-header.nav-open .nav-toggle span::after{transform:translateY(-7px) rotate(-45deg)}
+  .hero h1{font-size:clamp(40px,11vw,56px)}
+  .float-card{padding:10px 12px;border-radius:14px}
+  .fc-order{left:-2%}
+  .fc-book{right:-2%}
+  .business{margin:0 12px;border-radius:24px}
+  .discovery .wrap,.business .wrap,.app-cta .wrap{padding-top:72px;padding-bottom:72px}
+  .duo-card{padding:34px 26px}
+  .footer-grid{grid-template-columns:1fr;gap:32px}
+  .btn{width:100%}
+  .hero-ctas .btn{width:auto;flex:1}
+}
+@media (max-width:520px){
+  .hero{padding:56px 0 72px}
+  .od-kpis{grid-template-columns:1fr 1fr}
+
+}
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{animation-duration:.001s !important;transition-duration:.001s !important}
+  .reveal{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<!-- ================= HEADER ================= -->
+<header class="site-header" id="siteHeader">
+  <div class="wrap">
+    <nav class="nav" aria-label="Primary">
+      <a class="brand" href="#top" aria-label="NearbyOrders home">
+        <span class="brand-mark" aria-hidden="true">N</span>
+        NearbyOrders
+      </a>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="#product">Product</a></li>
+        <li><a href="#discover">Discover</a></li>
+        <li><a href="#business">For Businesses</a></li>
+        <li><a href="#platform">Platform</a></li>
+      </ul>
+      <div class="nav-cta">
+        <a class="btn btn-ember" href="#get-app">Get the App</a>
+      </div>
+      <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="navLinks" aria-label="Open menu">
+        <span aria-hidden="true"></span>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+<!-- ================= S1 · HERO ================= -->
+<section class="hero" id="top" aria-labelledby="hero-title">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <p class="eyebrow">NearbyOrders for Android</p>
+      <h1 id="hero-title">Everything nearby.<br>One place to <span class="ember">order and book.</span></h1>
+      <p class="lede">NearbyOrders helps you discover local businesses, place orders, and make bookings. One app, built for the neighborhood around you.</p>
+      <div class="hero-ctas">
+        <a class="btn btn-ember" href="#get-app">Get the App</a>
+        <a class="btn btn-outline" href="#business">For Businesses</a>
+      </div>
+      <p class="hero-meta">Discover · Order · Book · Manage</p>
+    </div>
+    <div class="hero-visual">
+      <div class="phone" role="img" aria-label="Phone frame: real NearbyOrders Home screen capture needed">
+        <!-- App screen: customer Home, from apps/mobile/src/screens/Home.tsx -->
+        <div class="phone-screen">
+          <img class="phone-shot" src="assets/screens/hero-home.png" alt="NearbyOrders app: customer Home screen with search, categories and nearby businesses">
+        </div>
+      </div>
+      <div class="float-card fc-order" aria-hidden="true">
+        <span class="fc-icon" style="background:rgba(226,58,46,.12);color:#E23A2E">◉</span>
+        <div><h5>Order #NO-2481</h5><p>Preparing · arriving soon</p></div>
+      </div>
+      <div class="float-card fc-book" aria-hidden="true">
+        <span class="fc-icon" style="background:#16222E;color:#fff">◐</span>
+        <div><h5>Booking confirmed</h5><p>Tomorrow · 2:00 PM</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= S2 · PRODUCT INTRODUCTION ================= -->
+<section class="section" id="product" aria-labelledby="product-title">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow">The product</p>
+      <h2 id="product-title">The everyday app for local life.</h2>
+      <p class="lede">Three things NearbyOrders does well, built around the businesses near you.</p>
+    </div>
+    <div class="moment-rows">
+      <article class="moment-row reveal">
+        <div class="moment-text">
+          <p class="moment-num">01</p>
+          <h3>Discover nearby</h3>
+          <p>Find businesses around you: shops, services, and places to eat, in one clean feed sorted by what's close.</p>
+        </div>
+        <!-- App screen: Explore, from apps/mobile/src/screens/Explore.tsx -->
+        <figure class="shot-slot" style="margin:0">
+          <img src="assets/screens/product-discover.png" alt="NearbyOrders app: Explore screen with business search and discovery list">
+        </figure>
+      </article>
+      <article class="moment-row reveal">
+        <div class="moment-text">
+          <p class="moment-num">02</p>
+          <h3>Order what you need</h3>
+          <p>Browse menus and catalogs, place your order, and follow it from confirmed to delivered, all in the app.</p>
+        </div>
+        <!-- App screen: cart / order flow, from apps/mobile/src/screens/Cart.tsx -->
+        <figure class="shot-slot" style="margin:0">
+          <img src="assets/screens/product-order.png" alt="NearbyOrders app: cart and order checkout with items, quantities and total">
+        </figure>
+      </article>
+      <article class="moment-row reveal">
+        <div class="moment-text">
+          <p class="moment-num">03</p>
+          <h3>Book when you need it</h3>
+          <p>Reserve services and appointments with local businesses in a few taps. Every booking lives in one list.</p>
+        </div>
+        <!-- App screen: booking flow, from apps/mobile/src/screens/BookService.tsx -->
+        <figure class="shot-slot" style="margin:0">
+          <img src="assets/screens/product-book.png" alt="NearbyOrders app: booking flow with service options, date and time pickers">
+        </figure>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ================= S3 · LOCAL DISCOVERY ================= -->
+<section class="discovery" id="discover" aria-labelledby="discover-title">
+  <div class="wrap">
+    <div class="discovery-grid">
+      <div class="reveal">
+        <p class="eyebrow">Local discovery</p>
+        <h2 id="discover-title">Made for what's around you.</h2>
+        <p class="lede">NearbyOrders starts with where you are. Explore categories, see what's close, and open any business to order or book. No endless scrolling through places across town.</p>
+        <ul class="discovery-points">
+          <li>
+            <span class="dp-icon" aria-hidden="true">⌖</span>
+            <div><b>Location-first, always</b><p>Your feed is organized by nearness, so the closest options come first.</p></div>
+          </li>
+          <li>
+            <span class="dp-icon" aria-hidden="true">▤</span>
+            <div><b>Real categories</b><p>Food, cafés, salons, repair, groceries. Browse by what you need today.</p></div>
+          </li>
+          <li>
+            <span class="dp-icon" aria-hidden="true">◈</span>
+            <div><b>From discovery to doorstep</b><p>Every business card leads straight to ordering or booking. Nothing dead-ends.</p></div>
+          </li>
+        </ul>
+      </div>
+      <div class="reveal">
+        <div class="map-panel">
+          <svg class="map" viewBox="0 0 520 380" role="img" aria-label="Stylized map showing nearby businesses around your location">
+            <rect width="520" height="380" fill="#0E1822"/>
+            <g stroke="#1E2E3E" stroke-width="10">
+              <line x1="0" y1="90" x2="520" y2="90"/><line x1="0" y1="210" x2="520" y2="210"/>
+              <line x1="0" y1="320" x2="520" y2="320"/><line x1="120" y1="0" x2="120" y2="380"/>
+              <line x1="300" y1="0" x2="300" y2="380"/><line x1="440" y1="0" x2="440" y2="380"/>
+            </g>
+            <g stroke="#16242F" stroke-width="4">
+              <line x1="0" y1="150" x2="520" y2="150"/><line x1="210" y1="0" x2="210" y2="380"/>
+              <line x1="370" y1="0" x2="370" y2="380"/><line x1="0" y1="265" x2="520" y2="265"/>
+            </g>
+            <rect x="330" y="230" width="90" height="70" rx="10" fill="#12241A"/>
+            <rect x="20" y="230" width="80" height="60" rx="10" fill="#152030"/>
+            <path d="M120 320 Q 210 300 300 330 T 520 310 L 520 380 L 120 380 Z" fill="#132433"/>
+            <g>
+              <circle class="pin" cx="210" cy="150" r="10" fill="none" stroke="#E23A2E" stroke-width="2"/>
+              <circle cx="210" cy="150" r="7" fill="#E23A2E"/>
+              <circle class="pin" cx="370" cy="90" r="10" fill="none" stroke="#E23A2E" stroke-width="2" style="animation-delay:.8s"/>
+              <circle cx="370" cy="90" r="7" fill="#E23A2E"/>
+              <circle class="pin" cx="440" cy="265" r="10" fill="none" stroke="#E23A2E" stroke-width="2" style="animation-delay:1.6s"/>
+              <circle cx="440" cy="265" r="7" fill="#E23A2E"/>
+              <circle cx="260" cy="210" r="11" fill="#F2F5F7" stroke="#E23A2E" stroke-width="3"/>
+              <circle cx="260" cy="210" r="4" fill="#E23A2E"/>
+            </g>
+          </svg>
+          <div class="map-legend"><span>Illustrative map</span><span>⌖ You are here</span></div>
+          <div class="cat-chips" role="group" aria-label="Browse categories">
+            <button type="button" class="on"><span class="cdot"></span>Restaurants</button>
+            <button type="button"><span class="cdot"></span>Cafés</button>
+            <button type="button"><span class="cdot"></span>Salons</button>
+            <button type="button"><span class="cdot"></span>Groceries</button>
+            <button type="button"><span class="cdot"></span>Repair</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= S4 · ORDERS + BOOKINGS ================= -->
+<section class="section" aria-labelledby="actions-title">
+  <div class="wrap">
+    <div class="section-head center reveal">
+      <p class="eyebrow">Two things, done well</p>
+      <h2 id="actions-title">Order. Book. Done.</h2>
+      <p class="lede">The two actions that matter, designed as first-class experiences. Everything stays manageable from your tabs.</p>
+    </div>
+    <div class="duo">
+      <article class="duo-card duo-order reveal">
+        <p class="kicker">Order</p>
+        <h3>From craving to doorstep.</h3>
+        <p>Browse a business's menu or catalog, check out in seconds, and watch your order move from confirmed to on its way.</p>
+        <!-- App screen: customer Orders, from apps/mobile/src/screens/Orders.tsx -->
+        <div class="duo-ui">
+          <figure class="shot-slot" style="margin:0;max-width:none">
+            <img src="assets/screens/experience-order.png" alt="NearbyOrders app: My orders screen with live order status tracking">
+          </figure>
+        </div>
+      </article>
+      <article class="duo-card duo-book reveal">
+        <p class="kicker">Book</p>
+        <h3>Your time, reserved.</h3>
+        <p>Pick a service, choose a slot that suits you, and get a confirmed booking. Cancel from one list if plans change.</p>
+        <!-- App screen: customer Bookings, from apps/mobile/src/screens/Bookings.tsx -->
+        <div class="duo-ui">
+          <figure class="shot-slot" style="margin:0;max-width:none">
+            <img src="assets/screens/experience-book.png" alt="NearbyOrders app: My bookings screen with upcoming and past bookings">
+          </figure>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ================= S5 · FOR BUSINESSES ================= -->
+<section class="business" id="business" aria-labelledby="business-title">
+  <div class="wrap">
+    <div class="biz-grid">
+      <div class="reveal">
+        <p class="eyebrow">For businesses</p>
+        <h2 id="business-title">Your business, connected to nearby customers.</h2>
+        <p class="lede">Join the same platform your customers use. Manage your presence, orders, and bookings from one business toolkit.</p>
+        <ul class="biz-list">
+          <li><span class="tick" aria-hidden="true">✓</span><p><b>Create and manage your business presence</b>: profile, catalog, and services in one place.</p></li>
+          <li><span class="tick" aria-hidden="true">✓</span><p><b>Receive and manage orders</b>: confirm, prepare, and fulfill without the chaos.</p></li>
+          <li><span class="tick" aria-hidden="true">✓</span><p><b>Manage bookings</b>: keep your schedule organized and your customers informed.</p></li>
+          <li><span class="tick" aria-hidden="true">✓</span><p><b>Track earnings</b>: see how your business is doing at a glance.</p></li>
+          <li><span class="tick" aria-hidden="true">✓</span><p><b>Reach nearby customers</b>: get discovered by people already looking around you.</p></li>
+        </ul>
+        <a class="btn btn-ember" href="#get-app">Join NearbyOrders</a>
+      </div>
+      <div class="reveal">
+        <div class="owner-dash" role="img" aria-label="Business owner dashboard showing today's orders and earnings overview">
+          <div class="od-head"><b>Business Overview</b><span>Today</span></div>
+          <div class="od-kpis">
+            <div class="od-kpi"><small>Orders today</small><b>18 <em>▲</em></b></div>
+            <div class="od-kpi"><small>Bookings</small><b>7</b></div>
+            <div class="od-kpi"><small>Earnings</small><b>PKR 42k</b></div>
+            <div class="od-kpi"><small>Rating</small><b>4.8</b></div>
+          </div>
+          <div class="od-orders">
+            <div class="od-order"><div style="flex:1"><span class="oid">#NO-2481</span><b>2 items · Dine-in</b><small>2 min ago</small></div><span class="pill">New</span></div>
+            <div class="od-order"><div style="flex:1"><span class="oid">#NO-2479</span><b>5 items · Pickup</b><small>14 min ago</small></div><span class="pill slate">Preparing</span></div>
+            <div class="od-order"><div style="flex:1"><span class="oid">#NO-2476</span><b>Booking · 2:00 PM</b><small>26 min ago</small></div><span class="pill slate">Confirmed</span></div>
+          </div>
+          <p class="od-note">Illustrative preview.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= S6 · ONE CONNECTED PLATFORM ================= -->
+<section class="section" id="platform" aria-labelledby="platform-title">
+  <div class="wrap">
+    <div class="section-head center reveal">
+      <p class="eyebrow">One connected platform</p>
+      <h2 id="platform-title">Everyone on the same platform.</h2>
+      <p class="lede">Customers and businesses meet through NearbyOrders. One Android app, one business toolkit, and one unified admin panel running the whole ecosystem behind the scenes.</p>
+    </div>
+    <div class="platform-diagram reveal">
+      <div class="plat-node">
+        <span class="pn-tag">Customer</span>
+        <h3>The Android app</h3>
+        <p>Discover, order, book, and manage. Everything a customer needs, in their pocket.</p>
+      </div>
+      <div class="plat-link" aria-hidden="true"><span class="pline"></span><span style="font-size:20px">▾</span></div>
+      <div class="plat-node plat-core">
+        <span class="brand-mark" aria-hidden="true">N</span>
+        <span class="pn-tag" style="color:var(--ember)">NearbyOrders</span>
+        <h3>One platform</h3>
+        <p>nearbyorders.com · api.nearbyorders.com · one shared backend for app and web.</p>
+      </div>
+      <div class="plat-link" aria-hidden="true"><span class="pline"></span><span style="font-size:20px">▾</span></div>
+      <div class="plat-node">
+        <span class="pn-tag">Business</span>
+        <h3>Business toolkit</h3>
+        <p>Profiles, orders, bookings, and earnings, connected to nearby customers.</p>
+      </div>
+      <div class="plat-admin">
+        <span class="pn-tag">Behind the platform · Unified admin</span>
+        <p>One admin panel governs the entire ecosystem. No separate systems for the app and the website.</p>
+        <p class="admin-list">Customers · Businesses · Orders · Bookings · Reviews · Categories · Subscriptions · Analytics · Website · App · Settings</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= S7 · APP CTA ================= -->
+<section class="app-cta" id="get-app" aria-labelledby="cta-title">
+  <div class="wrap">
+    <div class="reveal">
+      <p class="eyebrow">Get started</p>
+      <h2 id="cta-title">Nearby is just <span class="ember">the beginning.</span></h2>
+      <p class="lede">Download the NearbyOrders app and see what's around you. Order what you need, book when you need it.</p>
+      <div class="hero-ctas">
+        <a class="btn btn-ember" href="#top">Get the NearbyOrders App</a>
+        <a class="btn btn-outline-light" href="#business">For Businesses</a>
+      </div>
+    </div>
+    <div class="hero-visual reveal">
+      <div class="phone" role="img" aria-label="Phone frame: real NearbyOrders Explore screen capture needed">
+        <!-- App screen: Explore, from apps/mobile/src/screens/Explore.tsx -->
+        <div class="phone-screen">
+          <img class="phone-shot" src="assets/screens/cta-explore.png" alt="NearbyOrders app: Explore screen showing nearby businesses">
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ================= S8 · FOOTER ================= -->
+<footer class="site-footer" aria-label="Footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a class="brand" href="#top" aria-label="NearbyOrders home">
+          <span class="brand-mark" aria-hidden="true">N</span>
+          NearbyOrders
+        </a>
+        <p>The local marketplace app. Discover nearby businesses, order what you need, and book when you need it.</p>
+        <div class="footer-domains">
+          <span><b>nearbyorders.com</b>: website</span>
+          <span><b>admin.nearbyorders.com</b>: admin panel</span>
+          <span><b>api.nearbyorders.com</b>: API</span>
+        </div>
+      </div>
+      <div class="footer-col">
+        <h4>Customer</h4>
+        <ul>
+          <li><a href="#product">The App</a></li>
+          <li><a href="#discover">Discover</a></li>
+          <li><a href="#get-app">Download</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Business</h4>
+        <ul>
+          <li><a href="#business">For Businesses</a></li>
+          <li><a href="#business">Join NearbyOrders</a></li>
+          <li><a href="#platform">Platform</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Company</h4>
+        <ul>
+          <li><a href="#top">About</a></li>
+          <li><a href="#top">Support</a></li>
+          <li><a href="#top">Privacy</a></li>
+          <li><a href="#top">Terms</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>© <span id="year">2026</span> NearbyOrders. All rights reserved.</p>
+      <p>Phone screens show the real NearbyOrders customer app.</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  /* Mobile nav */
+  var header=document.getElementById('siteHeader'),
+      toggle=document.getElementById('navToggle');
+  toggle.addEventListener('click',function(){
+    var open=header.classList.toggle('nav-open');
+    toggle.setAttribute('aria-expanded',open?'true':'false');
+    toggle.setAttribute('aria-label',open?'Close menu':'Open menu');
+  });
+  header.querySelectorAll('.nav-links a').forEach(function(a){
+    a.addEventListener('click',function(){
+      header.classList.remove('nav-open');
+      toggle.setAttribute('aria-expanded','false');
+    });
+  });
+
+  /* Reveal on scroll */
+  var reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var els=document.querySelectorAll('.reveal');
+  if(reduce||!('IntersectionObserver' in window)){
+    els.forEach(function(el){el.classList.add('in');});
+  }else{
+    var io=new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}
+      });
+    },{threshold:.12,rootMargin:'0px 0px -40px 0px'});
+    els.forEach(function(el){io.observe(el);});
+  }
+
+  /* Category chips: single-select toggle */
+  document.querySelectorAll('.cat-chips').forEach(function(group){
+    group.querySelectorAll('button').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        group.querySelectorAll('button').forEach(function(b){b.classList.remove('on');});
+        btn.classList.add('on');
+      });
+    });
+  });
+
+  /* Footer year */
+  document.getElementById('year').textContent=new Date().getFullYear();
+})();
+</script>
+</body>
+</html>
