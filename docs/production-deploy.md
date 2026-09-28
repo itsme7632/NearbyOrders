@@ -187,6 +187,33 @@ docker compose -f docker-compose.prod.yml up -d
 `prisma migrate deploy` runs automatically on every `up` via the `migrate`
 service before the API starts, so schema changes apply in order.
 
+### Troubleshooting: admin dashboard shows "Something went wrong / An unexpected error occurred"
+
+That message is the API's generic 500 body (`INTERNAL_ERROR` in
+`apps/api/src/server.ts`), surfaced by the admin's `ErrorState`. For the
+dashboard it means `GET /api/v1/admin/dashboard` threw inside one of its
+Prisma count queries — almost always a **table missing from the production
+database** because a migration was never applied there (e.g. `PushDevice`
+from `20260917000000_phase13_push_devices`). Login still works because it
+only touches the `User` table, and CORS is not involved (a CORS failure
+shows "Cannot reach the NearbyOrders API", not the API's 500 message).
+
+Remediation on the VPS (safe and idempotent — applies only pending
+migrations, never touches existing data):
+
+```sh
+# 1. Diagnose: list applied vs pending migrations
+docker compose -f docker-compose.prod.yml run --rm migrate ./apps/api/node_modules/.bin/prisma migrate status --schema apps/api/prisma/schema.prisma
+# 2. Apply any pending migrations
+docker compose -f docker-compose.prod.yml run --rm migrate
+# 3. Confirm success, then recreate the API container
+docker compose -f docker-compose.prod.yml logs migrate
+docker compose -f docker-compose.prod.yml up -d api
+```
+
+Then verify: sign in at `https://admin.nearbyorders.com` and confirm the
+Command center loads its counts instead of the error.
+
 ## Hardcoded deployment assumptions (audited 2026-09-28)
 
 - No production IP or provider name is hardcoded anywhere in runtime code:
