@@ -1,4 +1,18 @@
-export const API_BASE = '/api/v1';
+/**
+ * API base URL.
+ *
+ * Default is the same-origin relative path '/api/v1', which works when the
+ * admin is served behind the production nginx reverse proxy (see
+ * infrastructure/nginx.conf) or the Vite dev server. For any other topology,
+ * bake in the API origin at build time via the VITE_API_BASE_URL env var:
+ *
+ *   VITE_API_BASE_URL=https://api.example.com/api/v1 pnpm build
+ *
+ * The value must include the full path prefix (…/api/v1); trailing slashes
+ * are stripped. Documented in the root .env.example.
+ */
+const configuredBase = import.meta.env.VITE_API_BASE_URL as string | undefined;
+export const API_BASE = configuredBase?.replace(/\/+$/, '') || '/api/v1';
 
 export class ApiError extends Error {
   constructor(

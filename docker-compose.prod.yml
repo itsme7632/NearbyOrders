@@ -1,0 +1,94 @@
+# NearbyOrders PRODUCTION stack (Contabo VPS).
+#
+# Every secret comes from the environment — see .env.example. Never commit
+# real values. The ${VAR:?message} syntax makes compose fail loudly when a
+# required variable is missing instead of starting a broken stack.
+#
+# Deploy sequence (deterministic):
+#   1. `db` starts; compose waits until postgres is healthy (pg_isready).
+#   2. `migrate` runs `prisma migrate deploy` ONCE against the healthy DB,
+#      then exits. Never `prisma migrate dev` in production.
+#   3. `api` starts only after migrations complete successfully.
+#      With NODE_ENV=production the API fail-fasts on missing/unsafe
+#      JWT secrets or CORS_ORIGIN (see resolveServerConfig in server.ts).
+#   4. `nginx` serves the admin SPA and proxies /api/v1 to the API.
+#
+# First-time database initialization (run once, in this order):
+#   docker compose -f docker-compose.prod.yml up -d db
+#   docker compose -f docker-compose.prod.yml run --rm api node node_modules/.bin/tsx apps/api/prisma/seed-categories.ts
+#   docker compose -f docker-compose.prod.yml run --rm api node node_modules/.bin/tsx apps/api/prisma/seed-plans.ts
+#   docker compose -f docker-compose.prod.yml run --rm -e ADMIN_EMAIL=ops@example.com -e ADMIN_PASSWORD='...' api node node_modules/.bin/tsx apps/api/scripts/create-admin.ts
+#   docker compose -f docker-compose.prod.yml up -d
+# See docs/production-deploy.md for the full runbook. NEVER seed demo data
+# (SEED_DEMO_DATA) in production.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-nearbyorders}
+      POSTGRES_USER: ${POSTGRES_USER:-nearbyorders}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the production environment}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-nearbyorders} -d $${POSTGRES_DB:-nearbyorders}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  migrate:
+    build: { context: ., dockerfile: infrastructure/docker/api.Dockerfile }
+    restart: "no"
+    command: ["./node_modules/.bin/prisma", "migrate", "deploy", "--schema", "apps/api/prisma/schema.prisma"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in the production environment}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build: { context: ., dockerfile: infrastructure/docker/api.Dockerfile }
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      # Container-internal port. Hardcoded to match infrastructure/nginx.conf
+      # (proxy_pass http://api:3000); the port is not published to the host,
+      # so there is no reason to make it configurable here.
+      PORT: '3000'
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in the production environment}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set JWT_ACCESS_SECRET in the production environment}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in the production environment}
+      CORS_ORIGIN: ${CORS_ORIGIN:?Set CORS_ORIGIN in the production environment (the public admin origin, e.g. https://admin.example.com)}
+      RECEIPTS_DIR: /var/nearbyorders/receipts
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}
+      AUTH_RATE_LIMIT_MAX: ${AUTH_RATE_LIMIT_MAX:-10}
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
+      FCM_SERVICE_ACCOUNT_B64: ${FCM_SERVICE_ACCOUNT_B64:-}
+    volumes:
+      # Persistent receipt/verification storage. The API creates the directory
+      # on first write (saveReceipt mkdir -p). Survives container recreation;
+      # back this volume up with the database. Files stay behind authorized
+      # API endpoints — there is intentionally no public /uploads route.
+      - receipts_data:/var/nearbyorders/receipts
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    expose: ["3000"]
+
+  nginx:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/nginx.Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
+    restart: unless-stopped
+    ports: ["80:80"]
+    depends_on:
+      - api
+
+volumes:
+  postgres_data: {}
+  receipts_data: {}

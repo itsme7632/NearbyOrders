@@ -1,12 +1,24 @@
+# NearbyOrders LOCAL DEVELOPMENT stack.
+#
+# The credentials below (change-me / change-me-at-least-32-characters) are
+# development-only placeholders. Production uses docker-compose.prod.yml,
+# which requires every secret from the environment and fail-fasts when one
+# is missing. Never copy these values to a server.
 services:
   db:
     image: postgres:16-alpine
     environment: { POSTGRES_DB: nearbyorders, POSTGRES_USER: nearbyorders, POSTGRES_PASSWORD: change-me }
     ports: ["5432:5432"]
     volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nearbyorders -d nearbyorders"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
   api:
     build: { context: ., dockerfile: infrastructure/docker/api.Dockerfile }
-    environment: { DATABASE_URL: postgresql://nearbyorders:change-me@db:5432/nearbyorders?schema=public, JWT_ACCESS_SECRET: change-me-at-least-32-characters, JWT_REFRESH_SECRET: change-me-at-least-32-characters }
+    environment: { DATABASE_URL: "postgresql://nearbyorders:change-me@db:5432/nearbyorders?schema=public", JWT_ACCESS_SECRET: change-me-at-least-32-characters, JWT_REFRESH_SECRET: change-me-at-least-32-characters }
     depends_on: [db]
     ports: ["3000:3000"]
 volumes: { postgres_data: {} }

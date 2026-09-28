@@ -111,13 +111,102 @@ const flattenCategories = (
 
 type SessionedRequest = FastifyRequest & { currentUser?: AuthUser & { email: string } };
 
+/** Known development/default secrets that must never be accepted in production. */
+export const DEVELOPMENT_JWT_ACCESS_SECRET = 'development-access-secret-change-me-32!';
+export const DEVELOPMENT_JWT_REFRESH_SECRET = 'development-refresh-secret-change-me-32!';
+/** Placeholder secrets shipped in docker-compose.yml for local development only. */
+const PLACEHOLDER_SECRETS = new Set(['change-me-at-least-32-characters']);
+
+export type ServerConfig = {
+  port: number;
+  accessSecret: string;
+  refreshSecret: string;
+  corsOrigins: string[];
+};
+
+/**
+ * Resolves and validates server configuration from the environment.
+ *
+ * Development/test keep the historical silent defaults (localhost CORS, dev
+ * JWT secrets) so the existing test suite and local workflows are unaffected.
+ *
+ * Production (`NODE_ENV=production`) is fail-fast: missing JWT secrets,
+ * known development/default secret values, a missing/unsafe CORS_ORIGIN, and
+ * short secrets all throw a descriptive error (never echoing secret values)
+ * before the server binds. This makes a misconfigured Contabo deploy crash
+ * loudly at startup instead of running with an auth bypass or a broken
+ * browser admin.
+ */
+export function resolveServerConfig(raw: NodeJS.ProcessEnv = process.env): ServerConfig {
+  const isProduction = (raw.NODE_ENV ?? 'development') === 'production';
+  const access = raw.JWT_ACCESS_SECRET;
+  const refresh = raw.JWT_REFRESH_SECRET;
+
+  if (isProduction) {
+    const missing: string[] = [];
+    if (!access) missing.push('JWT_ACCESS_SECRET');
+    if (!refresh) missing.push('JWT_REFRESH_SECRET');
+    if (missing.length > 0) {
+      throw new Error(
+        `[config] Cannot start in production: missing required secret(s): ${missing.join(', ')}. ` +
+          `Set each to a long random value (at least 32 characters) in the production environment. ` +
+          `The server refuses to start with development defaults.`,
+      );
+    }
+    for (const [name, value] of [
+      ['JWT_ACCESS_SECRET', access!],
+      ['JWT_REFRESH_SECRET', refresh!],
+    ] as const) {
+      if (
+        value === DEVELOPMENT_JWT_ACCESS_SECRET ||
+        value === DEVELOPMENT_JWT_REFRESH_SECRET ||
+        PLACEHOLDER_SECRETS.has(value)
+      ) {
+        throw new Error(
+          `[config] Cannot start in production: ${name} uses a known development/default value. ` +
+            `Generate a unique secret (at least 32 random characters) and set it in the production environment.`,
+        );
+      }
+      if (value.length < 32) {
+        throw new Error(`[config] Cannot start in production: ${name} must be at least 32 characters long.`);
+      }
+    }
+    const corsOrigin = (raw.CORS_ORIGIN ?? '').trim();
+    if (!corsOrigin) {
+      throw new Error(
+        `[config] Cannot start in production: CORS_ORIGIN is required. ` +
+          `Set it to the admin origin(s), comma-separated if more than one (e.g. CORS_ORIGIN="https://admin.example.com"). ` +
+          `The historical localhost default is a development convenience and is rejected in production.`,
+      );
+    }
+    if (corsOrigin === '*' || corsOrigin.split(',').some((o) => o.trim() === '*')) {
+      throw new Error(
+        `[config] Cannot start in production: CORS_ORIGIN="*" is unsafe for a credentialed API and is rejected. ` +
+          `List the exact admin origin(s) instead.`,
+      );
+    }
+  }
+
+  const cors = raw.CORS_ORIGIN ?? 'http://localhost:5173';
+  return {
+    port: Number(raw.PORT ?? 3000),
+    accessSecret: access ?? DEVELOPMENT_JWT_ACCESS_SECRET,
+    refreshSecret: refresh ?? DEVELOPMENT_JWT_REFRESH_SECRET,
+    corsOrigins: cors
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean),
+  };
+}
+
 /** Builds the Fastify app. Exported so integration tests can boot it against a test database. */
 export async function buildApp(): Promise<FastifyInstance> {
+  const config = resolveServerConfig();
   const env = {
-    port: Number(process.env.PORT ?? 3000),
-    access: process.env.JWT_ACCESS_SECRET ?? 'development-access-secret-change-me-32!',
-    refresh: process.env.JWT_REFRESH_SECRET ?? 'development-refresh-secret-change-me-32!',
-    cors: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
+    port: config.port,
+    access: config.accessSecret,
+    refresh: config.refreshSecret,
+    cors: config.corsOrigins,
   };
 
   const app = Fastify({ logger: { redact: ['req.headers.authorization', 'password', 'token'] } });
@@ -131,7 +220,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   // the request is blocked before it reaches the route and surfaces as a
   // network error. @fastify/cors defaults to GET,HEAD,POST only.
   await app.register(cors, {
-    origin: env.cors.split(','),
+    origin: env.cors,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
   });
   await app.register(rateLimit, { max: rateMax, timeWindow: '1 minute' });
