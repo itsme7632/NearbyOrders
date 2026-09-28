@@ -91,7 +91,7 @@ services:
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
     restart: unless-stopped
-    ports: ["80:80"]
+    # The Contabo VPS already has a host-level nginx on 80/443 for BrokerMAIL.\n    # Bind NearbyOrders nginx only to loopback on a dedicated host port; the\n    # host nginx will terminate TLS and proxy nearbyorders.com/api.nearbyorders.com\n    # traffic here. Never bind this service directly to public 80/443.\n    ports: ["127.0.0.1:3100:80"]
     depends_on:
       - api
 
