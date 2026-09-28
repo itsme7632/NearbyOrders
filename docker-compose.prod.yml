@@ -18,8 +18,8 @@
 #
 # First-time database initialization (run once, in this order):
 #   docker compose -f docker-compose.prod.yml up -d db
-#   docker compose -f docker-compose.prod.yml run --rm api node node_modules/.bin/tsx apps/api/prisma/seed-categories.ts
-#   docker compose -f docker-compose.prod.yml run --rm api node node_modules/.bin/tsx apps/api/prisma/seed-plans.ts
+#   docker compose -f docker-compose.prod.yml run --rm api node apps/api/node_modules/.bin/tsx apps/api/prisma/seed-categories.ts
+#   docker compose -f docker-compose.prod.yml run --rm api node apps/api/node_modules/.bin/tsx apps/api/prisma/seed-plans.ts
 #   docker compose -f docker-compose.prod.yml run --rm -e ADMIN_EMAIL=ops@example.com -e ADMIN_PASSWORD='...' api node node_modules/.bin/tsx apps/api/scripts/create-admin.ts
 #   docker compose -f docker-compose.prod.yml up -d
 # See docs/production-deploy.md for the full runbook. NEVER seed demo data
@@ -45,7 +45,7 @@ services:
   migrate:
     build: { context: ., dockerfile: infrastructure/docker/api.Dockerfile }
     restart: "no"
-    command: ["./node_modules/.bin/prisma", "migrate", "deploy", "--schema", "apps/api/prisma/schema.prisma"]
+    command: ["./apps/api/node_modules/.bin/prisma", "migrate", "deploy", "--schema", "apps/api/prisma/schema.prisma"]
     environment:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in the production environment}
     depends_on:

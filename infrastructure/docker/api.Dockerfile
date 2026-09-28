@@ -13,7 +13,9 @@ RUN pnpm --filter @nearbyorders/api prisma:generate && pnpm --filter @nearbyorde
 # The mkdir guards the COPY below: engine binaries may resolve from the
 # @prisma/engines package instead of the cache, in which case the cache dir
 # would otherwise not exist and the COPY would fail the build.
-RUN mkdir -p /root/.cache/prisma && cd apps/api && DATABASE_URL="postgresql://localhost:5432/dummy?schema=public" ../../node_modules/.bin/prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script >/dev/null
+# Prisma must be invoked package-aware (pnpm --filter): pnpm does not hoist
+# binaries to the workspace root, so node_modules/.bin/prisma does not exist.
+RUN mkdir -p /root/.cache/prisma && DATABASE_URL="postgresql://localhost:5432/dummy?schema=public" pnpm --filter @nearbyorders/api exec prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script >/dev/null
 FROM node:24-alpine
 WORKDIR /app
 COPY --from=build /app/node_modules node_modules
