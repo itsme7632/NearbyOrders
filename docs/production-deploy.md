@@ -7,10 +7,18 @@ each step gates the next, and the API fail-fasts on unsafe configuration.
 ## Topology
 
 ```
-internet ──▶ nginx:80 ──┬── /api/v1/* ──▶ api:3000 (Fastify, NODE_ENV=production)
-                         ├── /healthz ───▶ api:3000/health
-                         └── /* ─────────▶ admin SPA (static, SPA fallback)
-api ──▶ db:5432 (PostgreSQL 16)
+internet ──▶ host nginx:80/443 ──▶ 127.0.0.1:3100 (NearbyOrders nginx)
+                                      ├── /api/v1/* ──▶ api:3000 (Fastify)
+                                      ├── /healthz ───▶ api:3000/health
+                                      └── /* ─────────▶ admin SPA
+                                NearbyOrders api ──▶ db:5432 (PostgreSQL 16)
+
+The Contabo VPS may already host other applications. NearbyOrders therefore
+never binds Docker nginx directly to host ports 80/443; `docker-compose.prod.yml`
+binds it to `127.0.0.1:3100`. The existing host nginx remains the public TLS
+entry point and proxies `nearbyorders.com`, `www.nearbyorders.com`, and
+`api.nearbyorders.com` to that port. See
+`infrastructure/host-nginx/nearbyorders.conf.example`.
 ```
 
 Receipt/verification files are stored in the `receipts_data` volume mounted
@@ -56,7 +64,20 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"
 
 Export them (or use a systemd `EnvironmentFile`) before running compose.
 
-## 2. Build
+## 2. Configure the shared host nginx
+
+On a VPS that already hosts other sites, copy the example config to `/etc/nginx/sites-available/nearbyorders.conf`, enable it, and validate before reload:
+
+```sh
+sudo cp /opt/nearbyorders/infrastructure/host-nginx/nearbyorders.conf.example /etc/nginx/sites-available/nearbyorders.conf
+sudo ln -s /etc/nginx/sites-available/nearbyorders.conf /etc/nginx/sites-enabled/nearbyorders.conf
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Do not replace existing site configs. After DNS points the three hostnames at the VPS, issue TLS certificates with the host's normal Certbot workflow.
+
+## 3. Build
 
 ```sh
 docker compose -f docker-compose.prod.yml build
@@ -65,7 +86,7 @@ docker compose -f docker-compose.prod.yml build
 `VITE_API_BASE_URL` is a build arg for the nginx image: pass an absolute API
 origin only when the admin is NOT served through this same nginx.
 
-## 3. Start the database, then initialize it (first deploy only)
+## 4. Start the database, then initialize it (first deploy only)
 
 ```sh
 docker compose -f docker-compose.prod.yml up -d db
@@ -98,7 +119,7 @@ docker compose -f docker-compose.prod.yml run --rm \
 
 See `docs/admin-provisioning.md` for the full provisioning policy.
 
-## 4. Start the stack
+## 5. Start the stack
 
 ```sh
 docker compose -f docker-compose.prod.yml up -d
@@ -114,7 +135,7 @@ Startup order is enforced by compose:
    are never logged) — fix the environment and restart.
 4. `nginx` serves the admin SPA and proxies `/api/v1` to the API.
 
-## 5. Verify
+## 6. Verify
 
 ```sh
 curl -s http://localhost/healthz            # {"status":"ok"} via nginx -> api
