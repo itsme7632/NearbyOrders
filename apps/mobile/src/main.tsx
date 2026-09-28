@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { businessTabs, navigationTabs, resolveTab, type BusinessTab, type Tab } from './navigation.js';
-import { getMyBusinesses, getSession, onSessionChange, bootstrapSession, resolveImageUrl, type Business, type Session } from './api.js';
+import { getMyBusinesses, getMyBusinessesWithEntitlement, getSession, onSessionChange, bootstrapSession, resolveImageUrl, type Business, type Session } from './api.js';
 import { useRoute, useAsyncData } from './hooks.js';
 import { applyDefaultModeForSession, initModeSessionSync, setAppMode, useAppMode } from './mode.js';
 import { BellIcon, ExploreIcon, HomeIcon, OrdersIcon, BookingsIcon, MeridianMark, ProfileIcon, StoreIcon } from './components/icons.js';
@@ -408,6 +408,16 @@ export function App() {
             setJustCreatedName(name);
             setJustCreatedStatus(status ?? null);
             push(`/owner?created=${encodeURIComponent(name)}${status ? `&status=${encodeURIComponent(status)}` : ''}`);
+          }}
+          // P3: the limit notice's Upgrade action routes into the existing
+          // plan/subscription flow for the owner's first business.
+          onUpgrade={() => {
+            void getMyBusinessesWithEntitlement()
+              .then(({ businesses: owned }) => {
+                const first = owned[0];
+                push(first ? `/owner/${first.id}/subscription` : '/owner');
+              })
+              .catch(() => push('/owner'));
           }}
         />
       ) : (

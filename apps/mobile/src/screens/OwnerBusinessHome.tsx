@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import {
   getMyBusinesses,
+  getMyBusinessesWithEntitlement,
   getOwnerAnalytics,
   getOwnerOverview,
   type Business,
+  type BusinessEntitlement,
   type OwnerAnalytics,
   type OwnerOverview,
 } from '../api.js';
@@ -46,6 +48,12 @@ export function OwnerBusinessHome(props: {
   justCreatedStatus?: string | null;
 }) {
   const businesses = useAsyncData<Business[]>(() => getMyBusinesses(), []);
+  // P3: slot entitlement loads independently — if it fails, the overview
+  // still works and the usage line simply stays hidden.
+  const entitlement = useAsyncData<BusinessEntitlement | null>(
+    () => getMyBusinessesWithEntitlement().then((r) => r.entitlement).catch(() => null),
+    [],
+  );
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
 
   if (businesses.loading) return <ListSkeleton count={3} />;
@@ -66,9 +74,11 @@ export function OwnerBusinessHome(props: {
   return (
     <OverviewBody
       businesses={businesses.data}
+      entitlement={entitlement.data}
       selectedId={selectedId}
       onSelectBusiness={setSelectedId}
       onOpen={props.onOpen}
+      onListBusiness={props.onListBusiness}
       onOpenOrder={props.onOpenOrder}
       onOpenBooking={props.onOpenBooking}
       justCreatedName={props.justCreatedName}
@@ -80,15 +90,17 @@ export function OwnerBusinessHome(props: {
 /** The overview body: one data layer per business, shared by the sections. */
 function OverviewBody(props: {
   businesses: Business[];
+  entitlement: BusinessEntitlement | null;
   selectedId: string | undefined;
   onSelectBusiness: (id: string) => void;
   onOpen: (path: string) => void;
+  onListBusiness?: () => void;
   onOpenOrder: (id: string) => void;
   onOpenBooking: (id: string) => void;
   justCreatedName?: string | null;
   justCreatedStatus?: string | null;
 }) {
-  const { businesses, selectedId, onSelectBusiness, onOpen } = props;
+  const { businesses, entitlement, selectedId, onSelectBusiness, onOpen } = props;
 
   // The selected business defaults to the first owned one; switching updates
   // every stat and management link below (server ownership still enforced).
@@ -134,6 +146,33 @@ function OverviewBody(props: {
             </button>
           ))}
         </div>
+      ) : null}
+
+      {/* P3: slot usage. Honest about the count; the upgrade action appears
+          only when the plan is actually at its limit, and the list-another
+          action only when a slot is actually available. */}
+      {entitlement &&
+      (businesses.length > 1 || entitlement.remainingBusinesses <= 0 || props.onListBusiness) ? (
+        <p className="muted" style={{ margin: '8px 2px 0', fontSize: 13 }}>
+          {entitlement.usedBusinesses} of {entitlement.maxBusinesses}{' '}
+          {entitlement.maxBusinesses === 1 ? 'business' : 'businesses'} used
+          {entitlement.remainingBusinesses <= 0 ? (
+            <>
+              .{' '}
+              <button type="button" className="link-inline" onClick={() => onOpen(`${base}/subscription`)}>
+                Upgrade your plan
+              </button>{' '}
+              to list more.
+            </>
+          ) : props.onListBusiness ? (
+            <>
+              .{' '}
+              <button type="button" className="link-inline" onClick={props.onListBusiness}>
+                List another business
+              </button>
+            </>
+          ) : null}
+        </p>
       ) : null}
 
       {/* Business status: the first answer to "how is my business doing?" */}

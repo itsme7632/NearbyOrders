@@ -103,6 +103,7 @@ describe('production plan seed (single-plan picker incident)', () => {
         displayOrder: 1,
         isHighlighted: false,
         isActive: true,
+        maxBusinesses: 1,
       });
       expect(starter.benefits.length).toBeGreaterThan(0);
     }
@@ -118,6 +119,7 @@ describe('production plan seed (single-plan picker incident)', () => {
         displayOrder: 2,
         isHighlighted: true,
         isActive: true,
+        maxBusinesses: 3,
       });
       expect(growth.benefits.length).toBeGreaterThan(0);
     }
@@ -133,6 +135,7 @@ describe('production plan seed (single-plan picker incident)', () => {
         displayOrder: 3,
         isHighlighted: false,
         isActive: true,
+        maxBusinesses: 10,
       });
       expect(premium.benefits.length).toBeGreaterThan(0);
     }

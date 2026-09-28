@@ -26,7 +26,10 @@ describe('discovery', () => {
     });
 
     const foodBiz = await createBusiness(app, owner.token, { name: `Kebab Karahi ${Date.now()}`, categoryIds: [food.id] });
-    const beautyBiz = await createBusiness(app, owner.token, { name: `Style Studio ${Date.now()}`, categoryIds: [beauty.id] });
+    // P3: the base allowance is 1 business per owner — a second owner keeps
+    // this category-filtering scenario independent of plan slots.
+    const owner2 = await registerAndLogin(app, 'BUSINESS_OWNER');
+    const beautyBiz = await createBusiness(app, owner2.token, { name: `Style Studio ${Date.now()}`, categoryIds: [beauty.id] });
     await approveBusiness(foodBiz.id);
     await approveBusiness(beautyBiz.id);
 

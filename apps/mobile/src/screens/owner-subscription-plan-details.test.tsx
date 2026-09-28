@@ -9,6 +9,7 @@ afterEach(cleanup);
 const currentPlan: SubscriptionPlan = {
   id: 'plan-1',
   slug: 'nearbyorders-business',
+  maxBusinesses: 3,
   name: 'NearbyOrders Business',
   description: 'The full toolkit.',
   monthlyPriceMinor: 299900,

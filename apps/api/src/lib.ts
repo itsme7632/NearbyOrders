@@ -1099,10 +1099,11 @@ export const boundingBoxKm = (
 /* ------------------------------------------------------------------ */
 
 /**
- * The commercial plan catalog. Single source of truth for plan pricing —
- * never hard-code a price (or 299900) anywhere else. The seed and the API's
- * plan-ensure helper upsert these rows idempotently; re-seeding never
- * clobbers admin-edited prices (the update is a no-op).
+ * The commercial plan catalog. Single source of truth for plan pricing AND
+ * plan business-slot allowances (P3) — never hard-code a price (or 299900)
+ * or a slot count anywhere else. The seed and the API's plan-ensure helper
+ * upsert these rows idempotently; re-seeding never clobbers admin-edited
+ * prices (the update is a no-op).
  */
 export type PlanSpec = {
   slug: string;
@@ -1115,6 +1116,8 @@ export type PlanSpec = {
   billingInterval: string;
   displayOrder: number;
   isHighlighted: boolean;
+  /** Max live businesses one owner may create while this is their highest live plan. */
+  maxBusinesses: number;
 };
 
 export const PLAN_CATALOG: PlanSpec[] = [
@@ -1134,6 +1137,7 @@ export const PLAN_CATALOG: PlanSpec[] = [
     billingInterval: 'monthly',
     displayOrder: 1,
     isHighlighted: false,
+    maxBusinesses: 1,
   },
   {
     slug: 'nearbyorders-business',
@@ -1152,6 +1156,7 @@ export const PLAN_CATALOG: PlanSpec[] = [
     billingInterval: 'monthly',
     displayOrder: 2,
     isHighlighted: true,
+    maxBusinesses: 3,
   },
   {
     slug: 'premium',
@@ -1169,6 +1174,7 @@ export const PLAN_CATALOG: PlanSpec[] = [
     billingInterval: 'monthly',
     displayOrder: 3,
     isHighlighted: false,
+    maxBusinesses: 10,
   },
 ];
 
@@ -1228,5 +1234,53 @@ export const evaluateSubscription = (
   LIVE_SUBSCRIPTION_STATUSES.includes(row.status) && row.currentPeriodEndAt.getTime() <= now.getTime()
     ? 'EXPIRED'
     : row.status;
+
+/**
+ * P3: owner-level business-slot entitlement.
+ *
+ * - `maxBusinesses` = the highest `maxBusinesses` among the owner's
+ *   currently live paid/trial plans (1 when there is no live plan). A trial
+ *   row points at its trial plan, so the trial plan's slots apply while the
+ *   trial is active. Expired/cancelled rows never grant slots — the same
+ *   live-subscription predicate (`LIVE_SUBSCRIPTION_STATUSES` + unexpired
+ *   period) the rest of the server uses. "Live" is a subscription-lifecycle
+ *   property: a live subscription keeps granting the owner's allowance even
+ *   if its business was archived — archival only frees the used slot.
+ * - `usedBusinesses` = the owner's businesses that count as live under the
+ *   existing lifecycle (`archivedAt: null`, matching GET /businesses/mine
+ *   and `ownedBusiness`). Archived businesses free their slot.
+ * - Grandfathering falls out naturally: existing over-limit businesses are
+ *   untouched; only NEW creation is gated on `used >= max`.
+ *
+ * `db` accepts the shared client or a transaction client so callers can
+ * hold a user-scoped advisory lock across count + creation (race safety).
+ */
+export type BusinessSlotEntitlement = {
+  usedBusinesses: number;
+  maxBusinesses: number;
+  remainingBusinesses: number;
+};
+
+export const ownerBusinessAllowance = async (
+  db: Pick<PrismaClient, 'business' | 'businessSubscription'>,
+  ownerId: string,
+  now: Date = new Date(),
+): Promise<BusinessSlotEntitlement> => {
+  const usedBusinesses = await db.business.count({ where: { ownerId, archivedAt: null } });
+  const livePlans = await db.businessSubscription.findMany({
+    where: {
+      business: { ownerId },
+      status: { in: [...LIVE_SUBSCRIPTION_STATUSES] },
+      currentPeriodEndAt: { gt: now },
+    },
+    select: { plan: { select: { maxBusinesses: true } } },
+  });
+  const maxBusinesses = livePlans.reduce((highest, row) => Math.max(highest, row.plan.maxBusinesses), 1);
+  return {
+    usedBusinesses,
+    maxBusinesses,
+    remainingBusinesses: Math.max(0, maxBusinesses - usedBusinesses),
+  };
+};
 
 export type AuthUser = { id: string; role: Role };

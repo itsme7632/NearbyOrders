@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { approveBusiness, authed, createBusiness, ensureCategory, makeApp, registerAndLogin, type TestApp } from './helpers.js';
 import { prisma } from '../src/lib.js';
+import { upsertPlans } from '../prisma/seed.js';
 
 let app: TestApp;
 
@@ -83,6 +84,22 @@ describe('location round trip (owner save → customer view)', () => {
       return id;
     };
     const a = await create(`Multi A ${Date.now()}`);
+    // P3: the base allowance is 1 business per owner — this scenario needs
+    // two owned businesses, so grant a Growth plan (3 slots) first.
+    await upsertPlans();
+    const growth = await prisma.plan.findUniqueOrThrow({ where: { slug: 'nearbyorders-business' } });
+    const now = new Date();
+    await prisma.businessSubscription.create({
+      data: {
+        businessId: a,
+        planId: growth.id,
+        status: 'ACTIVE',
+        currentPeriodStartAt: now,
+        currentPeriodEndAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+        planNameSnapshot: growth.name,
+        planPriceMinorSnapshot: growth.monthlyPriceMinor,
+      },
+    });
     const b = await create(`Multi B ${Date.now()}`);
 
     await app.inject({ method: 'PUT', url: `/api/v1/businesses/${a}/location`, headers: authed(owner.token), payload: { latitude: 31.1, longitude: 74.1 } });

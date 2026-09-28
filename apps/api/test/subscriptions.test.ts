@@ -35,9 +35,9 @@ describe('plan catalog', () => {
   it('defines three plans with PKR minor-unit pricing and trial windows', () => {
     expect(PLAN_CATALOG).toHaveLength(3);
     const bySlug = new Map(PLAN_CATALOG.map((p) => [p.slug, p]));
-    expect(bySlug.get('starter')).toMatchObject({ monthlyPriceMinor: 149900, currency: 'PKR', trialDays: 14, displayOrder: 1, isHighlighted: false });
-    expect(bySlug.get('nearbyorders-business')).toMatchObject({ name: 'Growth', monthlyPriceMinor: 299900, currency: 'PKR', trialDays: 30, displayOrder: 2, isHighlighted: true });
-    expect(bySlug.get('premium')).toMatchObject({ monthlyPriceMinor: 499900, currency: 'PKR', trialDays: 30, displayOrder: 3, isHighlighted: false });
+    expect(bySlug.get('starter')).toMatchObject({ monthlyPriceMinor: 149900, currency: 'PKR', trialDays: 14, displayOrder: 1, isHighlighted: false, maxBusinesses: 1 });
+    expect(bySlug.get('nearbyorders-business')).toMatchObject({ name: 'Growth', monthlyPriceMinor: 299900, currency: 'PKR', trialDays: 30, displayOrder: 2, isHighlighted: true, maxBusinesses: 3 });
+    expect(bySlug.get('premium')).toMatchObject({ monthlyPriceMinor: 499900, currency: 'PKR', trialDays: 30, displayOrder: 3, isHighlighted: false, maxBusinesses: 10 });
     for (const plan of PLAN_CATALOG) {
       expect(plan.benefits.length).toBeGreaterThan(0);
       expect(plan.billingInterval).toBe('monthly');

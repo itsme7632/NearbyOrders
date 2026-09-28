@@ -84,6 +84,7 @@ import {
   PLAN_CATALOG,
   LIVE_SUBSCRIPTION_STATUSES,
   evaluateSubscription,
+  ownerBusinessAllowance,
   searchQuerySchema,
   addressCreateSchema,
   addressUpdateSchema,
@@ -947,43 +948,78 @@ export async function buildApp(): Promise<FastifyInstance> {
     // there is deliberately no client-controllable path to approval, and the
     // default stays PENDING.
     const status = process.env.AUTO_APPROVE_BUSINESSES === 'true' ? 'APPROVED' : 'PENDING';
-    const b = await prisma.business.create({
-      data: {
-        ...input,
-        latitude: latitude ?? null,
-        longitude: longitude ?? null,
-        slug: `${slugify(d.name)}-${Date.now().toString(36)}`,
-        ownerId: currentUser(q).id,
-        status,
-        // Explicitly not trial-eligible at creation: trials are never
-        // auto-started; an admin grants eligibility after review.
-        trialStatus: 'NOT_ELIGIBLE',
-        categories: { create: categoryIds.map((categoryId) => ({ categoryId })) },
-      },
-      include: { categories: { include: { category: true } } },
-    });
-    if (status === 'APPROVED')
-      await prisma.auditLog.create({
-        data: {
-          actorId: currentUser(q).id,
-          action: 'BUSINESS_AUTO_APPROVED',
-          entityType: 'Business',
-          entityId: b.id,
-          metadata: { reason: 'AUTO_APPROVE_BUSINESSES' },
-        },
+    const ownerId = currentUser(q).id;
+    let b;
+    try {
+      b = await prisma.$transaction(async (tx) => {
+        // P3: user-scoped advisory lock. The slot count is re-checked while
+        // holding the lock, so two simultaneous creation requests can never
+        // push the owner past their effective business allowance.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${ownerId}))`;
+        const entitlement = await ownerBusinessAllowance(tx, ownerId);
+        if (entitlement.usedBusinesses >= entitlement.maxBusinesses)
+          throw Object.assign(new Error('business-limit'), {
+            code: 'BUSINESS_LIMIT_REACHED',
+            maxBusinesses: entitlement.maxBusinesses,
+            used: entitlement.usedBusinesses,
+          });
+        const created = await tx.business.create({
+          data: {
+            ...input,
+            latitude: latitude ?? null,
+            longitude: longitude ?? null,
+            slug: `${slugify(d.name)}-${Date.now().toString(36)}`,
+            ownerId,
+            status,
+            // Explicitly not trial-eligible at creation: trials are never
+            // auto-started; an admin grants eligibility after review.
+            trialStatus: 'NOT_ELIGIBLE',
+            categories: { create: categoryIds.map((categoryId) => ({ categoryId })) },
+          },
+          include: { categories: { include: { category: true } } },
+        });
+        if (status === 'APPROVED')
+          await tx.auditLog.create({
+            data: {
+              actorId: ownerId,
+              action: 'BUSINESS_AUTO_APPROVED',
+              entityType: 'Business',
+              entityId: created.id,
+              metadata: { reason: 'AUTO_APPROVE_BUSINESSES' },
+            },
+          });
+        return created;
       });
+    } catch (e) {
+      const coded = e as { code?: string; maxBusinesses?: number; used?: number };
+      if (coded?.code === 'BUSINESS_LIMIT_REACHED')
+        return r.status(403).send({
+          error: {
+            code: 'BUSINESS_LIMIT_REACHED',
+            message: `You have reached your plan's business limit (${coded.used} of ${coded.maxBusinesses} businesses used). Upgrade your plan to list more businesses.`,
+            details: { maxBusinesses: coded.maxBusinesses, used: coded.used },
+          },
+        });
+      throw e;
+    }
     return r.status(201).send({ data: { ...b, categories: flattenCategories(b.categories) } });
   });
 
-  app.get('/api/v1/businesses/mine', { preHandler: roles('BUSINESS_OWNER') }, async (q) => ({
-    data: (
+  app.get('/api/v1/businesses/mine', { preHandler: roles('BUSINESS_OWNER') }, async (q) => {
+    const ownerId = currentUser(q).id;
+    const businesses = (
       await prisma.business.findMany({
-        where: { ownerId: currentUser(q).id, archivedAt: null },
+        where: { ownerId, archivedAt: null },
         include: { ...PUBLIC_BUSINESS_INCLUDE, services: { orderBy: { name: 'asc' } }, products: { orderBy: { name: 'asc' } } },
         orderBy: { createdAt: 'asc' },
       })
-    ).map((b) => ({ ...b, categories: flattenCategories(b.categories) })),
-  }));
+    ).map((b) => ({ ...b, categories: flattenCategories(b.categories) }));
+    // P3: server-authoritative business-slot entitlement so the client can
+    // render usage ("3 of 3 businesses") and gate the create/upgrade UI —
+    // the allowance is never derived from plan names on the client.
+    const entitlement = await ownerBusinessAllowance(prisma, ownerId);
+    return { data: businesses, entitlement };
+  });
 
   /** Optional profile fields the owner may explicitly clear (client sends ""/null). */
   const CLEARABLE_BUSINESS_FIELDS = ['description', 'locality', 'phone', 'email', 'imageUrl'] as const;
@@ -1137,6 +1173,9 @@ export async function buildApp(): Promise<FastifyInstance> {
       displayOrder: p.displayOrder,
       isHighlighted: p.isHighlighted,
       isActive: 'isActive' in p ? Boolean(p.isActive) : true,
+      // P3: live business-slot allowance for this plan (catalog is the
+      // source of truth; clients must never hard-code it).
+      maxBusinesses: p.maxBusinesses,
     }));
     return { data };
   });

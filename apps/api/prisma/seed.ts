@@ -213,7 +213,9 @@ async function createDemoData() {
  * Backfill: rows that predate the Phase 18 display fields (benefits,
  * displayOrder, isHighlighted, billingInterval) get the catalog values only
  * where they still hold schema defaults (empty benefits, displayOrder 0,
- * not highlighted, blank billing interval). Anything an admin already set
+ * not highlighted, blank billing interval). The same rule applies to the P3
+ * maxBusinesses field: rows still holding the schema default 1 get the
+ * catalog value when it differs. Anything an admin already set
  * is left untouched — as are prices, always. The canonical
  * `nearbyorders-business` plan is also renamed to its Phase 18 name
  * ("Growth") when it still carries the old name.
@@ -234,6 +236,10 @@ export async function upsertPlans() {
     if (row.displayOrder === 0 && spec.displayOrder !== 0) data.displayOrder = spec.displayOrder;
     if (!row.isHighlighted && spec.isHighlighted) data.isHighlighted = true;
     if (!row.billingInterval) data.billingInterval = spec.billingInterval;
+    // P3: rows that predate the maxBusinesses column (or were lazily created
+    // with the schema default) get the catalog value — unless an admin
+    // already set a different value, which is always left untouched.
+    if (row.maxBusinesses === 1 && spec.maxBusinesses !== 1) data.maxBusinesses = spec.maxBusinesses;
     if (row.slug === 'nearbyorders-business' && row.name === 'NearbyOrders Business') data.name = spec.name;
     if (Object.keys(data).length > 0) await prisma.plan.update({ where: { id: row.id }, data });
   }

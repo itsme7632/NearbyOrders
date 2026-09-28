@@ -482,6 +482,10 @@ model Plan {
   trialDays         Int                    @default(0)
   /// Marketing bullets shown on the plan picker (admin-editable).
   benefits          String[]               @default([])
+  /// Maximum number of live businesses one owner account may create while
+  /// this plan is their highest live plan (P3 business slots). The plan
+  /// catalog is the source of truth; clients must never hard-code it.
+  maxBusinesses     Int                    @default(1)
   /// Order in the public plan list (ascending).
   displayOrder      Int                    @default(0)
   /// Highlighted as the recommended plan on the plan picker.

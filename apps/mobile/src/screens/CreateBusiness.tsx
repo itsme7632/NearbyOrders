@@ -1,7 +1,15 @@
 import { useState } from 'react';
-import { createBusiness, listCategories, ApiError, type Category } from '../api.js';
+import {
+  createBusiness,
+  listCategories,
+  getMyBusinessesWithEntitlement,
+  ApiError,
+  type Category,
+  type BusinessEntitlement,
+} from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, ErrorState, Field, Loading } from '../components/ui.js';
+import { BusinessLimitNotice } from '../components/BusinessLimitNotice.js';
 import { AlertIcon, StoreIcon } from '../components/icons.js';
 
 type FormState = { name: string; categoryId: string; description: string; phone: string; address: string; city: string };
@@ -28,12 +36,23 @@ export function validateBusinessForm(form: FormState): Partial<Record<keyof Form
 export function CreateBusinessScreen(props: {
   onBack: () => void;
   onCreated: (id: string, name: string, status?: string) => void;
+  onUpgrade: () => void;
 }) {
   const categories = useAsyncData<Category[]>(() => listCategories(), []);
+  // P3: server-authoritative slot entitlement. When the plan has no remaining
+  // slots the form is replaced by the limit notice (with an Upgrade action)
+  // instead of letting the user fill a form the server would reject.
+  const entitlement = useAsyncData<BusinessEntitlement | null>(
+    () => getMyBusinessesWithEntitlement().then((r) => r.entitlement).catch(() => null),
+    [],
+  );
   const [form, setForm] = useState<FormState>(initialForm);
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
   const [saving, setSaving] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  // Set when the server rejects creation with BUSINESS_LIMIT_REACHED even
+  // though the UI believed a slot was available (stale entitlement read).
+  const [limitHit, setLimitHit] = useState<BusinessEntitlement | null>(null);
 
   const set = (key: keyof FormState) => (value: string) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -65,6 +84,21 @@ export function CreateBusinessScreen(props: {
     } catch (e) {
       if (e instanceof ApiError) {
         if (e.status === 0) setApiError(e.message);
+        else if (e.code === 'BUSINESS_LIMIT_REACHED') {
+          // The server is authoritative: surface the real limit state with
+          // usage numbers and an Upgrade action, never a generic failure.
+          const d = e.details as { maxBusinesses?: number; used?: number } | undefined;
+          if (d && typeof d.maxBusinesses === 'number' && typeof d.used === 'number') {
+            setLimitHit({
+              usedBusinesses: d.used,
+              maxBusinesses: d.maxBusinesses,
+              remainingBusinesses: Math.max(0, d.maxBusinesses - d.used),
+            });
+          } else {
+            void entitlement.reload();
+            setApiError('You have reached your plan\u2019s business limit. Upgrade your plan to list more businesses.');
+          }
+        }
         else if (e.status === 400) setApiError('Please check the highlighted fields and try again.');
         else if (e.status === 403) setApiError('Only business accounts can list a business.');
         else setApiError('Could not create the business. Please try again.');
@@ -75,8 +109,32 @@ export function CreateBusinessScreen(props: {
     }
   };
 
-  if (categories.loading) return <Loading label="Loading categories…" />;
+  if (categories.loading || entitlement.loading) return <Loading label="Loading…" />;
   if (categories.error) return <ErrorState message={categories.error} onRetry={categories.reload} />;
+  // If the entitlement read itself failed, fall through to the form — the
+  // server remains the authoritative gate and will reject honestly.
+
+  // P3: at the limit (from the entitlement read or the server rejection),
+  // show the limit state — never the form, and never an upgrade option when
+  // a slot is actually available.
+  const atLimit =
+    limitHit ?? (entitlement.data && entitlement.data.remainingBusinesses <= 0 ? entitlement.data : null);
+  if (atLimit) {
+    return (
+      <div className="screen">
+        <button className="back-link" onClick={props.onBack}>
+          ‹ Back
+        </button>
+
+        <header className="screen-head">
+          <h1>List my business</h1>
+          <p className="muted">Your current plan has reached its business limit.</p>
+        </header>
+
+        <BusinessLimitNotice entitlement={atLimit} onUpgrade={props.onUpgrade} />
+      </div>
+    );
+  }
 
   const err = (key: keyof FormState) =>
     errors[key] ? (

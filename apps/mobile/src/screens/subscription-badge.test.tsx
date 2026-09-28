@@ -6,6 +6,7 @@ import type { Business, SubscriptionPlan, Subscription, SubscriptionRowPlan, Bus
 const testPlan: SubscriptionPlan = {
   id: 'plan-1',
   slug: 'p',
+  maxBusinesses: 1,
   name: 'NearbyOrders Business',
   description: null,
   monthlyPriceMinor: 299900,

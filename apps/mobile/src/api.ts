@@ -23,6 +23,8 @@ export class ApiError extends Error {
     public status: number,
     public code: string,
     message: string,
+    /** Structured server error details (e.g. BUSINESS_LIMIT_REACHED usage). */
+    public details?: unknown,
   ) {
     super(message);
   }
@@ -65,7 +67,7 @@ export function clearAuthState(): void {
     });
 }
 
-async function request<T>(path: string, options: { method?: string; body?: unknown; auth?: boolean } = {}): Promise<T> {
+async function requestEnvelope<T>(path: string, options: { method?: string; body?: unknown; auth?: boolean } = {}): Promise<T> {
   const headers: Record<string, string> = {};
   if (options.body !== undefined) headers['content-type'] = 'application/json';
   if (options.auth && session) headers.authorization = `Bearer ${session.accessToken}`;
@@ -83,10 +85,10 @@ async function request<T>(path: string, options: { method?: string; body?: unkno
 
   if (res.status === 204) return undefined as T;
 
-  const payload = res.status === 204 ? null : await res.json().catch(() => null);
+  const payload = await res.json().catch(() => null);
 
   if (!res.ok) {
-    const err = (payload as { error?: { code?: string; message?: string } } | null)?.error;
+    const err = (payload as { error?: { code?: string; message?: string; details?: unknown } } | null)?.error;
     if (res.status === 401 && session) clearAuthState();
     // Validation failures carry a Zod field map — surface it so users see
     // which field to fix instead of a generic "Invalid request".
@@ -102,8 +104,14 @@ async function request<T>(path: string, options: { method?: string; body?: unkno
       res.status,
       err?.code ?? 'UNKNOWN',
       fieldMessage ?? err?.message ?? `Request failed (${res.status})`,
+      err?.details,
     );
   }
+  return payload as T;
+}
+
+async function request<T>(path: string, options: { method?: string; body?: unknown; auth?: boolean } = {}): Promise<T> {
+  const payload = await requestEnvelope<{ data?: T }>(path, options);
   return ((payload as { data?: T })?.data ?? (payload as T)) as T;
 }
 
@@ -397,6 +405,8 @@ export type SubscriptionPlan = {
   displayOrder: number;
   isHighlighted: boolean;
   isActive: boolean;
+  /** P3: live business slots this plan grants (catalog is the source of truth). */
+  maxBusinesses: number;
 };
 
 /** Plan summary embedded in a subscription row (server shape: no id/isActive). */
@@ -1001,6 +1011,22 @@ export function listBusinesses(query: BusinessQuery = {}): Promise<Business[]> {
 export const getBusiness = (idOrSlug: string) => request<Business>(`/businesses/${idOrSlug}`);
 
 export const getMyBusinesses = () => request<Business[]>('/businesses/mine', { auth: true });
+
+/**
+ * P3: server-authoritative business-slot entitlement. The allowance is
+ * resolved server-side from the owner's highest live plan — the client
+ * never derives it from plan names.
+ */
+export type BusinessEntitlement = {
+  usedBusinesses: number;
+  maxBusinesses: number;
+  remainingBusinesses: number;
+};
+
+export const getMyBusinessesWithEntitlement = () =>
+  requestEnvelope<{ data: Business[]; entitlement: BusinessEntitlement }>('/businesses/mine', { auth: true }).then(
+    (payload) => ({ businesses: payload.data, entitlement: payload.entitlement }),
+  );
 
 /* ------------------- location (Phase 11) --------------------------- */
 

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { approveBusiness, authed, createBusiness, makeApp, registerAdminAndLogin, registerAndLogin, type TestApp } from './helpers.js';
 import { prisma } from '../src/lib.js';
+import { upsertPlans } from '../prisma/seed.js';
 
 let app: TestApp;
 
@@ -76,6 +77,22 @@ describe('admin panel API: dashboard and listings', () => {
     const admin = await registerAdminAndLogin(app);
     const owner = await registerAndLogin(app, 'BUSINESS_OWNER');
     const { id } = await createBusiness(app, owner.token); // PENDING
+    // P3: the base allowance is 1 business per owner — this status-matrix
+    // scenario needs two owned businesses, so grant a Growth plan (3 slots).
+    await upsertPlans();
+    const growth = await prisma.plan.findUniqueOrThrow({ where: { slug: 'nearbyorders-business' } });
+    const now = new Date();
+    await prisma.businessSubscription.create({
+      data: {
+        businessId: id,
+        planId: growth.id,
+        status: 'ACTIVE',
+        currentPeriodStartAt: now,
+        currentPeriodEndAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+        planNameSnapshot: growth.name,
+        planPriceMinorSnapshot: growth.monthlyPriceMinor,
+      },
+    });
     const { id: approvedId } = await createBusiness(app, owner.token);
     await approveBusiness(approvedId);
 

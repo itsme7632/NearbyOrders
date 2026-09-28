@@ -14,6 +14,10 @@ const categories: Category[] = [
 
 beforeEach(() => {
   vi.spyOn(api, 'listCategories').mockResolvedValue(categories);
+  vi.spyOn(api, 'getMyBusinessesWithEntitlement').mockResolvedValue({
+    businesses: [],
+    entitlement: { usedBusinesses: 0, maxBusinesses: 1, remainingBusinesses: 1 },
+  });
   vi.spyOn(api, 'createBusiness').mockResolvedValue({
     id: 'biz-default',
     name: 'Default Business',
@@ -42,7 +46,7 @@ const fillValidForm = () => {
 
 describe('CreateBusinessScreen', () => {
   it('renders all fields with categories loaded', async () => {
-    render(<CreateBusinessScreen onBack={() => {}} onCreated={() => {}} />);
+    render(<CreateBusinessScreen onBack={() => {}} onCreated={() => {}} onUpgrade={() => {}} />);
 
     expect(await screen.findByText('Business name')).toBeTruthy();
     expect(screen.getByText('Category')).toBeTruthy();
@@ -54,7 +58,7 @@ describe('CreateBusinessScreen', () => {
   });
 
   it('blocks submission and shows validation errors for invalid input', async () => {
-    render(<CreateBusinessScreen onBack={() => {}} onCreated={() => {}} />);
+    render(<CreateBusinessScreen onBack={() => {}} onCreated={() => {}} onUpgrade={() => {}} />);
 
     fireEvent.click(await screen.findByText('Create business'));
     expect(await screen.findByText('Business name must be at least 2 characters.')).toBeTruthy();
@@ -63,7 +67,7 @@ describe('CreateBusinessScreen', () => {
   });
 
   it('rejects an invalid phone format but accepts Pakistani +92 numbers', async () => {
-    render(<CreateBusinessScreen onBack={() => {}} onCreated={() => {}} />);
+    render(<CreateBusinessScreen onBack={() => {}} onCreated={() => {}} onUpgrade={() => {}} />);
     await screen.findByText('Business name');
 
     fillValidForm();
@@ -94,7 +98,7 @@ describe('CreateBusinessScreen', () => {
       categories: [categories[0]!],
     } as api.Business);
     const onCreated = vi.fn();
-    render(<CreateBusinessScreen onBack={() => {}} onCreated={onCreated} />);
+    render(<CreateBusinessScreen onBack={() => {}} onCreated={onCreated} onUpgrade={() => {}} />);
 
     await screen.findByText('Business name');
     fillValidForm();
@@ -117,7 +121,7 @@ describe('CreateBusinessScreen', () => {
     vi.spyOn(api, 'createBusiness').mockImplementation(
       () => new Promise<api.Business>((res) => (resolve = res)),
     );
-    render(<CreateBusinessScreen onBack={() => {}} onCreated={() => {}} />);
+    render(<CreateBusinessScreen onBack={() => {}} onCreated={() => {}} onUpgrade={() => {}} />);
 
     await screen.findByText('Business name');
     fillValidForm();
@@ -149,13 +153,61 @@ describe('CreateBusinessScreen', () => {
 
   it('maps a 403 API response to a friendly message', async () => {
     vi.spyOn(api, 'createBusiness').mockRejectedValue(new api.ApiError(403, 'FORBIDDEN', 'Insufficient permissions'));
-    render(<CreateBusinessScreen onBack={() => {}} onCreated={() => {}} />);
+    render(<CreateBusinessScreen onBack={() => {}} onCreated={() => {}} onUpgrade={() => {}} />);
 
     await screen.findByText('Business name');
     fillValidForm();
     fireEvent.click(screen.getByText('Create business'));
 
     expect(await screen.findByText('Only business accounts can list a business.')).toBeTruthy();
+  });
+
+  it('shows the limit notice (no form) when the plan has no remaining slots', async () => {
+    vi.spyOn(api, 'getMyBusinessesWithEntitlement').mockResolvedValue({
+      businesses: [],
+      entitlement: { usedBusinesses: 3, maxBusinesses: 3, remainingBusinesses: 0 },
+    });
+    const onUpgrade = vi.fn();
+    render(<CreateBusinessScreen onBack={() => {}} onCreated={() => {}} onUpgrade={onUpgrade} />);
+
+    expect(await screen.findByText('Business limit reached')).toBeTruthy();
+    expect(screen.getByText(/you are using 3 of 3/i)).toBeTruthy();
+    // The form is replaced, not just disabled.
+    expect(screen.queryByText('Create business')).toBeNull();
+    expect(api.createBusiness).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('Upgrade plan'));
+    expect(onUpgrade).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not show an upgrade option when a slot is available', async () => {
+    render(<CreateBusinessScreen onBack={() => {}} onCreated={() => {}} onUpgrade={() => {}} />);
+
+    await screen.findByText('Business name');
+    expect(screen.queryByText('Business limit reached')).toBeNull();
+    expect(screen.queryByText('Upgrade plan')).toBeNull();
+  });
+
+  it('handles BUSINESS_LIMIT_REACHED from the server even when the UI believed a slot was free', async () => {
+    // Entitlement read says one slot remains…
+    vi.spyOn(api, 'getMyBusinessesWithEntitlement').mockResolvedValue({
+      businesses: [],
+      entitlement: { usedBusinesses: 2, maxBusinesses: 3, remainingBusinesses: 1 },
+    });
+    // …but the server rejects with the authoritative numbers.
+    vi.spyOn(api, 'createBusiness').mockRejectedValue(
+      new api.ApiError(403, 'BUSINESS_LIMIT_REACHED', 'limit', { maxBusinesses: 3, used: 3 }),
+    );
+    render(<CreateBusinessScreen onBack={() => {}} onCreated={() => {}} onUpgrade={() => {}} />);
+
+    await screen.findByText('Business name');
+    fillValidForm();
+    fireEvent.click(screen.getByText('Create business'));
+
+    // The server numbers win over the stale entitlement read.
+    expect(await screen.findByText('Business limit reached')).toBeTruthy();
+    expect(screen.getByText(/you are using 3 of 3/i)).toBeTruthy();
+    expect(screen.getByText('Upgrade plan')).toBeTruthy();
   });
 });
 

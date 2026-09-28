@@ -10,6 +10,7 @@ const plans: SubscriptionPlan[] = [
   {
     id: 'plan-basic',
     slug: 'nearbyorders-starter',
+    maxBusinesses: 1,
     name: 'Starter',
     description: 'For new businesses finding their first customers.',
     monthlyPriceMinor: 99900,
@@ -24,6 +25,7 @@ const plans: SubscriptionPlan[] = [
   {
     id: 'plan-pro',
     slug: 'nearbyorders-business',
+    maxBusinesses: 3,
     name: 'Business',
     description: 'For growing businesses that want the full toolkit.',
     monthlyPriceMinor: 249900,
