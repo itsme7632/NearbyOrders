@@ -1,5 +1,6 @@
 import type { SearchPage } from '@nearbyorders/shared';
 import { getRefreshTokenStorage } from './auth-storage.js';
+import type { ImageStorageProvider } from './upload.js';
 
 /**
  * API base URL.
@@ -695,7 +696,7 @@ export const submitVerification = (businessId: string) =>
   request<VerificationApplication>(`/businesses/${businessId}/verification/submit`, { method: 'POST', auth: true });
 
 /**
- * Uploads a verification document (multipart file + docType). The server
+ * Uploads a verification document (multipart file + type). The server
  * stores the bytes and returns the document row — never a public URL.
  */
 export async function uploadVerificationDocument(
@@ -711,7 +712,10 @@ export async function uploadVerificationDocument(
   try {
     const form = new FormData();
     form.append('file', file);
-    form.append('docType', docType);
+    // Field name is `type`: the server reads the `type` multipart field
+    // (validated by verificationDocTypeSchema); `docType` is only the name of
+    // the persisted column / response field.
+    form.append('type', docType);
     res = await fetch(`${API_BASE}/businesses/${businessId}/verification/documents`, {
       method: 'POST',
       headers,
@@ -1126,6 +1130,78 @@ export const updateBusiness = (
     categoryIds: string[];
   }>,
 ) => request<Business>(`/businesses/${id}`, { method: 'PATCH', body: patch, auth: true });
+
+/**
+ * Uploads one business/product image for an owned business (P1). The server
+ * verifies ownership of the business, stores the bytes under an opaque
+ * server-generated key, and returns the image URL to save on the business
+ * (`imageUrl`) or product (`imageUrl`). Never resolves on failure — callers
+ * must keep the previously saved image when this rejects.
+ */
+export async function uploadBusinessImage(businessId: string, file: File): Promise<{ imageUrl: string }> {
+  const s = getSession();
+  const headers: Record<string, string> = {};
+  if (s) headers.authorization = `Bearer ${s.accessToken}`;
+
+  let res: Response;
+  try {
+    const form = new FormData();
+    form.append('image', file);
+    res = await fetch(`${API_BASE}/businesses/${businessId}/images`, {
+      method: 'POST',
+      headers,
+      body: form,
+    });
+  } catch {
+    throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the NearbyOrders API. Is the API server running?');
+  }
+  const payload = (await res.json().catch(() => null)) as {
+    data?: { imageUrl?: string };
+    error?: { code?: string; message?: string };
+  } | null;
+  if (!res.ok) {
+    if (res.status === 401 && s) clearAuthState();
+    throw new ApiError(
+      res.status,
+      payload?.error?.code ?? 'UPLOAD_FAILED',
+      payload?.error?.message ?? 'Image upload failed',
+    );
+  }
+  const imageUrl = payload?.data?.imageUrl;
+  if (!imageUrl) throw new ApiError(res.status, 'UPLOAD_FAILED', 'Image upload failed');
+  return { imageUrl };
+}
+
+/**
+ * ImageStorageProvider backed by the real API image endpoint (P1). One
+ * provider per owned business — the upload endpoint verifies ownership
+ * server-side, so the business id must travel with the upload.
+ */
+export function createApiImageStorageProvider(businessId: string): ImageStorageProvider {
+  return {
+    name: 'NearbyOrders API image storage',
+    async upload(image) {
+      const { imageUrl } = await uploadBusinessImage(businessId, image.file);
+      return { url: imageUrl };
+    },
+  };
+}
+
+/**
+ * Resolves a stored imageUrl into a fetchable URL. The server stores
+ * API-relative paths (`/api/v1/images/...`); same-origin web builds use them
+ * as-is, while absolute API_BASE builds (Capacitor) get the API origin
+ * prefixed. Absolute URLs pass through unchanged.
+ */
+export function resolveImageUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith('/')) {
+    const origin = API_BASE.match(/^(https?:\/\/[^/]+)/i)?.[1];
+    return origin ? `${origin}${url}` : url;
+  }
+  return url;
+}
 
 /* ------------------- services / products / hours ------------------- */
 

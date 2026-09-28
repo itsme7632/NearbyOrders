@@ -62,7 +62,7 @@ function validateDraft(form: {
  * Business verification: why it is required, what the review team needs,
  * and what happens after submission. Draft fields save to the server;
  * Submit asks the NearbyOrders team to review. Documents upload through the
- * receipt-style multipart endpoint (file + docType). The verified badge on
+ * receipt-style multipart endpoint (file + type). The verified badge on
  * the business profile only ever reflects the server's isVerified flag.
  */
 export function OwnerVerification(props: { businessId: string }) {

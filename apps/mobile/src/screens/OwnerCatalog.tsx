@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   listOwnerServices,
   listOwnerProducts,
   createProduct,
+  createApiImageStorageProvider,
+  resolveImageUrl,
   updateService,
   deleteService,
   createService,
@@ -12,6 +14,7 @@ import {
   type Service,
   type Product,
 } from '../api.js';
+import { setImageStorageProvider, getImageStorageProvider } from '../upload.js';
 import { ImageUploader, type ImageUploaderState, type PendingImage } from '../components/ImageUploader.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, Field, Loading, Money, Toggle } from '../components/ui.js';
@@ -381,7 +384,7 @@ export function validateProductForm(form: { name: string; price: string; descrip
 /** Small product thumbnail: the saved image, or a neutral placeholder. */
 function ProductThumb(props: { imageUrl: string | null; name: string }) {
   return props.imageUrl ? (
-    <img src={props.imageUrl} alt={props.name} className="product-thumb" loading="lazy" />
+    <img src={resolveImageUrl(props.imageUrl) ?? undefined} alt={props.name} className="product-thumb" loading="lazy" />
   ) : (
     <span className="product-thumb product-thumb-empty" aria-hidden>
       <OrdersIcon size={18} />
@@ -392,6 +395,11 @@ function ProductThumb(props: { imageUrl: string | null; name: string }) {
 /** Exported for tests. */
 export function OwnerProducts(props: { businessId: string }) {
   const products = useAsyncData<Product[]>(() => listOwnerProducts(props.businessId), [props.businessId]);
+  // Real API image storage for this business: product image picks upload
+  // through the provider in the save flows below.
+  useEffect(() => {
+    setImageStorageProvider(createApiImageStorageProvider(props.businessId));
+  }, [props.businessId]);
   // Phase 3F: local-only availability filter — the server list is unchanged.
   const [filter, setFilter] = useState<'all' | 'available' | 'unavailable'>('all');
 
@@ -461,8 +469,10 @@ function ProductRow(props: { product: Product; onSaved: () => void }) {
     price: String(props.product.priceMinor / 100),
   });
   // Image handling follows the product-wide upload rule: no URL field. A
-  // pending device pick cannot be persisted yet (no storage provider), so it
-  // blocks saving honestly; removing the saved image persists imageUrl: null.
+  // pending device pick uploads through the registered storage provider in
+  // the save flow (upload first — a failed upload aborts the save and the
+  // existing image is preserved); removing the saved image persists
+  // imageUrl: null.
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const [removeImage, setRemoveImage] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -485,12 +495,33 @@ function ProductRow(props: { product: Product; onSaved: () => void }) {
     setBusy(true);
     setError(null);
     try {
+      // Upload a pending pick BEFORE the product PATCH: a failed upload aborts
+      // the save so the previously stored image is never destroyed.
+      let uploadedUrl: string | undefined;
+      if (pendingImage) {
+        const provider = getImageStorageProvider();
+        if (!provider) {
+          setError('Image storage is not connected yet. Remove the photo to save your other changes.');
+          setBusy(false);
+          return;
+        }
+        try {
+          uploadedUrl = (await provider.upload(pendingImage)).url;
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'Image upload failed. The existing photo was kept.');
+          setBusy(false);
+          return;
+        }
+      }
       await updateProduct(props.product.id, {
         name: form.name.trim(),
         description: form.description.trim() || undefined,
         priceMinor: parsePriceToMinor(form.price) ?? 0,
+        ...(uploadedUrl ? { imageUrl: uploadedUrl } : {}),
         ...(removeImage ? { imageUrl: null } : {}),
       });
+      setPendingImage(null);
+      setRemoveImage(false);
       setEditing(false);
       props.onSaved();
     } catch (e) {
@@ -541,7 +572,8 @@ function ProductRow(props: { product: Product; onSaved: () => void }) {
         {error ? <ErrorState message={error} /> : null}
         <Field label="Product image">
           <ImageUploader
-            currentUrl={removeImage ? null : props.product.imageUrl}
+            key={props.product.imageUrl ?? 'no-image'}
+            currentUrl={resolveImageUrl(removeImage ? null : props.product.imageUrl)}
             label="Product image"
             onChange={onImageStateChange}
           />
@@ -577,13 +609,13 @@ function ProductRow(props: { product: Product; onSaved: () => void }) {
         <Field label="Availability">
           <Toggle checked={props.product.isActive} onChange={(v) => void toggle(v)} label={props.product.isActive ? 'Available' : 'Unavailable'} disabled={busy} />
         </Field>
-        {pendingImage ? (
+        {pendingImage && !getImageStorageProvider() ? (
           <p className="hint" role="note">
             Save is unavailable while a new photo is selected: image storage is not connected yet, so the photo cannot be persisted. Remove it to save your other changes.
           </p>
         ) : null}
         <div className="btn-row">
-          <Button sm onClick={save} disabled={busy || Boolean(pendingImage)}>
+          <Button sm onClick={save} disabled={busy || (Boolean(pendingImage) && !getImageStorageProvider())}>
             {busy ? 'Saving…' : 'Save'}
           </Button>
           <Button sm variant="ghost" onClick={() => setEditing(false)} disabled={busy}>
@@ -648,10 +680,29 @@ function ProductForm(props: { businessId: string; onCreated: () => void }) {
     setBusy(true);
     setError(null);
     try {
+      // Upload a pending pick BEFORE creating the product: a failed upload
+      // aborts creation so no product is left pointing at a missing image.
+      let uploadedUrl: string | undefined;
+      if (pendingImage) {
+        const provider = getImageStorageProvider();
+        if (!provider) {
+          setError('Image storage is not connected yet. Remove the photo to create the product without one.');
+          setBusy(false);
+          return;
+        }
+        try {
+          uploadedUrl = (await provider.upload(pendingImage)).url;
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'Image upload failed. The product was not created.');
+          setBusy(false);
+          return;
+        }
+      }
       await createProduct(props.businessId, {
         name: form.name.trim(),
         priceMinor: parsePriceToMinor(form.price) ?? 0,
         description: form.description.trim() || undefined,
+        ...(uploadedUrl ? { imageUrl: uploadedUrl } : {}),
       });
       setForm({ name: '', price: '', description: '' });
       setPendingImage(null);
@@ -708,13 +759,13 @@ function ProductForm(props: { businessId: string; onCreated: () => void }) {
       </Field>
       {fieldErrors.price ? <p className="auth-error" role="alert"><AlertIcon size={14} /> {fieldErrors.price}</p> : null}
       <p className="hint">New products start as Available; toggle availability after creating.</p>
-      {pendingImage ? (
+      {pendingImage && !getImageStorageProvider() ? (
         <p className="hint" role="note">
           Save is unavailable while a new photo is selected: image storage is not connected yet, so the photo cannot be persisted. Remove it to save your other changes.
         </p>
       ) : null}
       <div className="btn-row">
-        <Button sm onClick={create} disabled={busy || Boolean(pendingImage)}>
+        <Button sm onClick={create} disabled={busy || (Boolean(pendingImage) && !getImageStorageProvider())}>
           {busy ? 'Creating…' : 'Create product'}
         </Button>
         <Button sm variant="ghost" onClick={() => setOpen(false)} disabled={busy}>

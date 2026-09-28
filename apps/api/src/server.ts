@@ -92,6 +92,7 @@ import type { AuthUser, NotificationInput } from './lib.js';
 import { dispatchPushNotifications } from './push.js';
 import type { SubscriptionStatus, Prisma } from '@prisma/client';
 import { RECEIPT_ACCEPTED_TYPES, RECEIPT_KEY_PATTERN, RECEIPT_MAX_BYTES, readReceipt, receiptContentType, saveReceipt } from './receiptStorage.js';
+import { IMAGE_ACCEPTED_TYPES, IMAGE_KEY_PATTERN, IMAGE_MAX_BYTES, imageContentType, imageUrlForKey, readImage, saveImage } from './imageStorage.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -227,7 +228,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(jwt, { secret: env.access });
   await app.register(multipart, {
     limits: { fileSize: RECEIPT_MAX_BYTES, files: 1 },
-    // Only the receipt endpoint consumes multipart bodies.
+    // The receipt, verification-document and business-image endpoints consume
+    // multipart bodies. The 5 MB fileSize cap matches IMAGE_MAX_BYTES.
     attachFieldsToBody: false,
   });
 
@@ -1010,6 +1012,54 @@ export async function buildApp(): Promise<FastifyInstance> {
         .update({ where: { id }, data, include: { categories: { include: { category: true } } } })
         .then((b) => ({ ...b, categories: flattenCategories(b.categories) })),
     };
+  });
+
+  /**
+   * Business/product image upload (P1). The owner uploads exactly one image
+   * for THEIR business; the server stores the bytes under an opaque
+   * server-generated key and returns the image URL the client saves on the
+   * business (`imageUrl`) or product (`imageUrl`). Ownership is enforced
+   * server-side via ownedBusiness — an owner can never upload to another
+   * owner's business. The original client filename is never trusted.
+   */
+  app.post('/api/v1/businesses/:id/images', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    // Exactly one file part. Each part's stream must be consumed for the
+    // multipart parser to advance, so the first file is buffered during
+    // iteration and any further file is drained; a second file makes the
+    // request malformed instead of being silently ignored.
+    let file: MultipartFile | null = null;
+    let bytes: Buffer | null = null;
+    let fileCount = 0;
+    try {
+      for await (const part of q.files()) {
+        fileCount++;
+        if (fileCount === 1) {
+          if (!IMAGE_ACCEPTED_TYPES.includes(part.mimetype as (typeof IMAGE_ACCEPTED_TYPES)[number])) {
+            return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Images must be JPG, PNG or WebP' } });
+          }
+          file = part;
+          bytes = await part.toBuffer();
+        } else {
+          part.file.resume(); // discard; the request is rejected below
+        }
+      }
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === 'FST_FILES_LIMIT')
+        return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Upload exactly one image per request' } });
+      if (code === 'FST_PART_FILE_LIMIT_EXCEEDED' || (e as { statusCode?: number }).statusCode === 413)
+        return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: `Images must be ${Math.round(IMAGE_MAX_BYTES / (1024 * 1024))} MB or smaller` } });
+      throw e;
+    }
+    if (!file || !bytes) return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'An image file is required' } });
+    if (fileCount > 1)
+      return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Upload exactly one image per request' } });
+    if (bytes.length === 0)
+      return r.status(400).send({ error: { code: 'VALIDATION_ERROR', message: 'The image file is empty' } });
+    const storageKey = await saveImage(bytes, file.mimetype);
+    return r.status(201).send({ data: { imageUrl: imageUrlForKey(storageKey) } });
   });
 
   /* ----------------------- Business location (Phase 11) ------------- */
@@ -2220,6 +2270,26 @@ export async function buildApp(): Promise<FastifyInstance> {
     const bytes = await readReceipt(storageKey);
     if (!bytes) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Receipt not found' } });
     return r.header('content-type', receiptContentType(storageKey) ?? 'application/octet-stream').send(bytes);
+  });
+
+  /**
+   * Business/product image bytes (P1). Public capability URL: the key is an
+   * unguessable server-generated UUID, so customer-facing listings can render
+   * `<img src>` directly without auth. The key shape is strictly validated
+   * before any disk access, so this endpoint can never escape the image
+   * storage directory and never exposes arbitrary files. Keys are immutable
+   * (never overwritten), hence the long cache lifetime.
+   */
+  app.get('/api/v1/images/*', async (q, r) => {
+    const storageKey = (q.params as { '*': string })['*'];
+    if (!IMAGE_KEY_PATTERN.test(storageKey))
+      return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Image not found' } });
+    const bytes = await readImage(storageKey);
+    if (!bytes) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Image not found' } });
+    return r
+      .header('content-type', imageContentType(storageKey) ?? 'application/octet-stream')
+      .header('cache-control', 'public, max-age=31536000, immutable')
+      .send(bytes);
   });
 
   /**
@@ -3818,7 +3888,15 @@ export async function buildApp(): Promise<FastifyInstance> {
     const product = await prisma.product.findUnique({ where: { id } });
     if (!product) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Product not found' } });
     await ownedBusiness(q, product.businessId);
-    return { data: await prisma.product.update({ where: { id: product.id }, data: productUpdateSchema.parse(q.body) }) };
+    const data: Record<string, unknown> = { ...productUpdateSchema.parse(q.body) };
+    // An explicit imageUrl: null clears the product image. The schema
+    // normalizes null to undefined ("no value"), but the client DID send the
+    // key — translate it to a real DB null, mirroring the business PATCH
+    // CLEARABLE_FIELDS handling. Without this, image removal silently keeps
+    // the old value.
+    const rawBody = (q.body ?? {}) as Record<string, unknown>;
+    if ('imageUrl' in rawBody && rawBody.imageUrl === null) data.imageUrl = null;
+    return { data: await prisma.product.update({ where: { id: product.id }, data }) };
   });
 
   app.delete('/api/v1/products/:id', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {

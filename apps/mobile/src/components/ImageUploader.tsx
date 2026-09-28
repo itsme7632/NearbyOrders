@@ -22,12 +22,15 @@ export type PendingImage = {
   previewUrl: string | null;
   name: string;
   bytes: number;
+  /** MIME type of the picked file (mirrors PickedImage for provider handoff). */
+  type: string;
 };
 
 /**
  * Product-wide image rule: real "Upload image" UX, never an image-URL field.
  *
- * Behavior while no storage provider is connected (the current state):
+ * Behavior while no storage provider is connected (fallback, e.g. outside
+ * the owner screens that register one):
  * - the user picks a real file and sees a real preview; they can replace or
  *   remove it at any time
  * - the component never claims a pending pick was saved. While a pick is
@@ -38,8 +41,10 @@ export type PendingImage = {
  *   fully supported by the existing API, so `removeSaved` is persisted on the
  *   next successful save.
  *
- * When the image-storage phase lands, the same component picks up real
- * uploads via `getImageStorageProvider()` without UI changes.
+ * When the image-storage provider is registered (owner screens), the same
+ * component picks up real uploads via `getImageStorageProvider()` without UI
+ * changes: the save handler uploads the pending pick through the provider
+ * first, then persists the returned URL.
  */
 export function ImageUploader(props: {
   /** Server-saved URL for the current image, or null. */
@@ -85,6 +90,7 @@ export function ImageUploader(props: {
       previewUrl: result.previewUrl,
       name: result.name,
       bytes: result.bytes,
+      type: result.type,
     };
     setPending(next);
     report(next, false);

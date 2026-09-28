@@ -63,6 +63,7 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in the production environment}
       CORS_ORIGIN: ${CORS_ORIGIN:?Set CORS_ORIGIN in the production environment (the public admin origin, e.g. https://admin.example.com)}
       RECEIPTS_DIR: /var/nearbyorders/receipts
+      UPLOADS_DIR: /var/nearbyorders/uploads
       RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}
       AUTH_RATE_LIMIT_MAX: ${AUTH_RATE_LIMIT_MAX:-10}
       FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
@@ -73,6 +74,11 @@ services:
       # back this volume up with the database. Files stay behind authorized
       # API endpoints — there is intentionally no public /uploads route.
       - receipts_data:/var/nearbyorders/receipts
+      # Persistent business/product image storage (P1). The API creates the
+      # directory on first write (saveImage mkdir -p); images are served via
+      # the key-validated GET /api/v1/images/* capability endpoint. Survives
+      # container recreation; back up with the database.
+      - uploads_data:/var/nearbyorders/uploads
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -92,3 +98,4 @@ services:
 volumes:
   postgres_data: {}
   receipts_data: {}
+  uploads_data: {}

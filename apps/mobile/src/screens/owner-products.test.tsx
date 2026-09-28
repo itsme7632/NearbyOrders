@@ -164,25 +164,59 @@ describe('OwnerProducts', () => {
     expect(await screen.findByText(/Disable it instead/)).toBeTruthy();
   });
 
-  it('blocks creating while a device pick is pending (no fake upload success)', async () => {
+  it('registers a real image storage provider for the business (P1)', async () => {
+    const { getImageStorageProvider, setImageStorageProvider } = await import('../upload.js');
+    setImageStorageProvider(null);
     render(<OwnerProducts businessId="biz-1" />);
+    await waitFor(() => expect(getImageStorageProvider()).not.toBeNull());
+    expect(getImageStorageProvider()?.name).toBe('NearbyOrders API image storage');
+    // With storage connected, the "not connected" notice is gone.
+    expect(screen.queryByText(/Image storage is not connected yet/i)).toBeNull();
+    setImageStorageProvider(null);
+  });
+
+  it('uploads a pending pick through the provider, then creates the product with the returned URL (P1)', async () => {
+    const { setImageStorageProvider } = await import('../upload.js');
+    render(<OwnerProducts businessId="biz-1" />);
+    // Swap the real provider for a controlled mock AFTER mount (OwnerProducts
+    // registers the real one in an effect).
+    const upload = vi.fn().mockResolvedValue({ url: '/api/v1/images/uploads/dish123.png' });
+    setImageStorageProvider({ name: 'test', upload });
 
     fireEvent.click(await screen.findByText('+ Add product'));
     const file = new File(['x'], 'dish.png', { type: 'image/png' });
     fireEvent.change(screen.getByLabelText('Product image', { selector: 'input' }), { target: { files: [file] } });
+    fireEvent.change(screen.getByPlaceholderText('e.g. Chicken Biryani'), { target: { value: 'Chicken Biryani' } });
+    fireEvent.change(screen.getByPlaceholderText('e.g. 450'), { target: { value: '450' } });
 
+    // Create is available with a pending pick now that storage is connected.
     const create = screen.getByText('Create product') as HTMLButtonElement;
-    expect(create.disabled).toBe(true);
-    expect(screen.getByText(/Save is unavailable while a new photo is selected/i)).toBeTruthy();
-    expect(api.createProduct).not.toHaveBeenCalled();
+    expect(create.disabled).toBe(false);
+    fireEvent.click(create);
+
+    await waitFor(() => expect(upload).toHaveBeenCalledTimes(1));
+    expect(upload).toHaveBeenCalledWith(expect.objectContaining({ file }));
+    await waitFor(() => expect(api.createProduct).toHaveBeenCalledTimes(1));
+    const payload = vi.mocked(api.createProduct).mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(payload.name).toBe('Chicken Biryani');
+    expect(payload.imageUrl).toBe('/api/v1/images/uploads/dish123.png');
+    setImageStorageProvider(null);
   });
 
-  it('renders the honest storage notice from the upload abstraction', async () => {
+  it('a failed upload aborts product creation and never points at a missing image (P1)', async () => {
+    const { setImageStorageProvider } = await import('../upload.js');
     render(<OwnerProducts businessId="biz-1" />);
+    setImageStorageProvider({ name: 'test', upload: vi.fn().mockRejectedValue(new Error('network down')) });
 
     fireEvent.click(await screen.findByText('+ Add product'));
-    expect(
-      screen.getByText(/Image storage is not connected yet/i),
-    ).toBeTruthy();
+    const file = new File(['x'], 'dish.png', { type: 'image/png' });
+    fireEvent.change(screen.getByLabelText('Product image', { selector: 'input' }), { target: { files: [file] } });
+    fireEvent.change(screen.getByPlaceholderText('e.g. Chicken Biryani'), { target: { value: 'Chicken Biryani' } });
+    fireEvent.change(screen.getByPlaceholderText('e.g. 450'), { target: { value: '450' } });
+    fireEvent.click(screen.getByText('Create product'));
+
+    await waitFor(() => expect(screen.getByText(/network down/)).toBeTruthy());
+    expect(api.createProduct).not.toHaveBeenCalled();
+    setImageStorageProvider(null);
   });
 });

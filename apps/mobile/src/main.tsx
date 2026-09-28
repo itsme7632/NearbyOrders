@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { businessTabs, navigationTabs, resolveTab, type BusinessTab, type Tab } from './navigation.js';
-import { getMyBusinesses, getSession, onSessionChange, bootstrapSession, type Business, type Session } from './api.js';
+import { getMyBusinesses, getSession, onSessionChange, bootstrapSession, resolveImageUrl, type Business, type Session } from './api.js';
 import { useRoute, useAsyncData } from './hooks.js';
 import { applyDefaultModeForSession, initModeSessionSync, setAppMode, useAppMode } from './mode.js';
 import { BellIcon, ExploreIcon, HomeIcon, OrdersIcon, BookingsIcon, MeridianMark, ProfileIcon, StoreIcon } from './components/icons.js';
@@ -117,7 +117,7 @@ function OwnerAppHeader(props: {
         onClick={props.onAvatar}
       >
         {first?.imageUrl ? (
-          <img src={first.imageUrl} alt="" />
+          <img src={resolveImageUrl(first.imageUrl) ?? undefined} alt="" />
         ) : initial ? (
           <span aria-hidden>{initial}</span>
         ) : (

@@ -15,14 +15,20 @@ api ──▶ db:5432 (PostgreSQL 16)
 
 Receipt/verification files are stored in the `receipts_data` volume mounted
 at `/var/nearbyorders/receipts` and served only through the API's authorized
-endpoints. There is intentionally no public `/uploads` route — do not add
-one at the proxy layer.
+endpoints. Business/product images (P1) are stored in the `uploads_data`
+volume mounted at `/var/nearbyorders/uploads` and served through the API's
+key-validated `GET /api/v1/images/*` capability endpoint — the image key is
+an unguessable server-generated UUID and the endpoint strictly validates the
+key shape before touching disk, so it can never escape the image directory.
+There is intentionally no generic public `/uploads` filesystem route at the
+proxy layer — do not add one.
 
 ## Prerequisites (VPS)
 
 - Docker Engine + the Compose v2 plugin.
-- A host directory is not needed for receipts: the named volume
-  `receipts_data` persists them. **Back this volume up with the database.**
+- A host directory is not needed for receipts or images: the named volumes
+  `receipts_data` and `uploads_data` persist them. **Back these volumes up
+  with the database.**
 - TLS termination above nginx (host firewall / certbot) or extend
   `infrastructure/nginx.conf` with a 443 server block.
 

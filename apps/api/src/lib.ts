@@ -1,6 +1,7 @@
 import { PrismaClient, Role, type BookingStatus, type SubscriptionStatus } from '@prisma/client';
 import { z } from 'zod';
 import { RECEIPT_KEY_PATTERN } from './receiptStorage.js';
+import { isServerImagePath } from './imageStorage.js';
 
 export const prisma = new PrismaClient();
 
@@ -75,6 +76,21 @@ const optionalUrl = z
   .optional()
   .transform((v) => (v === null || v === '' ? undefined : v));
 
+/**
+ * imageUrl fields (business / product) accept absolute URLs (legacy and
+ * client-provided values) or the server-generated relative image paths
+ * returned by the image upload endpoint — never arbitrary relative paths.
+ */
+const optionalImageUrl = z
+  .union([
+    z.string().url().max(500),
+    z.string().refine(isServerImagePath, { message: 'Invalid image URL' }),
+    z.literal(''),
+    z.null(),
+  ])
+  .optional()
+  .transform((v) => (v === null || v === '' ? undefined : v));
+
 const phone = z.string().min(7).max(20).regex(/^[+\d][\d\s-]+$/, 'Invalid phone number');
 
 export const slugify = (value: string): string =>
@@ -129,7 +145,7 @@ const businessCore = {
     .optional()
     .transform((v) => (v === null || v === '' ? undefined : v)),
   email: optionalEmail,
-  imageUrl: optionalUrl,
+  imageUrl: optionalImageUrl,
 };
 
 export const businessSchema = z.object({
@@ -213,7 +229,7 @@ export const businessUpdateSchema = z
       .optional()
       .transform((v) => (v === null || v === '' ? undefined : v)),
     email: optionalEmail,
-    imageUrl: optionalUrl,
+    imageUrl: optionalImageUrl,
     categoryIds: z.array(z.string().uuid()).min(1).optional(),
   })
   .refine((data) => Object.keys(data).length > 0, { message: 'No changes provided' });
@@ -289,7 +305,7 @@ export const serviceUpdateSchema = serviceSchema
   .refine((data) => Object.keys(data).length > 0, { message: 'No changes provided' });
 
 export const productSchema = serviceSchema.omit({ durationMinutes: true }).extend({
-  imageUrl: optionalUrl,
+  imageUrl: optionalImageUrl,
 });
 
 export const productUpdateSchema = productSchema

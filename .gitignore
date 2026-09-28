@@ -12,3 +12,5 @@ android
 ios
 # Dev/test receipt uploads (opaque payment-receipt storage, Phase 7B)
 .receipts
+# Dev/test image uploads (opaque business/product image storage, P1)
+.uploads

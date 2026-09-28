@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getBusiness, listBusinessReviews, listFeaturedBusinesses, getSession, type Business, type FeaturedPlacement, type Product, type PublicReview, type ReviewPage } from '../api.js';
+import { getBusiness, listBusinessReviews, listFeaturedBusinesses, getSession, resolveImageUrl, type Business, type FeaturedPlacement, type Product, type PublicReview, type ReviewPage } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, ListSkeleton, Loading, Money, OpenBadge, VerifiedBadge } from '../components/ui.js';
 import { useToast } from '../components/primitives.js';
@@ -131,7 +131,7 @@ export function BusinessDetailScreen(props: {
       <div className="biz-hero-full">
         <div className="biz-hero-media" role="img" aria-label={b.imageUrl ? `${b.name} photo` : undefined}>
           {b.imageUrl ? (
-            <img src={b.imageUrl} alt={`${b.name} photo`} />
+            <img src={resolveImageUrl(b.imageUrl) ?? undefined} alt={`${b.name} photo`} />
           ) : (
             <span className="hero-initial" aria-hidden>
               {b.name[0]?.toUpperCase() ?? '?'}
@@ -316,7 +316,7 @@ export function BusinessDetailScreen(props: {
             {b.products.map((p) => (
               <div key={p.id} className="svc-row">
                 {p.imageUrl ? (
-                  <img className="svc-thumb" src={p.imageUrl} alt="" loading="lazy" />
+                  <img className="svc-thumb" src={resolveImageUrl(p.imageUrl) ?? undefined} alt="" loading="lazy" />
                 ) : (
                   <span className="svc-thumb pop-card-initial" aria-hidden>
                     {p.name[0]?.toUpperCase() ?? '?'}
@@ -361,7 +361,7 @@ export function BusinessDetailScreen(props: {
       {activeTab === 'photos' && b.imageUrl ? (
         <section className="detail-section detail-section-tab" aria-label="Photos">
           <div className="detail-hero-media-v3" style={{ height: 220 }}>
-            <img src={b.imageUrl} alt={`${b.name} photo`} />
+            <img src={resolveImageUrl(b.imageUrl) ?? undefined} alt={`${b.name} photo`} />
           </div>
         </section>
       ) : null}

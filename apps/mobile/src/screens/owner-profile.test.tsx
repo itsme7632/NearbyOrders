@@ -151,24 +151,57 @@ describe('OwnerProfile save contract', () => {
   });
 });
 
-describe('pending image pick blocks an un-storable save (no fake uploads)', () => {
+describe('pending image pick uploads through the registered provider (P1)', () => {
   const pickState = (file: File): ImageUploaderState => ({
-    pending: { file, previewUrl: null, name: file.name, bytes: file.size },
+    pending: { file, previewUrl: null, name: file.name, bytes: file.size, type: file.type },
     removeSaved: false,
   });
 
-  it('disables saving while a device pick is pending and explains why', () => {
-    // jsdom cannot open the real file dialog; drive the input directly.
-    render(<OwnerProfile business={baseBusiness} onSaved={() => {}} />);
+  it('registers a real image storage provider for the business on mount', async () => {
+    const { getImageStorageProvider, setImageStorageProvider } = await import('../upload.js');
+    setImageStorageProvider(null);
+    renderProfile();
+    await waitFor(() => expect(getImageStorageProvider()).not.toBeNull());
+    expect(getImageStorageProvider()?.name).toBe('NearbyOrders API image storage');
+    setImageStorageProvider(null);
+  });
+
+  it('uploads a pending pick first, then saves the returned URL', async () => {
+    const { setImageStorageProvider } = await import('../upload.js');
+    renderProfile();
+    // Swap the real provider for a controlled mock AFTER mount (the screen
+    // registers the real one in an effect).
+    const upload = vi.fn().mockResolvedValue({ url: '/api/v1/images/uploads/abc123.png' });
+    setImageStorageProvider({ name: 'test', upload });
     const file = new File(['x'], 'logo.png', { type: 'image/png' });
     const uploader = screen.getByLabelText('Business logo', { selector: 'input' });
     fireEvent.change(uploader, { target: { files: [file] } });
 
+    // Save is available with a pending pick now that storage is connected.
     const save = screen.getByText('Save profile') as HTMLButtonElement;
-    expect(save.disabled).toBe(true);
-    expect(screen.getByText(/Save is unavailable while a new photo is selected/i)).toBeTruthy();
-    expect(api.updateBusiness).not.toHaveBeenCalled();
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+
+    await waitFor(() => expect(upload).toHaveBeenCalledTimes(1));
+    expect(upload).toHaveBeenCalledWith(expect.objectContaining({ file }));
+    await waitFor(() => expect(api.updateBusiness).toHaveBeenCalledTimes(1));
+    const payload = vi.mocked(api.updateBusiness).mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(payload.imageUrl).toBe('/api/v1/images/uploads/abc123.png');
     expect(pickState(file).pending?.name).toBe('logo.png');
+    setImageStorageProvider(null);
+  });
+
+  it('a failed upload aborts the save and never touches the stored image', async () => {
+    const { setImageStorageProvider } = await import('../upload.js');
+    renderProfile();
+    setImageStorageProvider({ name: 'test', upload: vi.fn().mockRejectedValue(new Error('network down')) });
+    const file = new File(['x'], 'logo.png', { type: 'image/png' });
+    fireEvent.change(screen.getByLabelText('Business logo', { selector: 'input' }), { target: { files: [file] } });
+    fireEvent.click(screen.getByText('Save profile'));
+
+    await waitFor(() => expect(screen.getByText(/network down/)).toBeTruthy());
+    expect(api.updateBusiness).not.toHaveBeenCalled();
+    setImageStorageProvider(null);
   });
 
   it('rejects unsupported file types and oversized files', async () => {

@@ -7,6 +7,7 @@ import {
   listOrderPayments,
   submitOrderPayment,
   uploadPaymentReceipt,
+  resolveImageUrl,
   type BusinessPayInMethod,
   type CustomerPayment,
 } from '../api.js';
@@ -24,7 +25,7 @@ export function orderNumber(o: Order): string {
 /** Marketplace-card business thumbnail: image when present, monogram otherwise. */
 export function OrderThumb(props: { name: string; imageUrl?: string | null }) {
   if (props.imageUrl) {
-    return <img className="oc-thumb" src={props.imageUrl} alt="" loading="lazy" />;
+    return <img className="oc-thumb" src={resolveImageUrl(props.imageUrl) ?? undefined} alt="" loading="lazy" />;
   }
   return (
     <span className="oc-thumb" aria-hidden>

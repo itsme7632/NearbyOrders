@@ -2,26 +2,27 @@
  * Image upload abstraction (product-wide rule).
  *
  * NearbyOrders uses real "Upload image" experiences — never "paste an image
- * URL" fields. This module is the seam between the UI and the future storage
+ * URL" fields. This module is the seam between the UI and the storage
  * provider:
  *
  * - `pickImageFile` + `PickedImage`: real device file selection with preview,
  *   type and size validation. The preview is a local object URL for display
  *   only; it is never persisted and never sent to the API.
- * - `ImageStorageProvider`: the contract a storage backend (S3-compatible
- *   bucket, Supabase Storage, Cloudinary, …) must implement in the dedicated
- *   image-storage phase: consume a `PickedImage`, return a durable public URL.
- * - Until a provider is registered, `getImageStorageProvider()` returns null
- *   and the UI must say so honestly: the user may preview and remove images,
- *   but nothing is uploaded and no fake success is shown. A pending pick that
- *   cannot be persisted is never sent to the API — the existing saved value
- *   (or null) is what gets stored.
+ * - `ImageStorageProvider`: the contract a storage backend must implement:
+ *   consume a `PickedImage`, return a durable URL. The production provider
+ *   (`createApiImageStorageProvider` in api.ts) uploads to
+ *   `POST /api/v1/businesses/:id/images`, which verifies business ownership
+ *   server-side and returns the image URL to store on the entity.
+ * - Owner screens register their business's provider via
+ *   `setImageStorageProvider()`; until one is registered,
+ *   `getImageStorageProvider()` returns null and the UI says so honestly: the
+ *   user may preview and remove images, but nothing is uploaded and no fake
+ *   success is shown. A pending pick that cannot be persisted is never sent
+ *   to the API — the existing saved value (or null) is what gets stored.
  *
- * Remaining integration for the storage phase (docs task):
- *   1. Implement `ImageStorageProvider.upload()` against the chosen provider.
- *   2. Register it with `setImageStorageProvider()` at app start-up.
- *   3. Wire `ImageUploader`'s pending pick through `upload()` in profile save.
- *   4. Add an API endpoint that accepts the returned URL per entity.
+ * Save-flow rule: upload the pending pick FIRST through the provider, then
+ * PATCH the entity with the returned URL. A failed upload aborts the save so
+ * the previously stored image is never corrupted.
  */
 
 /** Hard limits mirrored in the uploader UI; keep in one place for the provider. */

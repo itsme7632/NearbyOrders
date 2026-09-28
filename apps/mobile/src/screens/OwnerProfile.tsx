@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  createApiImageStorageProvider,
+  resolveImageUrl,
   updateBusiness,
   listCategories,
   type Business,
   type Category,
 } from '../api.js';
+import { getImageStorageProvider, setImageStorageProvider } from '../upload.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, ErrorState, Field, Loading } from '../components/ui.js';
 import { ImageUploader, type ImageUploaderState, type PendingImage } from '../components/ImageUploader.js';
@@ -20,14 +23,24 @@ export function OwnerProfile(props: { business: Business; onSaved: () => void })
     city: b.city,
     locality: b.locality ?? '',
   });
-  // Image handling follows the product-wide upload rule: no URL field. A
-  // pending device pick cannot be persisted yet (no storage provider), so it
-  // blocks saving honestly; removing the saved image IS persistable now and
-  // sends imageUrl: null on save. Omitting the key keeps the saved value.
+  // Image handling follows the product-wide upload rule: no URL field. The
+  // real API storage provider is registered for this business, so a pending
+  // device pick is uploaded in the save flow below (upload first — a failed
+  // upload aborts the save and never corrupts the stored image). Removing the
+  // saved image persists imageUrl: null. Omitting the key keeps the saved value.
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const [removeSavedImage, setRemoveSavedImage] = useState(false);
+  const [storageReady, setStorageReady] = useState(() => getImageStorageProvider() !== null);
+  useEffect(() => {
+    setImageStorageProvider(createApiImageStorageProvider(b.id));
+    setStorageReady(true);
+  }, [b.id]);
   const [categoryIds, setCategoryIds] = useState<Set<string>>(new Set(b.categories.map((c) => c.id)));
   const [saving, setSaving] = useState(false);
+  // Bumps on every successful save so the uploader remounts immediately with
+  // clean internal state (its pending preview must not linger as "not saved
+  // yet" after the save that persisted it).
+  const [saveCount, setSaveCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const categories = useAsyncData<Category[]>(() => listCategories(), []);
@@ -40,7 +53,6 @@ export function OwnerProfile(props: { business: Business; onSaved: () => void })
 
   const save = async () => {
     if (saving) return; // guard against double submission
-    if (pendingImage) return; // unreachable: the button is disabled — belt & braces
     // Server-side mirrors: required fields must be present and valid; optional
     // fields are sent as null when cleared so the server nulls the column.
     const trimmed = {
@@ -69,6 +81,24 @@ export function OwnerProfile(props: { business: Business; onSaved: () => void })
     setError(null);
     setSaved(false);
     try {
+      // Upload a pending pick BEFORE the profile PATCH: a failed upload aborts
+      // the save so the previously stored image is never corrupted.
+      let uploadedUrl: string | undefined;
+      if (pendingImage) {
+        const provider = getImageStorageProvider();
+        if (!provider) {
+          setError('Image storage is not connected yet. Remove the photo to save your other changes.');
+          setSaving(false);
+          return;
+        }
+        try {
+          uploadedUrl = (await provider.upload(pendingImage)).url;
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'Image upload failed. Your existing photo was kept.');
+          setSaving(false);
+          return;
+        }
+      }
       await updateBusiness(b.id, {
         name: trimmed.name,
         // Cleared optional fields go as null so the server nulls the column.
@@ -78,11 +108,15 @@ export function OwnerProfile(props: { business: Business; onSaved: () => void })
         address: trimmed.address,
         city: trimmed.city,
         locality: trimmed.locality || null,
-        // Image: only ever cleared here (no fake uploads). A pending pick is
-        // blocked above; the key is omitted otherwise so the saved value stays.
+        // Image: a fresh upload wins; an explicit removal clears the field;
+        // otherwise the key is omitted so the saved value stays.
+        ...(uploadedUrl ? { imageUrl: uploadedUrl } : {}),
         ...(removeSavedImage ? { imageUrl: null } : {}),
         categoryIds: [...categoryIds],
       });
+      setPendingImage(null);
+      setRemoveSavedImage(false);
+      setSaveCount((c) => c + 1);
       setSaved(true);
       props.onSaved();
     } catch (e) {
@@ -129,7 +163,8 @@ export function OwnerProfile(props: { business: Business; onSaved: () => void })
 
       <Field label="Business logo">
         <ImageUploader
-          currentUrl={removeSavedImage ? null : b.imageUrl}
+          key={`${b.id}:${saveCount}`}
+          currentUrl={resolveImageUrl(removeSavedImage ? null : b.imageUrl)}
           label="Business logo"
           onChange={onImageStateChange}
         />
@@ -163,12 +198,12 @@ export function OwnerProfile(props: { business: Business; onSaved: () => void })
         )}
       </Field>
 
-      {pendingImage ? (
+      {pendingImage && !storageReady ? (
         <p className="hint" role="note">
           Save is unavailable while a new photo is selected: image storage is not connected yet, so the photo cannot be persisted. Remove it to save your other changes.
         </p>
       ) : null}
-      <Button full disabled={saving || !form.name || categoryIds.size === 0 || Boolean(pendingImage)} onClick={save}>
+      <Button full disabled={saving || !form.name || categoryIds.size === 0 || (Boolean(pendingImage) && !storageReady)} onClick={save}>
         {saving ? 'Saving…' : 'Save profile'}
       </Button>
     </section>

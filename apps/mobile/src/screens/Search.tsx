@@ -3,6 +3,7 @@ import './Search.css';
 import {
   listCategories,
   searchMarketplace,
+  resolveImageUrl,
   type Category,
   type SearchPage,
   type SearchResult,
@@ -451,9 +452,9 @@ function SearchResultRow(props: { result: SearchResult; onOpen: () => void }) {
           </span>
         </span>
         {r.type === 'product' && r.imageUrl ? (
-          <img className="search-result-thumb" src={r.imageUrl} alt="" loading="lazy" />
+          <img className="search-result-thumb" src={resolveImageUrl(r.imageUrl) ?? undefined} alt="" loading="lazy" />
         ) : r.type === 'business' && r.imageUrl ? (
-          <img className="search-result-thumb" src={r.imageUrl} alt="" loading="lazy" />
+          <img className="search-result-thumb" src={resolveImageUrl(r.imageUrl) ?? undefined} alt="" loading="lazy" />
         ) : (
           <span className="search-result-thumb search-result-thumb-fallback" aria-hidden>
             <StoreIcon size={22} />

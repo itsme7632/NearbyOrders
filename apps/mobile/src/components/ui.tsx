@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { formatMoney } from '@nearbyorders/shared';
 import { formatDistanceKm, hasCoordinates } from '../location.js';
 import type { Business } from '../api.js';
+import { resolveImageUrl } from '../api.js';
 import { StoreIcon } from './icons.js';
 
 export function Money({ minor, currency = 'PKR' }: { minor: number; currency?: string }) {
@@ -202,7 +203,7 @@ export function BusinessRow(props: { business: Business; onOpen: () => void; sel
     >
       <span className="biz-row-media">
         {b.imageUrl ? (
-          <img src={b.imageUrl} alt="" loading="lazy" />
+          <img src={resolveImageUrl(b.imageUrl) ?? undefined} alt="" loading="lazy" />
         ) : (
           <span className="pop-card-initial" aria-hidden>
             {b.name[0]?.toUpperCase() ?? '?'}
@@ -247,7 +248,7 @@ export function BusinessCard(props: { business: Business; onOpen: () => void }) 
     <button className="biz-card" onClick={props.onOpen}>
       <span className="biz-card-imgwrap">
         {b.imageUrl ? (
-          <img className="biz-card-img" src={b.imageUrl} alt="" loading="lazy" />
+          <img className="biz-card-img" src={resolveImageUrl(b.imageUrl) ?? undefined} alt="" loading="lazy" />
         ) : (
           <span className="detail-hero-fallback">
             <StoreIcon size={34} />
