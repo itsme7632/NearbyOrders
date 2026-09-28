@@ -47,7 +47,7 @@ jobs:
       - name: Configure test API
         working-directory: apps/mobile
         run: |
-          printf 'VITE_API_BASE_URL=http://157.230.213.10:3000/api/v1\n' > .env
+          printf 'VITE_API_BASE_URL=http://157.230.213.10:3000/api/v1\n' > .env.production.local
 
       - name: Build mobile web app
         run: pnpm --filter @nearbyorders/mobile build
