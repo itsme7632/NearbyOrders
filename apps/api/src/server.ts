@@ -211,7 +211,12 @@ export async function buildApp(): Promise<FastifyInstance> {
     cors: config.corsOrigins,
   };
 
-  const app = Fastify({ logger: { redact: ['req.headers.authorization', 'password', 'token'] } });
+  // The API is only reachable through the nginx reverse-proxy chain
+  // (host nginx -> container nginx -> api:3000), which sets X-Forwarded-For
+  // to the real client IP. Without trustProxy, req.ip is the proxy's IP for
+  // every request, so @fastify/rate-limit puts ALL clients into a single
+  // shared 100/min bucket and legitimate traffic gets 429s.
+  const app = Fastify({ logger: { redact: ['req.headers.authorization', 'password', 'token'] }, trustProxy: true });
   const rateMax = Number(process.env.RATE_LIMIT_MAX ?? 100);
   const authRateMax = Number(process.env.AUTH_RATE_LIMIT_MAX ?? 10);
 
