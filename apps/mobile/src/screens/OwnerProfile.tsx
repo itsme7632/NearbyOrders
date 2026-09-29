@@ -34,6 +34,13 @@ export function OwnerProfile(props: { business: Business; onSaved: () => void })
   useEffect(() => {
     setImageStorageProvider(createApiImageStorageProvider(b.id));
     setStorageReady(true);
+    // Reset image state when switching businesses: a pending pick or removal
+    // from Business A must never leak into Business B's save flow. The
+    // ImageUploader remounts via key, but this parent state persists.
+    setPendingImage(null);
+    setRemoveSavedImage(false);
+    setSaved(false);
+    setError(null);
   }, [b.id]);
   const [categoryIds, setCategoryIds] = useState<Set<string>>(new Set(b.categories.map((c) => c.id)));
   const [saving, setSaving] = useState(false);

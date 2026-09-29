@@ -93,4 +93,36 @@ describe('AdminApp session sync (rate-limit regression)', () => {
     });
     expect(container!.textContent).toContain('Control Center');
   });
+
+  it('does not refetch queue badges when session object identity changes but content is identical', async () => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root!.render(<AdminApp />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const settled = {
+      dashboard: vi.mocked(api.getDashboard).mock.calls.length,
+      verifications: vi.mocked(api.listVerifications).mock.calls.length,
+      promotionRequests: vi.mocked(api.listPromotionRequests).mock.calls.length,
+      promotionPaymentRequests: vi.mocked(api.listPromotionPaymentRequests).mock.calls.length,
+    };
+    expect(settled.dashboard).toBeGreaterThan(0);
+
+    // Simulate a new-but-equivalent session object flowing through (e.g.,
+    // JSON.parse creating a fresh object with identical content). The badge
+    // effect must NOT refetch — this is the 429 pattern.
+    await act(async () => {
+      api.setSession(JSON.parse(JSON.stringify(session)));
+      await Promise.resolve();
+    });
+
+    expect(vi.mocked(api.getDashboard).mock.calls.length).toBe(settled.dashboard);
+    expect(vi.mocked(api.listVerifications).mock.calls.length).toBe(settled.verifications);
+    expect(vi.mocked(api.listPromotionRequests).mock.calls.length).toBe(settled.promotionRequests);
+    expect(vi.mocked(api.listPromotionPaymentRequests).mock.calls.length).toBe(settled.promotionPaymentRequests);
+  });
 });

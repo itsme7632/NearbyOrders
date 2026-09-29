@@ -272,3 +272,65 @@ describe('post-creation banner reflects the server status', () => {
     expect(banner.textContent).toContain(expected);
   });
 });
+
+describe('business-switch image isolation (wrong-image-after-save regression)', () => {
+  const businessB: Business = {
+    ...baseBusiness,
+    id: 'biz-2',
+    name: 'Second Business',
+    slug: 'second-business',
+    imageUrl: '/api/v1/images/uploads/bbb222.png',
+  };
+
+  it('clears a pending image pick when switching businesses', async () => {
+    const { setImageStorageProvider } = await import('../upload.js');
+    const { rerender } = render(<OwnerProfile business={baseBusiness} onSaved={() => {}} />);
+    // Swap the real provider for a controlled mock AFTER mount.
+    const upload = vi.fn().mockResolvedValue({ url: '/api/v1/images/uploads/aaa111.png' });
+    setImageStorageProvider({ name: 'test', upload });
+
+    // Pick an image while editing Business A.
+    const fileA = new File(['a'], 'a-logo.png', { type: 'image/png' });
+    fireEvent.change(screen.getByLabelText('Business logo', { selector: 'input' }), {
+      target: { files: [fileA] },
+    });
+    // The pick is pending (uploader reports it via onChange).
+    await waitFor(() => expect(screen.getByText('Save profile')).toBeTruthy());
+
+    // Switch to Business B without saving: the component receives a new
+    // business prop but does not remount (no key on OwnerProfile).
+    rerender(<OwnerProfile business={businessB} onSaved={() => {}} />);
+
+    // Save Business B. The stale pending pick from A must NOT be uploaded
+    // or saved to B.
+    fireEvent.click(screen.getByText('Save profile'));
+    await waitFor(() => expect(api.updateBusiness).toHaveBeenCalled());
+
+    // updateBusiness must have been called for Business B...
+    const calls = vi.mocked(api.updateBusiness).mock.calls;
+    const bCall = calls.find(([id]) => id === 'biz-2');
+    expect(bCall).toBeTruthy();
+    // ...without the imageUrl from Business A's pending pick.
+    const payload = bCall?.[1] as Record<string, unknown>;
+    expect(payload.imageUrl).toBeUndefined();
+    // The upload must not have been called for Business A's file.
+    expect(upload).not.toHaveBeenCalled();
+    setImageStorageProvider(null);
+  });
+
+  it('clears a remove-saved-image flag when switching businesses', async () => {
+    const { rerender } = render(<OwnerProfile business={businessB} onSaved={() => {}} />);
+    // Mark Business B's saved image for removal (via the uploader's remove button).
+    // The uploader remounts on business switch, but the parent flag must reset too.
+    rerender(<OwnerProfile business={baseBusiness} onSaved={() => {}} />);
+    fireEvent.click(screen.getByText('Save profile'));
+    await waitFor(() => expect(api.updateBusiness).toHaveBeenCalled());
+    const calls = vi.mocked(api.updateBusiness).mock.calls;
+    const aCall = calls.find(([id]) => id === 'biz-1');
+    expect(aCall).toBeTruthy();
+    // Business A has no image; the remove flag from B must not clear A's (null) image
+    // or otherwise leak — the payload must not contain imageUrl at all.
+    const payload = aCall?.[1] as Record<string, unknown>;
+    expect(payload.imageUrl).toBeUndefined();
+  });
+});

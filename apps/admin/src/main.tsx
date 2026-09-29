@@ -80,8 +80,13 @@ function groupOf(section: Section): string {
  */
 function useQueueBadges(session: api.Session | null): Partial<Record<Section, number>> {
   const [badges, setBadges] = useState<Partial<Record<Section, number>>>({});
+  // Key on a stable session identity (user + token), not the object reference.
+  // getSession() JSON.parses on every call, so object identity is never stable;
+  // keying the effect on the object would refetch the 5 badge endpoints every
+  // time a new-but-equivalent session object flows through (the 429 pattern).
+  const sessionKey = session ? `${session.user.id}:${session.accessToken}` : '';
   useEffect(() => {
-    if (!session) return;
+    if (!sessionKey) return;
     let alive = true;
     const num = (v: unknown) => (typeof v === 'number' && v > 0 ? v : 0);
     Promise.allSettled([
@@ -114,7 +119,7 @@ function useQueueBadges(session: api.Session | null): Partial<Record<Section, nu
     return () => {
       alive = false;
     };
-  }, [session]);
+  }, [sessionKey]);
   return badges;
 }
 
