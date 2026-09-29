@@ -261,6 +261,35 @@ export const serviceSchema = z.object({
 });
 
 /**
+ * Rider create/update validation. Riders are owner-managed (no login), so the
+ * phone is the contact channel — required, loosely validated (digits, plus,
+ * spaces, dashes) rather than strictly formatted for a region the API can't
+ * assume. photoUrl is an already-uploaded image URL; note is internal to the
+ * owner and never shown to customers.
+ */
+const riderPhone = z.string().trim().min(7).max(20).regex(/^[+0-9][0-9\s\-()]*$/, 'Invalid phone number');
+
+export const riderCreateSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  phone: riderPhone,
+  photoUrl: z.string().url().max(2000).optional(),
+  note: z.string().trim().max(500).optional(),
+  isActive: z.boolean().optional(),
+});
+
+export const riderUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(120).optional(),
+  phone: riderPhone.optional(),
+  photoUrl: z.string().url().max(2000).nullable().optional(),
+  note: z.string().trim().max(500).nullable().optional(),
+  isActive: z.boolean().optional(),
+});
+
+export const riderAssignSchema = z.object({
+  riderId: z.string().uuid(),
+});
+
+/**
  * Validates the advance triplet against the service price. Returns the
  * canonical fields (advanceType + the one relevant value) or an error message.
  * Pure and shared by create/update routes — integer minor units only.
@@ -397,10 +426,16 @@ export const calendarDate = z
 /** Customer-visible booking creation: the server derives everything else. */
 export const bookingCreateSchema = z.object({
   businessId: z.string().uuid(),
-  serviceId: z.string().uuid(),
+  // Legacy single-service field. Prefer serviceIds for new clients.
+  serviceId: z.string().uuid().optional(),
+  // Multi-service selection: 1–10 unique service IDs, all belonging to the
+  // same business. The server validates, dedupes, and computes all totals.
+  serviceIds: z.array(z.string().uuid()).min(1).max(10).optional(),
   date: calendarDate,
   startTime: timeOfDay,
   notes: z.string().max(1000).optional(),
+}).refine((d) => d.serviceId !== undefined || d.serviceIds !== undefined, {
+  message: 'Either serviceId or serviceIds is required',
 });
 
 export const availabilityQuerySchema = z.object({ date: calendarDate });
@@ -890,8 +925,11 @@ export const NOTIFICATION_TYPES = {
   ORDER_REJECTED: 'ORDER_REJECTED',
   ORDER_PREPARING: 'ORDER_PREPARING',
   ORDER_READY: 'ORDER_READY',
+  ORDER_OUT_FOR_DELIVERY: 'ORDER_OUT_FOR_DELIVERY',
+  ORDER_DELIVERED: 'ORDER_DELIVERED',
   ORDER_COMPLETED: 'ORDER_COMPLETED',
   ORDER_CANCELLED: 'ORDER_CANCELLED',
+  RIDER_ASSIGNED: 'RIDER_ASSIGNED',
   REVIEW_CREATED: 'REVIEW_CREATED',
   SUBSCRIPTION_PAYMENT_SUBMITTED: 'SUBSCRIPTION_PAYMENT_SUBMITTED',
   SUBSCRIPTION_PAYMENT_APPROVED: 'SUBSCRIPTION_PAYMENT_APPROVED',
@@ -1015,7 +1053,9 @@ export const allowedTransitions: {
     ACCEPTED: ['PREPARING', 'READY', 'COMPLETED', 'CANCELLED'],
     REJECTED: [],
     PREPARING: ['READY', 'COMPLETED', 'CANCELLED'],
-    READY: ['COMPLETED', 'CANCELLED'],
+    READY: ['COMPLETED', 'CANCELLED', 'OUT_FOR_DELIVERY'],
+    OUT_FOR_DELIVERY: ['DELIVERED', 'CANCELLED'],
+    DELIVERED: [],
     COMPLETED: [],
     CANCELLED: [],
   },
@@ -1027,7 +1067,7 @@ export const allowedTransitions: {
 
 export const businessStatusSchema = z.enum(['PENDING', 'APPROVED', 'REJECTED', 'SUSPENDED', 'ARCHIVED']);
 export const bookingStatusSchema = z.enum(['PENDING', 'CONFIRMED', 'REJECTED', 'CANCELLED', 'COMPLETED']);
-export const orderStatusSchema = z.enum(['PENDING', 'ACCEPTED', 'REJECTED', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED']);
+export const orderStatusSchema = z.enum(['PENDING', 'ACCEPTED', 'REJECTED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY', 'DELIVERED', 'COMPLETED', 'CANCELLED']);
 
 /** Booking list filters (customer and owner endpoints). */
 export const bookingListQuerySchema = z

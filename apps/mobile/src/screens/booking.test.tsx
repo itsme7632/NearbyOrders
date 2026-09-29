@@ -73,7 +73,7 @@ function mockBusiness(overrides: Partial<Business> = {}) {
 }
 
 beforeEach(() => {
-  vi.spyOn(api, 'getAvailability').mockResolvedValue(availability);
+  vi.spyOn(api, 'getMultiServiceAvailability').mockResolvedValue(availability);
   vi.spyOn(api, 'createBooking').mockResolvedValue(createdBooking);
   vi.spyOn(api, 'listMyBookings').mockResolvedValue([createdBooking]);
   vi.spyOn(api, 'getBooking').mockResolvedValue(createdBooking);
@@ -93,8 +93,8 @@ describe('BookServiceScreen', () => {
     await screen.findByText('Hair Consultation');
     const disabled = screen.getByText('Disabled Service').closest('button')!;
     expect(disabled).toBeDisabled();
-    // No availability request before a service is chosen.
-    expect(api.getAvailability).not.toHaveBeenCalled();
+    // No availability request before services are chosen.
+    expect(api.getMultiServiceAvailability).not.toHaveBeenCalled();
   });
 
   it('selects a service, shows backend slots, and skips taken ones', async () => {
@@ -102,7 +102,8 @@ describe('BookServiceScreen', () => {
     render(<BookServiceScreen businessId="biz-1" onBack={() => {}} onDone={() => {}} />);
 
     fireEvent.click(await screen.findByText('Hair Consultation'));
-    await waitFor(() => expect(api.getAvailability).toHaveBeenCalledWith('biz-1', 'svc-1', expect.any(String)));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await waitFor(() => expect(api.getMultiServiceAvailability).toHaveBeenCalledWith('biz-1', ['svc-1'], expect.any(String)));
 
     const taken = await screen.findByText('9:30 AM');
     expect(taken).toBeDisabled();
@@ -112,7 +113,7 @@ describe('BookServiceScreen', () => {
 
   it('shows a friendly closed-day message', async () => {
     mockBusiness();
-    vi.spyOn(api, 'getAvailability').mockResolvedValue({ ...availability, closed: true, slots: [] });
+    vi.mocked(api.getMultiServiceAvailability).mockResolvedValue({ ...availability, closed: true, slots: [] });
     render(<BookServiceScreen businessId="biz-1" preselectedServiceId="svc-1" onBack={() => {}} onDone={() => {}} />);
 
     expect(await screen.findByText('Closed on this day')).toBeTruthy();
@@ -120,7 +121,7 @@ describe('BookServiceScreen', () => {
 
   it('shows the fully-booked state when no slots are available', async () => {
     mockBusiness();
-    vi.spyOn(api, 'getAvailability').mockResolvedValue({
+    vi.mocked(api.getMultiServiceAvailability).mockResolvedValue({
       ...availability,
       slots: availability.slots.map((s) => ({ ...s, available: false })),
     });
@@ -137,11 +138,11 @@ describe('BookServiceScreen', () => {
     fireEvent.click(await screen.findByText('9:00 AM'));
     expect(await screen.findByText('Confirm your booking')).toBeTruthy();
     expect(screen.getByText('Hair Consultation')).toBeTruthy();
-    expect(screen.getByText('30 minutes')).toBeTruthy();
+    expect(screen.getByText('30 minutes total')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Confirm booking' }));
     await waitFor(() => expect(api.createBooking).toHaveBeenCalledWith(
-      expect.objectContaining({ businessId: 'biz-1', serviceId: 'svc-1', startTime: '09:00' }),
+      expect.objectContaining({ businessId: 'biz-1', serviceIds: ['svc-1'], startTime: '09:00' }),
     ));
     expect(await screen.findByText('Booking requested')).toBeTruthy();
 
@@ -152,7 +153,7 @@ describe('BookServiceScreen', () => {
   it('recovers gracefully when the slot was taken (SLOT_TAKEN race)', async () => {
     mockBusiness();
     vi.spyOn(api, 'createBooking').mockRejectedValue(new api.ApiError(409, 'SLOT_TAKEN', 'That time slot was just booked.'));
-    const reloadSpy = vi.spyOn(api, 'getAvailability');
+    const reloadSpy = vi.spyOn(api, 'getMultiServiceAvailability');
     render(<BookServiceScreen businessId="biz-1" preselectedServiceId="svc-1" onBack={() => {}} onDone={() => {}} />);
 
     fireEvent.click(await screen.findByText('9:00 AM'));
@@ -167,7 +168,7 @@ describe('BookServiceScreen', () => {
 
   it('shows a friendly message on network failure', async () => {
     mockBusiness();
-    vi.spyOn(api, 'getAvailability').mockRejectedValue(new api.ApiError(0, 'NETWORK_ERROR', 'Cannot reach the NearbyOrders API.'));
+    vi.mocked(api.getMultiServiceAvailability).mockRejectedValue(new api.ApiError(0, 'NETWORK_ERROR', 'Cannot reach the NearbyOrders API.'));
     render(<BookServiceScreen businessId="biz-1" preselectedServiceId="svc-1" onBack={() => {}} onDone={() => {}} />);
 
     expect(await screen.findByText(/Cannot reach the NearbyOrders API/)).toBeTruthy();

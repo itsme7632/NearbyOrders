@@ -644,6 +644,39 @@ h1 {
 .detail-section-text { margin: 0; font-size: 14px; line-height: 1.55; color: var(--ink-2); }
 .detail-cta { padding: 16px 0 4px; }
 
+/* Rider card on the customer order detail: name + call action. */
+.rider-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.rider-photo {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.rider-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rider-name {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.rider-call {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ember);
+  text-decoration: none;
+}
+.rider-call:active { opacity: 0.7; }
+
 /* Trust information: labelled definition rows, hairline-separated. */
 .info-rows { margin: 0; display: flex; flex-direction: column; }
 .info-row {
@@ -1409,6 +1442,81 @@ nav.business-nav .nav-item.active {
 .status-ready { background: rgba(22, 163, 74, 0.14); color: var(--success); }
 .status-completed { background: rgba(16, 132, 82, 0.14); color: var(--success); }
 .status-cancelled { background: rgba(220, 38, 38, 0.12); color: var(--error); }
+/* ---------------- owner operations board ---------------- */
+.ops-board {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  -webkit-overflow-scrolling: touch;
+}
+.ops-column {
+  flex: 0 0 280px;
+  min-width: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px;
+}
+.ops-column-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.ops-column-head h3 { margin: 0; font-size: 14px; font-weight: 800; color: var(--ink); overflow-wrap: anywhere; }
+.ops-count {
+  flex: 0 0 auto;
+  min-width: 24px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--light);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.ops-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.ops-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  box-shadow: var(--shadow);
+}
+.ops-address { overflow-wrap: anywhere; }
+.ops-empty { text-align: center; }
+/* ---------------- modal ---------------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 60;
+  padding: 0;
+}
+.modal-card {
+  background: var(--card);
+  border-radius: 18px 18px 0 0;
+  width: 100%;
+  max-width: 520px;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--border);
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.modal-head h2 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
+.modal-head .back-link { font-size: 18px; }
+/* ---------------- riders ---------------- */
+.rider-name { overflow-wrap: anywhere; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.rider-photo { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex: 0 0 auto; }
+.toggle-row { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 14px; color: var(--ink); cursor: pointer; }
+.toggle-row input { width: 20px; height: 20px; accent-color: var(--primary); }
+.field-error { color: var(--error); font-size: 13px; margin: 4px 0 0; }
 @media (max-width: 359px) {
   .qty-btn { width: 36px; height: 36px; }
   .cart-controls { gap: 6px; }

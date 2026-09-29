@@ -209,7 +209,16 @@ export type Product = {
   isActive: boolean;
 };
 
-export type OrderStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
+export type OrderStatus =
+  | 'PENDING'
+  | 'ACCEPTED'
+  | 'REJECTED'
+  | 'PREPARING'
+  | 'READY'
+  | 'OUT_FOR_DELIVERY'
+  | 'DELIVERED'
+  | 'COMPLETED'
+  | 'CANCELLED';
 
 export type OrderItem = {
   id: string;
@@ -233,12 +242,61 @@ export type Order = {
   totalMinor?: number;
   /** Phase 17: DELIVERY snapshot captured at placement; null for pickup. */
   deliveryAddressText?: string | null;
+  /** Rider assignment (delivery orders). Phone included for owner viewers only. */
+  assignedRider?: AssignedRider | null;
+  riderAssignedAt?: string | null;
   notes: string | null;
   business: { id: string; name: string; slug: string; imageUrl?: string | null };
   /** First name / last name only — never email or credentials. */
   customer: { firstName: string | null; lastName: string | null } | null;
   items: OrderItem[];
 };
+
+/** Rider as seen on an order (privacy-scoped by the API per viewer). */
+export type AssignedRider = {
+  id: string;
+  name: string;
+  /** Present for owner viewers; never for customers of other orders. */
+  phone?: string;
+  photoUrl: string | null;
+};
+
+/** Owner-managed delivery rider (no login). Maps to the future Rider App identity. */
+export type Rider = {
+  id: string;
+  businessId: string;
+  name: string;
+  phone: string;
+  photoUrl: string | null;
+  note: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RiderInput = {
+  name: string;
+  phone: string;
+  photoUrl?: string | null;
+  note?: string | null;
+  isActive?: boolean;
+};
+
+/** Owner-only: list the business's riders. */
+export const listRiders = (businessId: string) =>
+  request<Rider[]>(`/owner/businesses/${businessId}/riders`, { auth: true });
+
+/** Owner-only: create a rider for the business. */
+export const createRider = (businessId: string, input: RiderInput) =>
+  request<Rider>(`/owner/businesses/${businessId}/riders`, { method: 'POST', body: input, auth: true });
+
+/** Owner-only: update a rider (partial). Verifies rider belongs to the business. */
+export const updateRider = (businessId: string, riderId: string, input: Partial<RiderInput>) =>
+  request<Rider>(`/owner/businesses/${businessId}/riders/${riderId}`, { method: 'PATCH', body: input, auth: true });
+
+/** Owner-only: assign (or reassign) a rider to a delivery order. Idempotent. */
+export const assignRider = (orderId: string, riderId: string) =>
+  request<Order>(`/orders/${orderId}/assign-rider`, { method: 'POST', body: { riderId }, auth: true });
 
 /** Phase 17: a customer-saved (favorite) business entry. */
 export type FavoriteEntry = {
@@ -1363,15 +1421,32 @@ export type Booking = {
   amountPaidMinor?: number;
   /** Remaining after the advance step: price − max(paid, advance). */
   amountDueMinor?: number;
+  /** Multi-service: per-service snapshots in selection order. */
+  serviceItems?: { id: string; serviceId: string | null; name: string; priceMinor: number; durationMinutes: number }[];
+  /** Combined duration of all services; null for legacy rows. */
+  totalDurationMinutes?: number | null;
   /** Only present on list endpoints — safe subset, never credentials. */
   customer?: { id: string; email: string; firstName: string | null; lastName: string | null };
 };
 
-export type BookingInput = { businessId: string; serviceId: string; date: string; startTime: string; notes?: string };
+export type BookingInput = {
+  businessId: string;
+  /** Legacy single-service; prefer serviceIds for new bookings. */
+  serviceId?: string;
+  /** Multi-service: 1–10 unique service IDs. */
+  serviceIds?: string[];
+  date: string;
+  startTime: string;
+  notes?: string;
+};
 
 /** Per-date slot availability for a bookable service (Phase 3A endpoint). */
 export const getAvailability = (businessId: string, serviceId: string, date: string) =>
   request<Availability>(`/businesses/${businessId}/services/${serviceId}/availability?date=${date}`);
+
+/** Multi-service availability: combined duration slots for 1–10 services. */
+export const getMultiServiceAvailability = (businessId: string, serviceIds: string[], date: string) =>
+  request<Availability>(`/businesses/${businessId}/availability?date=${date}&serviceIds=${serviceIds.join(',')}`);
 
 export const createBooking = (input: BookingInput) => request<Booking>('/bookings', { method: 'POST', body: input, auth: true });
 

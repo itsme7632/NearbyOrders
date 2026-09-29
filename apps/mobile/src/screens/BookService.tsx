@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   createBooking,
-  getAvailability,
+  getMultiServiceAvailability,
   getBusiness,
   ApiError,
   type Availability,
@@ -73,7 +73,7 @@ export function BookServiceScreen(props: {
   const business = useAsyncData<Business>(() => getBusiness(props.businessId), [props.businessId]);
 
   const [step, setStep] = useState<Step>(props.preselectedServiceId ? 'time' : 'service');
-  const [serviceId, setServiceId] = useState<string | undefined>(props.preselectedServiceId);
+  const [serviceIds, setServiceIds] = useState<string[]>(props.preselectedServiceId ? [props.preselectedServiceId] : []);
   const [date, setDate] = useState<string>(todayPkt());
   const [slot, setSlot] = useState<{ start: string; end: string } | null>(null);
   const [notes, setNotes] = useState('');
@@ -83,14 +83,26 @@ export function BookServiceScreen(props: {
   const [created, setCreated] = useState<Booking | null>(null);
 
   const services = (business.data?.services ?? []).filter(isBookable);
-  const service = services.find((s) => s.id === serviceId) ?? null;
+  const selectedServices = serviceIds
+    .map((id) => services.find((s) => s.id === id))
+    .filter((s): s is Service => s !== undefined);
+  const combinedDuration = selectedServices.reduce((sum, s) => sum + (s.durationMinutes ?? 0), 0);
+  const combinedPrice = selectedServices.reduce((sum, s) => sum + s.priceMinor, 0);
+
+  const toggleService = (id: string) => {
+    setServiceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id].slice(0, 10)));
+    setSlot(null);
+  };
 
   // The date strip always starts today (business-local) — no past dates.
   const dates = useMemo(() => Array.from({ length: DATE_WINDOW_DAYS }, (_, i) => addDays(todayPkt(), i)), []);
 
   const availability = useAsyncData<Availability | null>(
-    () => (service ? getAvailability(props.businessId, service.id, date) : Promise.resolve(null)),
-    [service?.id, date],
+    () =>
+      selectedServices.length > 0
+        ? getMultiServiceAvailability(props.businessId, serviceIds, date)
+        : Promise.resolve(null),
+    [serviceIds.join(','), date, selectedServices.length],
   );
 
   const chooseSlot = (s: { start: string; end: string }) => {
@@ -108,14 +120,14 @@ export function BookServiceScreen(props: {
   };
 
   const confirm = async () => {
-    if (!service || !slot || submitting) return;
+    if (selectedServices.length === 0 || !slot || submitting) return;
     setSubmitting(true);
     setSubmitError(null);
     setSlotTaken(false);
     try {
       const booking = await createBooking({
         businessId: props.businessId,
-        serviceId: service.id,
+        serviceIds,
         date,
         startTime: slot.start,
         notes: notes.trim() || undefined,
@@ -185,14 +197,25 @@ export function BookServiceScreen(props: {
         <p className="booking-eyebrow">
           {step === 'service' ? 'Book a service' : step === 'time' ? 'Choose a time' : 'Review & confirm'}
         </p>
-        {step === 'time' && service ? (
+        {step === 'time' && selectedServices.length > 0 ? (
           <div className="book-service-identity">
-            <h1 className="book-service-name">{service.name}</h1>
+            <h1 className="book-service-name">
+              {selectedServices.length === 1 ? selectedServices[0].name : `${selectedServices.length} services`}
+            </h1>
             <p className="book-service-meta">
               <span>{b.name}</span>
-              <Money minor={service.priceMinor} currency={service.currency} />
-              {service.durationMinutes ? <span>{service.durationMinutes} min</span> : null}
+              <Money minor={combinedPrice} currency={selectedServices[0].currency} />
+              {combinedDuration ? <span>{combinedDuration} min total</span> : null}
             </p>
+            {selectedServices.length > 1 ? (
+              <ul className="book-service-list">
+                {selectedServices.map((s) => (
+                  <li key={s.id}>
+                    {s.name} · <Money minor={s.priceMinor} currency={s.currency} /> · {s.durationMinutes} min
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
         ) : (
           <>
@@ -236,31 +259,46 @@ export function BookServiceScreen(props: {
         </ol>
       ) : null}
 
-      {/* Step 1 — service selection */}
+      {/* Step 1 — service selection (multi-select, up to 10) */}
       {step === 'service' ? (
-        <section className="book-section" aria-label="Choose a service">
-          <h2 className="book-section-title">Which service?</h2>
+        <section className="book-section" aria-label="Choose services">
+          <h2 className="book-section-title">Which services?</h2>
+          <p className="book-section-hint">Select up to 10. Durations and prices combine.</p>
           <div className="svc-option-list">
             {(business.data?.services ?? []).map((s) => (
               <ServiceOption
                 key={s.id}
                 service={s}
-                selected={s.id === serviceId}
+                selected={serviceIds.includes(s.id)}
                 onSelect={() => {
                   if (!isBookable(s)) return;
-                  setServiceId(s.id);
-                  setSlot(null);
-                  setStep('time');
+                  toggleService(s.id);
                 }}
               />
             ))}
           </div>
+          {selectedServices.length > 0 ? (
+            <div className="book-selection-summary">
+              <p>
+                {selectedServices.length} selected · {combinedDuration} min total ·{' '}
+                <Money minor={combinedPrice} currency={selectedServices[0].currency} />
+              </p>
+              <Button
+                onClick={() => {
+                  setSlot(null);
+                  setStep('time');
+                }}
+              >
+                Continue
+              </Button>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
       {/* Step 2 — date + slots grouped by daypart (backend stays authoritative:
           only the presentation of its slots is grouped). */}
-      {step === 'time' && service ? (
+      {step === 'time' && selectedServices.length > 0 ? (
         <>
           <section className="book-section" aria-label="Choose a date">
             <h2 className="book-section-title">Pick a date</h2>
@@ -352,13 +390,23 @@ export function BookServiceScreen(props: {
 
       {/* Step 3 — booking ticket: identity stub, perforation, line items,
           total. endAt comes from the slot the server returned. */}
-      {step === 'summary' && service && slot && b ? (
+      {step === 'summary' && selectedServices.length > 0 && slot && b ? (
         <section className="book-section" aria-label="Booking summary">
           <h2 className="book-section-title">Review your booking</h2>
           <div className="ticket" role="group" aria-label="Booking ticket">
             <div className="ticket-stub">
               <p className="ticket-biz">{b.name}</p>
-              <p className="ticket-service">{service.name}</p>
+              {selectedServices.length === 1 ? (
+                <p className="ticket-service">{selectedServices[0].name}</p>
+              ) : (
+                <ul className="ticket-service-list">
+                  {selectedServices.map((s) => (
+                    <li key={s.id}>
+                      {s.name} · {s.durationMinutes} min
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             <div className="ticket-perforation" aria-hidden />
             <dl className="ticket-rows">
@@ -374,7 +422,7 @@ export function BookServiceScreen(props: {
               </div>
               <div>
                 <dt>Duration</dt>
-                <dd>{service.durationMinutes} minutes</dd>
+                <dd>{combinedDuration} minutes total</dd>
               </div>
               {place ? (
                 <div>
@@ -386,7 +434,7 @@ export function BookServiceScreen(props: {
             <div className="ticket-perforation" aria-hidden />
             <div className="ticket-total">
               <span>Total</span>
-              <Money minor={service.priceMinor} currency={service.currency} />
+              <Money minor={combinedPrice} currency={selectedServices[0].currency} />
             </div>
           </div>
 

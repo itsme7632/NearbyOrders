@@ -240,10 +240,29 @@ export function BookingDetailScreen(props: { bookingId: string; onBack: () => vo
             <dt>Business</dt>
             <dd>{data.businessName}</dd>
           </div>
-          {data.serviceName ? (
+          {data.serviceItems && data.serviceItems.length > 0 ? (
+            <div>
+              <dt>Services</dt>
+              <dd>
+                <ul className="booking-service-items">
+                  {data.serviceItems.map((item) => (
+                    <li key={item.id}>
+                      {item.name} · {item.durationMinutes} min
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            </div>
+          ) : data.serviceName ? (
             <div>
               <dt>Service</dt>
               <dd>{data.serviceName}</dd>
+            </div>
+          ) : null}
+          {data.totalDurationMinutes ? (
+            <div>
+              <dt>Total duration</dt>
+              <dd>{data.totalDurationMinutes} minutes</dd>
             </div>
           ) : null}
           <div>

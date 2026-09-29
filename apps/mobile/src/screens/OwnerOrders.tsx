@@ -3,19 +3,21 @@ import { collectOrderCash, listBusinessOrders, listOrderPayments, setOrderStatus
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, Loading, Money } from '../components/ui.js';
 import { AlertIcon, OrdersIcon } from '../components/icons.js';
+import { AssignRiderModal } from './AssignRiderModal.js';
 
-const ORDER_TRANSITIONS: Partial<Record<OrderStatus, { status: OrderStatus; label: string; variant: 'primary' | 'secondary' | 'danger' }[]>> = {
-  PENDING: [
-    { status: 'ACCEPTED', label: 'Accept', variant: 'primary' },
-    { status: 'REJECTED', label: 'Reject', variant: 'danger' },
-  ],
-  ACCEPTED: [
-    { status: 'PREPARING', label: 'Start preparing', variant: 'primary' },
-    { status: 'READY', label: 'Mark ready', variant: 'secondary' },
-  ],
-  PREPARING: [{ status: 'READY', label: 'Mark ready', variant: 'primary' }],
-  READY: [{ status: 'COMPLETED', label: 'Complete', variant: 'primary' }],
-};
+/** Board columns: which statuses belong where. */
+const BOARD_COLUMNS = [
+  { key: 'NEW', title: 'New', statuses: ['PENDING', 'ACCEPTED'] as OrderStatus[] },
+  { key: 'PREPARING', title: 'Preparing', statuses: ['PREPARING'] as OrderStatus[] },
+  { key: 'READY', title: 'Ready', statuses: ['READY'] as OrderStatus[] },
+  { key: 'OUT_FOR_DELIVERY', title: 'Out for delivery', statuses: ['OUT_FOR_DELIVERY'] as OrderStatus[] },
+  { key: 'COMPLETED', title: 'Completed', statuses: ['DELIVERED', 'COMPLETED', 'REJECTED', 'CANCELLED'] as OrderStatus[] },
+] as const;
+
+type ColumnKey = (typeof BOARD_COLUMNS)[number]['key'];
+
+const columnFor = (status: OrderStatus): ColumnKey =>
+  BOARD_COLUMNS.find((c) => (c.statuses as readonly OrderStatus[]).includes(status))?.key ?? 'COMPLETED';
 
 const STATUS_LABEL: Record<OrderStatus, string> = {
   PENDING: 'Pending',
@@ -23,6 +25,8 @@ const STATUS_LABEL: Record<OrderStatus, string> = {
   REJECTED: 'Rejected',
   PREPARING: 'Preparing',
   READY: 'Ready',
+  OUT_FOR_DELIVERY: 'Out for delivery',
+  DELIVERED: 'Delivered',
   COMPLETED: 'Completed',
   CANCELLED: 'Cancelled',
 };
@@ -33,6 +37,8 @@ const STATUS_CLASS: Record<OrderStatus, string> = {
   REJECTED: 'status-cancelled',
   PREPARING: 'status-preparing',
   READY: 'status-ready',
+  OUT_FOR_DELIVERY: 'status-preparing',
+  DELIVERED: 'status-completed',
   COMPLETED: 'status-completed',
   CANCELLED: 'status-cancelled',
 };
@@ -44,13 +50,48 @@ const itemCount = (o: Order) => o.items.reduce((sum, i) => sum + i.quantity, 0);
 
 const customerName = (o: Order) => [o.customer?.firstName, o.customer?.lastName].filter(Boolean).join(' ') || 'Customer';
 
+const isDelivery = (o: Order) => o.fulfillmentType === 'DELIVERY';
+
 const formatWhen = (iso: string) =>
   new Date(iso).toLocaleString('en-PK', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 
+type NextAction =
+  | { kind: 'status'; status: OrderStatus; label: string; variant: 'primary' | 'secondary' | 'danger' }
+  | { kind: 'assign-rider'; label: string };
+
+/** The single next action for an order on the board. Exported for tests. */
+export function nextAction(o: Order): NextAction | null {
+  switch (o.status) {
+    case 'PENDING':
+      return { kind: 'status', status: 'ACCEPTED', label: 'Accept', variant: 'primary' };
+    case 'ACCEPTED':
+      return { kind: 'status', status: 'PREPARING', label: 'Start preparing', variant: 'primary' };
+    case 'PREPARING':
+      return { kind: 'status', status: 'READY', label: 'Mark ready', variant: 'primary' };
+    case 'READY':
+      if (isDelivery(o)) {
+        return o.assignedRider
+          ? { kind: 'status', status: 'OUT_FOR_DELIVERY', label: 'Out for delivery', variant: 'primary' }
+          : { kind: 'assign-rider', label: 'Assign rider' };
+      }
+      return { kind: 'status', status: 'COMPLETED', label: 'Complete', variant: 'primary' };
+    case 'OUT_FOR_DELIVERY':
+      return { kind: 'status', status: 'DELIVERED', label: 'Mark delivered', variant: 'primary' };
+    default:
+      return null;
+  }
+}
+
+/** Which board column an order status belongs to. Exported for tests. */
+export function boardColumn(status: OrderStatus): ColumnKey {
+  return columnFor(status);
+}
+
 /**
- * Owner order management for one business. When `orders` is provided (the
- * Business-mode tab already fetched the scoped list) it is used directly;
- * otherwise the component fetches and filters itself (management screens).
+ * Owner operations board for one business: Kanban-style columns grouped
+ * client-side from the existing owner orders response. When `orders` is
+ * provided (the Business-mode tab already fetched the scoped list) it is used
+ * directly; otherwise the component fetches itself (management screens).
  */
 export function OwnerOrders(props: { businessId: string; orders?: Order[] }) {
   // Management screens fetch the caller-scoped business listing (server-side
@@ -63,6 +104,7 @@ export function OwnerOrders(props: { businessId: string; orders?: Order[] }) {
   const orders = props.orders ? { data: props.orders, loading: false, error: null, reload: selfFetched.reload } : selfFetched;
   const list = (orders.data ?? []).filter((o) => o.business.id === props.businessId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [assignOrderId, setAssignOrderId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,8 +117,10 @@ export function OwnerOrders(props: { businessId: string; orders?: Order[] }) {
     } catch (e) {
       // Someone else (or the other side) changed it first — surface and refresh.
       setError(
-        e instanceof ApiError && e.code === 'INVALID_TRANSITION'
-          ? 'That action is no longer available: the order status already changed.'
+        e instanceof ApiError && (e.code === 'INVALID_TRANSITION' || e.code === 'RIDER_REQUIRED')
+          ? e.code === 'RIDER_REQUIRED'
+            ? 'Assign an active rider before marking the order out for delivery.'
+            : 'That action is no longer available: the order status already changed.'
           : e instanceof Error
             ? e.message
             : 'Could not update the order',
@@ -93,6 +137,18 @@ export function OwnerOrders(props: { businessId: string; orders?: Order[] }) {
   // Scoped to the one business being managed. (Owner detail isolation is
   // enforced server-side.)
   const mine = list;
+  const assignOrder = assignOrderId ? mine.find((x) => x.id === assignOrderId) ?? null : null;
+  const assignModal = assignOrder ? (
+    <AssignRiderModal
+      businessId={props.businessId}
+      order={assignOrder}
+      onClose={() => setAssignOrderId(null)}
+      onAssigned={() => {
+        setAssignOrderId(null);
+        orders.reload();
+      }}
+    />
+  ) : null;
 
   if (selectedId) {
     const o = mine.find((x) => x.id === selectedId);
@@ -109,7 +165,7 @@ export function OwnerOrders(props: { businessId: string; orders?: Order[] }) {
         </section>
       );
     }
-    const actions = ORDER_TRANSITIONS[o.status] ?? [];
+    const action = nextAction(o);
     return (
       <section className="card" aria-label="Order detail">
         <button className="back-link" onClick={() => setSelectedId(null)}>
@@ -121,8 +177,14 @@ export function OwnerOrders(props: { businessId: string; orders?: Order[] }) {
           <span className={`badge ${STATUS_CLASS[o.status]}`}>{STATUS_LABEL[o.status]}</span>
         </div>
         <p className="order-meta">
-          {customerName(o)} · {formatWhen(o.createdAt)}
+          {customerName(o)} · {formatWhen(o.createdAt)} · {isDelivery(o) ? 'Delivery' : 'Pickup'}
         </p>
+        {isDelivery(o) && o.deliveryAddressText ? (
+          <p className="order-meta">Deliver to: {o.deliveryAddressText}</p>
+        ) : null}
+        {o.assignedRider ? (
+          <p className="order-meta">Rider: {o.assignedRider.name}</p>
+        ) : null}
         <ul className="item-list">
           {o.items.map((i) => (
             <li key={i.id}>
@@ -141,91 +203,132 @@ export function OwnerOrders(props: { businessId: string; orders?: Order[] }) {
             <span>Subtotal</span>
             <Money minor={o.subtotalMinor} currency={o.currency} />
           </div>
-          {o.fulfillmentType === 'DELIVERY' ? (
+          {isDelivery(o) ? (
             <div className="cart-line">
               <span>Delivery fee</span>
               <Money minor={o.deliveryFeeMinor ?? 0} currency={o.currency} />
             </div>
           ) : null}
           <div className="cart-line">
-            <span>{o.fulfillmentType === 'DELIVERY' ? 'Delivery' : 'Pickup'} · total</span>
+            <span>{isDelivery(o) ? 'Delivery' : 'Pickup'} · total</span>
             <Money minor={o.totalMinor ?? o.subtotalMinor} currency={o.currency} />
           </div>
         </div>
 
         <OrderPaymentBlock orderId={o.id} onChanged={orders.reload} />
 
-        {actions.length ? (
+        {action ? (
           <div className="btn-row">
-            {actions.map((a) => (
-              <Button key={a.status} sm variant={a.variant} disabled={busyId === o.id} onClick={() => void act(o, a.status)}>
-                {busyId === o.id ? 'Working…' : a.label}
+            {action.kind === 'assign-rider' ? (
+              <Button sm variant="primary" disabled={busyId === o.id} onClick={() => setAssignOrderId(o.id)}>
+                {action.label}
               </Button>
-            ))}
+            ) : (
+              <Button sm variant={action.variant} disabled={busyId === o.id} onClick={() => void act(o, action.status)}>
+                {busyId === o.id ? 'Working…' : action.label}
+              </Button>
+            )}
+            {o.status === 'PENDING' ? (
+              <Button sm variant="danger" disabled={busyId === o.id} onClick={() => void act(o, 'REJECTED')}>
+                Reject
+              </Button>
+            ) : null}
           </div>
         ) : (
           <p className="hint">No further actions: this order is {STATUS_LABEL[o.status].toLowerCase()}.</p>
         )}
+        {assignModal}
       </section>
     );
   }
 
   return (
-    <section className="card">
-      <h2>Incoming orders</h2>
+    <section aria-label="Operations board">
+      <div className="owner-head">
+        <h2>Operations board</h2>
+      </div>
       {error ? <ErrorState message={error} /> : null}
       {!mine.length ? (
-        <EmptyState
-          icon={<OrdersIcon size={28} />}
-          title="No customer orders yet"
-          body="Orders placed with your business will appear here."
-        />
+        <div className="card">
+          <EmptyState
+            icon={<OrdersIcon size={28} />}
+            title="No customer orders yet"
+            body="Orders placed with your business will appear here."
+          />
+        </div>
       ) : (
-        <ul className="order-list">
-          {mine.map((o) => {
-            const actions = ORDER_TRANSITIONS[o.status] ?? [];
+        <div className="ops-board">
+          {BOARD_COLUMNS.map((col) => {
+            const cards = mine
+              .filter((o) => (col.statuses as readonly OrderStatus[]).includes(o.status))
+              .sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
             return (
-              <li key={o.id}>
-                <div className="order-card order-card-static">
-                  <button
-                    type="button"
-                    className="order-card-open"
-                    onClick={() => setSelectedId(o.id)}
-                    aria-label={`Open order ${orderNo(o)}`}
-                  >
-                    <div className="order-card-top">
-                      <span className="order-no">{orderNo(o)}</span>
-                      <span className={`badge ${STATUS_CLASS[o.status]}`}>{STATUS_LABEL[o.status]}</span>
-                    </div>
-                    <div className="item-row">
-                      <span className="item-name">{customerName(o)}</span>
-                      <Money minor={o.subtotalMinor} currency={o.currency} />
-                    </div>
-                    <p className="order-meta">
-                      {formatWhen(o.createdAt)} · {itemCount(o)} item{itemCount(o) === 1 ? '' : 's'}
-                    </p>
-                  </button>
-                  {actions.length ? (
-                    <div className="btn-row">
-                      {actions.map((a) => (
-                        <Button
-                          key={a.status}
-                          sm
-                          variant={a.variant}
-                          disabled={busyId === o.id}
-                          onClick={() => void act(o, a.status)}
-                        >
-                          {busyId === o.id ? 'Working…' : a.label}
-                        </Button>
-                      ))}
-                    </div>
-                  ) : null}
+              <div key={col.key} className="ops-column" aria-label={col.title}>
+                <div className="ops-column-head">
+                  <h3>{col.title}</h3>
+                  <span className="ops-count">{cards.length}</span>
                 </div>
-              </li>
+                <ul className="ops-cards">
+                  {cards.map((o) => {
+                    const action = nextAction(o);
+                    return (
+                      <li key={o.id} className="ops-card">
+                        <button
+                          type="button"
+                          className="order-card-open"
+                          onClick={() => setSelectedId(o.id)}
+                          aria-label={`Open order ${orderNo(o)}`}
+                        >
+                          <div className="order-card-top">
+                            <span className="order-no">{orderNo(o)}</span>
+                            <span className={`badge ${STATUS_CLASS[o.status]}`}>{STATUS_LABEL[o.status]}</span>
+                          </div>
+                          <div className="item-row">
+                            <span className="item-name">{customerName(o)}</span>
+                            <Money minor={o.totalMinor ?? o.subtotalMinor} currency={o.currency} />
+                          </div>
+                          <p className="order-meta">
+                            <span className={`badge ${isDelivery(o) ? 'badge-warn' : 'badge-open'}`}>
+                              {isDelivery(o) ? 'Delivery' : 'Pickup'}
+                            </span>{' '}
+                            {formatWhen(o.createdAt)} · {itemCount(o)} item{itemCount(o) === 1 ? '' : 's'}
+                          </p>
+                          {isDelivery(o) && o.deliveryAddressText ? (
+                            <p className="order-meta ops-address">{o.deliveryAddressText}</p>
+                          ) : null}
+                          {o.assignedRider ? (
+                            <p className="order-meta">Rider: {o.assignedRider.name}</p>
+                          ) : null}
+                        </button>
+                        {action ? (
+                          <div className="btn-row">
+                            {action.kind === 'assign-rider' ? (
+                              <Button sm variant="primary" disabled={busyId === o.id} onClick={() => setAssignOrderId(o.id)}>
+                                {action.label}
+                              </Button>
+                            ) : (
+                              <Button
+                                sm
+                                variant={action.variant}
+                                disabled={busyId === o.id}
+                                onClick={() => void act(o, action.status)}
+                              >
+                                {busyId === o.id ? 'Working…' : action.label}
+                              </Button>
+                            )}
+                          </div>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+                {!cards.length ? <p className="hint ops-empty">Nothing here.</p> : null}
+              </div>
             );
           })}
-        </ul>
+        </div>
       )}
+      {assignModal}
     </section>
   );
 }

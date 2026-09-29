@@ -44,6 +44,10 @@ export function orderLabel(status: OrderStatus): { text: string; cls: string } {
       return { text: 'Preparing', cls: 'status-preparing' };
     case 'READY':
       return { text: 'Ready', cls: 'status-ready' };
+    case 'OUT_FOR_DELIVERY':
+      return { text: 'Out for delivery', cls: 'status-ready' };
+    case 'DELIVERED':
+      return { text: 'Delivered', cls: 'status-completed' };
     case 'COMPLETED':
       return { text: 'Completed', cls: 'status-completed' };
     case 'CANCELLED':
@@ -187,7 +191,7 @@ function OrderStatusCard(props: { order: Order; onOpen: () => void }) {
         </span>
       </span>
       <span className="oc-track">
-        <OrderTrack status={o.status} />
+        <OrderTrack status={o.status} fulfillmentType={o.fulfillmentType} />
         <span className={`badge ${label.cls}`}>{label.text}</span>
       </span>
       <span className="oc-bottom">
@@ -200,7 +204,7 @@ function OrderStatusCard(props: { order: Order; onOpen: () => void }) {
   );
 }
 
-const TRACK_STEPS: { key: OrderStatus; label: string }[] = [
+const PICKUP_TRACK_STEPS: { key: OrderStatus; label: string }[] = [
   { key: 'PENDING', label: 'Placed' },
   { key: 'ACCEPTED', label: 'Accepted' },
   { key: 'PREPARING', label: 'Preparing' },
@@ -208,23 +212,34 @@ const TRACK_STEPS: { key: OrderStatus; label: string }[] = [
   { key: 'COMPLETED', label: 'Completed' },
 ];
 
+const DELIVERY_TRACK_STEPS: { key: OrderStatus; label: string }[] = [
+  { key: 'PENDING', label: 'Placed' },
+  { key: 'ACCEPTED', label: 'Accepted' },
+  { key: 'PREPARING', label: 'Preparing' },
+  { key: 'READY', label: 'Ready' },
+  { key: 'OUT_FOR_DELIVERY', label: 'Out for delivery' },
+  { key: 'DELIVERED', label: 'Delivered' },
+];
+
 /**
  * Status progression for order cards and detail. Terminal negative states
  * (cancelled/rejected) show a simple declined mark instead of a fake
  * progression — never invents a step that did not happen.
+ * Delivery orders use the 6-step delivery timeline; pickup uses 5 steps.
  */
-export function OrderTrack(props: { status: OrderStatus; compact?: boolean }) {
+export function OrderTrack(props: { status: OrderStatus; fulfillmentType?: string; compact?: boolean }) {
   if (props.status === 'CANCELLED' || props.status === 'REJECTED') {
     return <span className={`track track-halted${props.compact ? ' track-compact' : ''}`} aria-label="Order cancelled" />;
   }
-  const currentIdx = TRACK_STEPS.findIndex((s) => s.key === props.status);
+  const steps = props.fulfillmentType === 'DELIVERY' ? DELIVERY_TRACK_STEPS : PICKUP_TRACK_STEPS;
+  const currentIdx = steps.findIndex((s) => s.key === props.status);
   return (
     <span
       className={`track${props.compact ? ' track-compact' : ''}`}
       role="img"
-      aria-label={`Order progress: ${TRACK_STEPS[Math.max(currentIdx, 0)].label}`}
+      aria-label={`Order progress: ${steps[Math.max(currentIdx, 0)].label}`}
     >
-      {TRACK_STEPS.map((s, i) => (
+      {steps.map((s, i) => (
         <span
           key={s.key}
           className={`track-dot${i <= currentIdx ? ' track-done' : ''}${i === currentIdx ? ' track-now' : ''}`}
@@ -258,7 +273,7 @@ export function OrderDetailScreen(props: { orderId: string; onBack: () => void }
       {/* Status hero: the state first, the identity right under it. */}
       <section className="order-status-hero" aria-label="Order status">
         <span className={`badge ${label.cls}`}>{label.text}</span>
-        <OrderTrack status={o.status} />
+        <OrderTrack status={o.status} fulfillmentType={o.fulfillmentType} />
       </section>
       <header className="owner-head">
         <h1>Order {orderNumber(o)}</h1>
@@ -303,6 +318,24 @@ export function OrderDetailScreen(props: { orderId: string; onBack: () => void }
         <section className="detail-section" aria-label="Delivery address">
           <h2 className="detail-section-title">Deliver to</h2>
           <p className="order-addr">{o.deliveryAddressText}</p>
+        </section>
+      ) : null}
+      {o.fulfillmentType === 'DELIVERY' && o.assignedRider ? (
+        <section className="detail-section" aria-label="Delivery rider">
+          <h2 className="detail-section-title">Your rider</h2>
+          <div className="rider-card">
+            {o.assignedRider.photoUrl ? (
+              <img className="rider-photo" src={resolveImageUrl(o.assignedRider.photoUrl) ?? undefined} alt="" loading="lazy" />
+            ) : null}
+            <div className="rider-info">
+              <p className="rider-name">{o.assignedRider.name}</p>
+              {o.assignedRider.phone ? (
+                <a className="rider-call" href={`tel:${o.assignedRider.phone.replace(/[^+\d]/g, '')}`}>
+                  Call rider
+                </a>
+              ) : null}
+            </div>
+          </div>
         </section>
       ) : null}
       <p className="hint">

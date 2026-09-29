@@ -300,6 +300,8 @@ const ACTIVITY_STATUS_LABEL: Record<OrderStatus, string> = {
   REJECTED: 'Rejected',
   PREPARING: 'Preparing',
   READY: 'Ready',
+  OUT_FOR_DELIVERY: 'Out for delivery',
+  DELIVERED: 'Delivered',
   COMPLETED: 'Completed',
   CANCELLED: 'Cancelled',
 };

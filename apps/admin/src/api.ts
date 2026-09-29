@@ -201,8 +201,15 @@ export type AdminOrder = {
   id: string;
   status: string;
   subtotalMinor: number;
+  deliveryFeeMinor: number;
   totalMinor: number;
   currency: string;
+  fulfillmentType: string;
+  deliveryAddressText: string | null;
+  // Rider visibility is intentionally limited in admin responses: name only,
+  // never phone (privacy). null when no rider is assigned.
+  assignedRider: { id: string; name: string; photoUrl: string | null } | null;
+  riderAssignedAt: string | null;
   createdAt: string;
   business: { id: string; name: string };
   customer: { id: string; email: string; firstName: string | null; lastName: string | null };
@@ -218,10 +225,15 @@ export type AdminBooking = {
   startAt: string;
   amountDueMinor: number | null;
   amountPaidMinor: number;
+  servicePriceMinor: number;
+  totalDurationMinutes: number | null;
   currency: string;
   createdAt: string;
   business: { id: string; name: string };
   service: { id: string; name: string } | null;
+  // Multi-service items (per-service snapshots). Legacy bookings fall back
+  // to the `service` field when items are absent.
+  serviceItems: { id: string; serviceId: string | null; name: string; priceMinor: number; durationMinutes: number }[];
   customer: { id: string; email: string; firstName: string | null; lastName: string | null };
 };
 

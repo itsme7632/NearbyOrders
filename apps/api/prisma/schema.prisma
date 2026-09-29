@@ -35,6 +35,8 @@ enum OrderStatus {
   REJECTED
   PREPARING
   READY
+  OUT_FOR_DELIVERY
+  DELIVERED
   COMPLETED
   CANCELLED
 }
@@ -201,6 +203,7 @@ model Business {
   products                Product[]
   bookings                Booking[]
   orders                  Order[]
+  riders                  Rider[]
   reviews                 Review[]
   subscriptions           BusinessSubscription[]
   paymentRequests         SubscriptionPaymentRequest[]
@@ -283,6 +286,7 @@ model Service {
   updatedAt          DateTime           @updatedAt
   business           Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
   bookings           Booking[]
+  serviceItems       BookingServiceItem[]
 
   @@index([businessId, isActive])
 }
@@ -321,6 +325,9 @@ model Booking {
   servicePriceMinor    Int              @default(0)
   advanceRequiredMinor Int              @default(0)
   amountPaidMinor      Int              @default(0)
+  // Combined duration of all booked services (multi-service bookings).
+  // For legacy single-service bookings this equals the service duration.
+  totalDurationMinutes Int?
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
   // Set (once) when the booking reaches COMPLETED; null otherwise. Owner
@@ -329,6 +336,7 @@ model Booking {
   customer             User             @relation(fields: [customerId], references: [id])
   business             Business         @relation(fields: [businessId], references: [id])
   service              Service?         @relation(fields: [serviceId], references: [id])
+  serviceItems         BookingServiceItem[]
   payments             BookingPayment[]
   review               Review?
 
@@ -336,6 +344,25 @@ model Booking {
   @@index([customerId, status])
   @@index([businessId, bookingDate])
   @@index([businessId, completedAt])
+}
+
+/// One service within a (possibly multi-service) booking. Snapshots the
+/// service name, price and duration at booking time — later service edits
+/// never rewrite history. The optional service link is SetNull on service
+/// deletion; the snapshot columns remain authoritative.
+model BookingServiceItem {
+  id              String   @id @default(uuid())
+  bookingId       String
+  serviceId       String?
+  name            String
+  priceMinor      Int
+  durationMinutes Int
+  createdAt       DateTime @default(now())
+
+  booking Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  service Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  @@index([bookingId])
 }
 
 model Order {
@@ -363,9 +390,14 @@ model Order {
   // (Phase 17). Stored per-order — later address edits/corrections on the
   // customer's address book never rewrite history on placed orders.
   deliveryAddressText String?
+  // Rider assignment (delivery orders). SetNull on rider delete preserves
+  // historical orders; the assignment timestamp records when it happened.
+  assignedRiderId String?
+  riderAssignedAt DateTime?
   customer            User                   @relation(fields: [customerId], references: [id])
   business            Business               @relation(fields: [businessId], references: [id])
   paymentMethod       BusinessPaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  assignedRider       Rider?                 @relation("RiderAssignments", fields: [assignedRiderId], references: [id], onDelete: SetNull)
   items               OrderItem[]
   payments            OrderPayment[]
   review              Review?
@@ -386,6 +418,25 @@ model OrderItem {
   product        Product @relation(fields: [productId], references: [id])
 
   @@index([orderId])
+}
+
+/// A delivery rider belonging to a business (owner-managed, no login).
+/// Designed so rows can later map cleanly to a future Rider App identity.
+model Rider {
+  id         String   @id @default(uuid())
+  businessId String
+  name       String
+  phone      String
+  photoUrl   String?
+  note       String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  assignments Order[]  @relation("RiderAssignments")
+
+  @@index([businessId, isActive])
 }
 
 /// In-app notification. One row per (userId, type, entityId) event; a unique

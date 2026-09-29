@@ -55,6 +55,9 @@ import {
   nearbyBusinessesQuerySchema,
   serviceSchema,
   serviceUpdateSchema,
+  riderCreateSchema,
+  riderUpdateSchema,
+  riderAssignSchema,
   productSchema,
   productUpdateSchema,
   businessHoursSchema,
@@ -3116,6 +3119,143 @@ export async function buildApp(): Promise<FastifyInstance> {
     return { data: products };
   });
 
+  /* ------------------------------ Riders ------------------------------ */
+  /** Rider DTO for the owning business — full fields; riders have no login so
+   *  the owner is the only audience. Never used in customer/public contexts. */
+  const publicRider = (rd: {
+    id: string;
+    businessId: string;
+    name: string;
+    phone: string;
+    photoUrl: string | null;
+    note: string | null;
+    isActive: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+  }) => ({
+    id: rd.id,
+    businessId: rd.businessId,
+    name: rd.name,
+    phone: rd.phone,
+    photoUrl: rd.photoUrl,
+    note: rd.note,
+    isActive: rd.isActive,
+    createdAt: rd.createdAt,
+    updatedAt: rd.updatedAt,
+  });
+
+  app.get('/api/v1/owner/businesses/:id/riders', { preHandler: roles('BUSINESS_OWNER') }, async (q) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    const riders = await prisma.rider.findMany({
+      where: { businessId: id },
+      orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+    });
+    return { data: riders.map(publicRider) };
+  });
+
+  app.post('/api/v1/owner/businesses/:id/riders', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const id = (q.params as { id: string }).id;
+    await ownedBusiness(q, id);
+    const d = riderCreateSchema.parse(q.body);
+    const rider = await prisma.rider.create({
+      data: {
+        businessId: id,
+        name: d.name,
+        phone: d.phone,
+        photoUrl: d.photoUrl ?? null,
+        note: d.note ?? null,
+        isActive: d.isActive ?? true,
+      },
+    });
+    return r.status(201).send({ data: publicRider(rider) });
+  });
+
+  app.patch('/api/v1/owner/businesses/:id/riders/:riderId', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const { id, riderId } = q.params as { id: string; riderId: string };
+    await ownedBusiness(q, id);
+    const d = riderUpdateSchema.parse(q.body);
+    const existing = await prisma.rider.findFirst({ where: { id: riderId, businessId: id } });
+    if (!existing) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Rider not found' } });
+    const rider = await prisma.rider.update({
+      where: { id: riderId },
+      data: {
+        ...(d.name !== undefined ? { name: d.name } : {}),
+        ...(d.phone !== undefined ? { phone: d.phone } : {}),
+        ...(d.photoUrl !== undefined ? { photoUrl: d.photoUrl } : {}),
+        ...(d.note !== undefined ? { note: d.note } : {}),
+        ...(d.isActive !== undefined ? { isActive: d.isActive } : {}),
+      },
+    });
+    return { data: publicRider(rider) };
+  });
+
+  /**
+   * Assign (or reassign) a rider to a delivery order. Owner only; the order
+   * must belong to the caller's business, be a DELIVERY order in READY state,
+   * and the rider must be active and belong to the same business.
+   * Assigning the already-assigned rider is idempotent (no-op, no duplicate
+   * notification). The customer gets a RIDER_ASSIGNED notification — the
+   * message never contains the rider's phone number.
+   */
+  app.post('/api/v1/orders/:id/assign-rider', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
+    const d = riderAssignSchema.parse(q.body);
+    const u = currentUser(q);
+    const orderId = (q.params as { id: string }).id;
+    const o = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        business: { select: { id: true, name: true, ownerId: true } },
+        assignedRider: { select: { id: true, name: true } },
+      },
+    });
+    if (!o || o.business.ownerId !== u.id)
+      return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Order not found' } });
+    if (o.fulfillmentType !== 'DELIVERY')
+      return r.status(409).send({ error: { code: 'INVALID_ORDER_TYPE', message: 'Only delivery orders can have a rider assigned' } });
+    if (o.status !== 'READY')
+      return r.status(409).send({ error: { code: 'INVALID_STATUS', message: 'Rider can only be assigned to an order in READY state' } });
+    const rider = await prisma.rider.findFirst({ where: { id: d.riderId, businessId: o.businessId } });
+    if (!rider)
+      return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Rider not found' } });
+    if (!rider.isActive)
+      return r.status(409).send({ error: { code: 'RIDER_INACTIVE', message: 'Cannot assign an inactive rider' } });
+    // Idempotent: same rider already assigned → return the order unchanged.
+    if (o.assignedRiderId === rider.id) {
+      const fresh = await prisma.order.findUnique({ where: { id: o.id }, include: ORDER_INCLUDE });
+      return { data: publicOrder(fresh!, { includeRiderPhone: true }) };
+    }
+    const now = new Date();
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id: o.id },
+        data: { assignedRiderId: rider.id, riderAssignedAt: now },
+      });
+      await createNotifications(prisma, [
+        {
+          userId: o.customerId,
+          type: NOTIFICATION_TYPES.RIDER_ASSIGNED,
+          title: 'Rider assigned',
+          message: `${rider.name} will deliver your order from ${o.business.name}.`,
+          entityType: 'Order',
+          entityId: o.id,
+        },
+      ], tx);
+    });
+    void dispatchPushNotifications([
+      {
+        userId: o.customerId,
+        type: NOTIFICATION_TYPES.RIDER_ASSIGNED,
+        title: 'Rider assigned',
+        message: `${rider.name} will deliver your order from ${o.business.name}.`,
+        entityType: 'Order',
+        entityId: o.id,
+      },
+    ]).catch(() => undefined);
+    const fresh = await prisma.order.findUnique({ where: { id: o.id }, include: ORDER_INCLUDE });
+    return { data: publicOrder(fresh!, { includeRiderPhone: true }) };
+  });
+
   /** Payment DTO: owner/customer-safe fields, no internal reviewer columns. */
   const publicCustomerPayment = (p: {
     id: string;
@@ -3254,7 +3394,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
-    return { data: rows.map(publicOrder) };
+    return { data: rows.map((o) => publicOrder(o, { includeRiderPhone: true })) };
   });
 
   /* ------------- Owner operations & analytics (Phase 16) ------------- */
@@ -3391,7 +3531,7 @@ export async function buildApp(): Promise<FastifyInstance> {
           startTime: formatMinutes(pktMinutesOf(b.startAt)),
           status: b.status,
         })),
-        recentOrders: recentOrders.map(publicOrder),
+        recentOrders: recentOrders.map((o) => publicOrder(o)),
         recentBookings: recentBookings.map((b) => publicBooking(b)),
         profileMissing,
       },
@@ -4077,8 +4217,10 @@ export async function buildApp(): Promise<FastifyInstance> {
     servicePriceMinor?: number;
     advanceRequiredMinor?: number;
     amountPaidMinor?: number;
+    totalDurationMinutes?: number | null;
     business: { id: string; name: string; slug: string; ownerId: string; imageUrl?: string | null };
     service: { id: string; name: string; durationMinutes: number | null; priceMinor: number; currency: string } | null | undefined;
+    serviceItems?: { id: string; serviceId: string | null; name: string; priceMinor: number; durationMinutes: number }[];
   }) => ({
     id: booking.id,
     businessId: booking.business.id,
@@ -4089,8 +4231,20 @@ export async function buildApp(): Promise<FastifyInstance> {
     serviceName: booking.service?.name ?? null,
     priceMinor: booking.service?.priceMinor ?? null,
     currency: booking.service?.currency ?? 'PKR',
+    // Multi-service items: per-service snapshots. For legacy single-service
+    // bookings this contains the one backfilled item.
+    serviceItems: (booking.serviceItems ?? []).map((it) => ({
+      id: it.id,
+      serviceId: it.serviceId,
+      name: it.name,
+      priceMinor: it.priceMinor,
+      durationMinutes: it.durationMinutes,
+    })),
+    // Combined duration of all services (null for legacy rows without items).
+    totalDurationMinutes: booking.totalDurationMinutes ?? null,
     // Payment snapshot (Phase 7C) — the booking's own frozen amounts, never
-    // the service's current ones.
+    // the service's current ones. servicePriceMinor is the authoritative
+    // combined price (sum of all service items).
     servicePriceMinor: booking.servicePriceMinor ?? 0,
     advanceRequiredMinor: booking.advanceRequiredMinor ?? 0,
     amountPaidMinor: booking.amountPaidMinor ?? 0,
@@ -4111,6 +4265,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   const BOOKING_INCLUDE = {
     business: { select: { id: true, name: true, slug: true, ownerId: true, imageUrl: true } },
     service: { select: { id: true, name: true, durationMinutes: true, priceMinor: true, currency: true } },
+    serviceItems: { select: { id: true, serviceId: true, name: true, priceMinor: true, durationMinutes: true } },
   } as const;
 
   /**
@@ -4121,6 +4276,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     business: { select: { id: true, name: true, slug: true, ownerId: true, imageUrl: true } },
     customer: { select: { firstName: true, lastName: true } },
     items: true,
+    assignedRider: { select: { id: true, name: true, phone: true, photoUrl: true } },
   } as const;
 
   app.get('/api/v1/businesses/:businessId/services/:serviceId/availability', async (q, r) => {
@@ -4182,6 +4338,79 @@ export async function buildApp(): Promise<FastifyInstance> {
     };
   });
 
+  /**
+   * Multi-service availability: accepts a comma-separated `serviceIds` query
+   * param, validates every service (same business, active, has duration, no
+   * duplicates), sums their durations, and generates slots for the combined
+   * duration. Reuses the same pure generateSlots + overlap logic as the
+   * single-service endpoint — no separate scheduling model.
+   */
+  app.get('/api/v1/businesses/:businessId/availability', async (q, r) => {
+    const { businessId } = q.params as { businessId: string };
+    const { date } = availabilityQuerySchema.parse(q.query);
+    const rawIds = ((q.query as { serviceIds?: string }).serviceIds ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    const serviceIds = [...new Set(rawIds)];
+    if (serviceIds.length !== rawIds.length)
+      return r.status(400).send({ error: { code: 'DUPLICATE_SERVICES', message: 'Duplicate service IDs are not allowed' } });
+    if (serviceIds.length === 0 || serviceIds.length > 10)
+      return r.status(400).send({ error: { code: 'INVALID_SERVICES', message: 'Provide 1–10 service IDs' } });
+
+    const business = await prisma.business.findFirst({
+      where: { OR: [{ id: businessId }, { slug: businessId }], status: 'APPROVED', archivedAt: null },
+      include: { hours: true },
+    });
+    if (!business) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Business not found' } });
+
+    const services = await prisma.service.findMany({ where: { id: { in: serviceIds }, businessId: business.id } });
+    if (services.length !== serviceIds.length)
+      return r.status(400).send({ error: { code: 'INVALID_SERVICE', message: 'One or more services are invalid' } });
+    if (services.some((s) => !s.isActive || s.durationMinutes === null || s.durationMinutes <= 0))
+      return r.status(400).send({ error: { code: 'INVALID_SERVICE', message: 'One or more services are unavailable' } });
+    const duration = services.reduce((sum, s) => sum + (s.durationMinutes ?? 0), 0);
+
+    const day = pktDayOfWeek(new Date(Date.parse(`${date}T12:00:00Z`)));
+    const todayHours = business.hours.find((h) => h.dayOfWeek === day);
+    if (!todayHours || todayHours.isClosed || !todayHours.opensAt || !todayHours.closesAt) {
+      return {
+        data: { date, serviceDurationMinutes: duration, businessHours: null, closed: true, slots: [] },
+      };
+    }
+
+    const window = pktDayWindowUtc(date);
+    const busy = await prisma.booking.findMany({
+      where: {
+        businessId: business.id,
+        status: { in: [...BLOCKING_BOOKING_STATUSES] },
+        startAt: { lt: window.to },
+        endAt: { gt: window.from },
+      },
+      select: { startAt: true, endAt: true },
+    });
+
+    const slots = generateSlots({ opensAt: todayHours.opensAt, closesAt: todayHours.closesAt }, duration).map((s) => {
+      const start = pktToUtc(date, s.startMinutes);
+      const end = pktToUtc(date, s.endMinutes);
+      const isInPast = start.getTime() <= Date.now();
+      const isTaken = busy.some((b) => overlaps(start, end, b.startAt, b.endAt));
+      return {
+        start: formatMinutes(s.startMinutes),
+        end: formatMinutes(s.endMinutes),
+        available: !isInPast && !isTaken,
+      };
+    });
+
+    return {
+      data: {
+        date,
+        serviceDurationMinutes: duration,
+        serviceIds,
+        businessHours: { open: todayHours.opensAt, close: todayHours.closesAt },
+        closed: false,
+        slots,
+      },
+    };
+  });
+
   app.post('/api/v1/bookings', { preHandler: roles('CUSTOMER', 'BUSINESS_OWNER') }, async (q, r) => {
     const d = bookingCreateSchema.parse(q.body);
 
@@ -4195,10 +4424,44 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (business.ownerId === currentUser(q).id)
       return r.status(400).send({ error: { code: 'SELF_BOOKING', message: 'You cannot book your own business' } });
 
-    const service = await prisma.service.findFirst({ where: { id: d.serviceId, businessId: business.id } });
-    if (!service || !service.isActive || service.durationMinutes === null)
-      return r.status(400).send({ error: { code: 'INVALID_SERVICE', message: 'Service is unavailable' } });
-    const duration = service.durationMinutes;
+    // Resolve the requested services: prefer the multi-service array, fall
+    // back to the legacy single serviceId. Dedupe defensively — duplicates
+    // are rejected, never silently collapsed (the client must not be able to
+    // book the same service twice in one booking).
+    const rawIds = d.serviceIds ?? (d.serviceId ? [d.serviceId] : []);
+    const serviceIds = [...new Set(rawIds)];
+    if (serviceIds.length !== rawIds.length)
+      return r.status(400).send({ error: { code: 'DUPLICATE_SERVICE', message: 'Each service may only be selected once' } });
+    if (serviceIds.length === 0 || serviceIds.length > 10)
+      return r.status(400).send({ error: { code: 'INVALID_SERVICES', message: 'Select 1–10 services' } });
+
+    const services = await prisma.service.findMany({ where: { id: { in: serviceIds }, businessId: business.id } });
+    if (services.length !== serviceIds.length)
+      return r.status(400).send({ error: { code: 'INVALID_SERVICE', message: 'One or more services are invalid' } });
+    // All services must be active with a valid duration — never trust the
+    // client's claimed price or duration.
+    for (const s of services) {
+      if (!s.isActive || s.durationMinutes === null || s.durationMinutes <= 0)
+        return r.status(400).send({ error: { code: 'INVALID_SERVICE', message: `Service "${s.name}" is unavailable` } });
+    }
+    // Keep a stable order (client selection order) for snapshots and display.
+    const ordered = serviceIds.map((id) => services.find((s) => s.id === id)!);
+    // Server-computed totals — the single source of truth. servicePriceMinor
+    // is the authoritative combined price; advance sums per-service advances.
+    const duration = ordered.reduce((sum, s) => sum + (s.durationMinutes ?? 0), 0);
+    const servicePriceMinor = ordered.reduce((sum, s) => sum + s.priceMinor, 0);
+    const advanceRequiredMinor = ordered.reduce(
+      (sum, s) =>
+        sum +
+        serviceAdvanceMinor({
+          advanceType: s.advanceType,
+          advanceAmountMinor: s.advanceAmountMinor,
+          advancePercent: s.advancePercent,
+          priceMinor: s.priceMinor,
+        }),
+      0,
+    );
+    const serviceNames = ordered.map((s) => s.name).join(', ');
 
     const startMinutes = minutesOfDay(d.startTime);
     const endMinutes = startMinutes + duration;
@@ -4220,14 +4483,6 @@ export async function buildApp(): Promise<FastifyInstance> {
     // overlap inside the transaction and insert. Two overlapping requests can
     // never both pass the check because the second waits for the first to commit.
     const customer = currentUser(q);
-    // Payment snapshot (Phase 7C): the agreed amounts are frozen at booking
-    // time. Later service price/advance edits never rewrite existing bookings.
-    const advanceRequiredMinor = serviceAdvanceMinor({
-      advanceType: service.advanceType,
-      advanceAmountMinor: service.advanceAmountMinor,
-      advancePercent: service.advancePercent,
-      priceMinor: service.priceMinor,
-    });
     const booking = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${business.id}))`;
       const conflicting = await tx.booking.findFirst({
@@ -4244,15 +4499,27 @@ export async function buildApp(): Promise<FastifyInstance> {
         data: {
           customerId: customer.id,
           businessId: business.id,
-          serviceId: service.id,
+          // Legacy compat: point at the first service; the items carry the
+          // full multi-service snapshot.
+          serviceId: ordered[0].id,
           bookingDate: new Date(Date.parse(`${d.date}T00:00:00Z`)),
           startAt,
           endAt,
           notes: d.notes,
-          servicePriceMinor: service.priceMinor,
+          servicePriceMinor,
           advanceRequiredMinor,
           amountPaidMinor: 0,
+          totalDurationMinutes: duration,
+          serviceItems: {
+            create: ordered.map((s) => ({
+              serviceId: s.id,
+              name: s.name,
+              priceMinor: s.priceMinor,
+              durationMinutes: s.durationMinutes ?? 0,
+            })),
+          },
         },
+        include: { serviceItems: true, service: true },
       });
       // Owner notification commits atomically with the booking — a rolled-back
       // booking can never leave a phantom notification.
@@ -4261,7 +4528,7 @@ export async function buildApp(): Promise<FastifyInstance> {
           userId: business.ownerId,
           type: NOTIFICATION_TYPES.BOOKING_CREATED,
           title: 'New booking request',
-          message: `${customer.firstName ?? customer.email.split('@')[0]} booked ${service.name} on ${d.date} at ${d.startTime}.`,
+          message: `${customer.firstName ?? customer.email.split('@')[0]} booked ${serviceNames} on ${d.date} at ${d.startTime}.`,
           entityType: 'Booking',
           entityId: created.id,
         },
@@ -4273,13 +4540,13 @@ export async function buildApp(): Promise<FastifyInstance> {
         userId: business.ownerId,
         type: NOTIFICATION_TYPES.BOOKING_CREATED,
         title: 'New booking request',
-        message: `${customer.firstName ?? customer.email.split('@')[0]} booked ${service.name} on ${d.date} at ${d.startTime}.`,
+        message: `${customer.firstName ?? customer.email.split('@')[0]} booked ${serviceNames} on ${d.date} at ${d.startTime}.`,
         entityType: 'Booking',
         entityId: booking.id,
       },
     ]).catch(() => undefined);
 
-    return r.status(201).send({ data: publicBooking({ ...booking, business, service }) });
+    return r.status(201).send({ data: publicBooking({ ...booking, business }) });
   });
 
   app.get('/api/v1/bookings', { preHandler: auth }, async (q) => {
@@ -4430,7 +4697,22 @@ export async function buildApp(): Promise<FastifyInstance> {
    * rows carry the purchase-time name/unitPriceMinor, so history survives
    * later product edits or deletion of the underlying product.
    */
-  const publicOrder = (o: Prisma.OrderGetPayload<{ include: typeof ORDER_INCLUDE }> & { deliveryFeeMinor?: number; totalMinor?: number; paymentMethodId?: string | null }) => ({
+  const publicOrder = (
+    o: Prisma.OrderGetPayload<{ include: typeof ORDER_INCLUDE }> & { deliveryFeeMinor?: number; totalMinor?: number; paymentMethodId?: string | null },
+    opts?: { includeRiderPhone?: boolean },
+  ) => {
+    // Rider privacy: phone is only exposed when the viewer is authorized
+    // (owner of the business, or the customer of their own delivery order).
+    // Name is safe to show whenever a rider is assigned and visible.
+    const rider = o.assignedRider
+      ? {
+          id: o.assignedRider.id,
+          name: o.assignedRider.name,
+          ...(opts?.includeRiderPhone ? { phone: o.assignedRider.phone } : {}),
+          photoUrl: o.assignedRider.photoUrl ?? null,
+        }
+      : null;
+    return {
     id: o.id,
     status: o.status,
     subtotalMinor: o.subtotalMinor,
@@ -4443,6 +4725,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     // DELIVERY snapshot captured at placement (Phase 17); null for pickup
     // orders or delivery orders placed before addresses existed.
     deliveryAddressText: o.deliveryAddressText ?? null,
+    // Assigned rider (delivery orders). Phone only when viewer is authorized.
+    assignedRider: rider,
+    riderAssignedAt: o.riderAssignedAt ?? null,
     // Chosen manual digital channel (null = cash on delivery/pickup). The
     // payment STATE lives on OrderPayment rows, never inferred from status.
     paymentMethodId: o.paymentMethodId ?? null,
@@ -4458,7 +4743,8 @@ export async function buildApp(): Promise<FastifyInstance> {
       quantity: i.quantity,
       lineTotalMinor: i.unitPriceMinor * i.quantity,
     })),
-  });
+    };
+  };
 
   app.post('/api/v1/orders', { preHandler: roles('CUSTOMER', 'BUSINESS_OWNER') }, async (q, r) => {
     const d = orderSchema.parse(q.body);
@@ -4600,7 +4886,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
-    return { data: rows.map(publicOrder) };
+    return { data: rows.map((o) => publicOrder(o, { includeRiderPhone: true })) };
   });
 
   app.get('/api/v1/orders/:id', { preHandler: auth }, async (q, r) => {
@@ -4615,7 +4901,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     const isCustomer = o.customerId === u.id;
     if (!isOwner && !isCustomer)
       return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Order not found' } });
-    return { data: publicOrder(o) };
+    // Rider phone: owner always; customer only for their own delivery order.
+    const includeRiderPhone = isOwner || (isCustomer && o.fulfillmentType === 'DELIVERY');
+    return { data: publicOrder(o, { includeRiderPhone }) };
   });
 
   app.patch('/api/v1/orders/:id/status', { preHandler: auth }, async (q, r) => {
@@ -4623,7 +4911,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     const u = currentUser(q);
     const o = await prisma.order.findUnique({
       where: { id: (q.params as { id: string }).id },
-      include: ORDER_INCLUDE,
+      include: { ...ORDER_INCLUDE, assignedRider: true },
     });
     if (!o) return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Order not found' } });
     const isOwner = u.role === 'BUSINESS_OWNER' && o.business.ownerId === u.id;
@@ -4644,6 +4932,41 @@ export async function buildApp(): Promise<FastifyInstance> {
             : 'Order not found',
         },
       });
+    // Delivery lifecycle rules (owner only — customers never reach here).
+    if (isOwner) {
+      const isDelivery = o.fulfillmentType === 'DELIVERY';
+      // Delivery orders must go through OUT_FOR_DELIVERY → DELIVERED;
+      // they never use the pickup COMPLETED state.
+      if (isDelivery && (status === 'COMPLETED' || (o.status === 'READY' && status === 'DELIVERED'))) {
+        return r.status(409).send({
+          error: {
+            code: 'INVALID_TRANSITION',
+            message: 'Delivery orders must go through out-for-delivery before delivered',
+          },
+        });
+      }
+      // Pickup orders never use delivery states.
+      if (!isDelivery && (status === 'OUT_FOR_DELIVERY' || status === 'DELIVERED')) {
+        return r.status(409).send({
+          error: {
+            code: 'INVALID_TRANSITION',
+            message: 'Pickup orders cannot use delivery states',
+          },
+        });
+      }
+      // READY → OUT_FOR_DELIVERY requires an active rider of the same business.
+      if (status === 'OUT_FOR_DELIVERY') {
+        const rider = o.assignedRider;
+        if (!rider || rider.businessId !== o.businessId || !rider.isActive) {
+          return r.status(409).send({
+            error: {
+              code: 'RIDER_REQUIRED',
+              message: 'Assign an active rider before marking the order out for delivery',
+            },
+          });
+        }
+      }
+    }
     // Customer notifications for owner-driven changes; owner notification for
     // customer cancellation. Only transitions the system actually supports.
     const noticeFor = (next: string): { userId: string; type: NotificationType; title: string; message: string } | null => {
@@ -4654,6 +4977,8 @@ export async function buildApp(): Promise<FastifyInstance> {
           REJECTED: { type: NOTIFICATION_TYPES.ORDER_REJECTED, title: 'Order declined', message: `Unfortunately ${o.business.name} could not accept your order.` },
           PREPARING: { type: NOTIFICATION_TYPES.ORDER_PREPARING, title: 'Your order is being prepared', message: `${o.business.name} is now preparing your order.` },
           READY: { type: NOTIFICATION_TYPES.ORDER_READY, title: 'Order ready', message: `Your order from ${o.business.name} is ready.` },
+          OUT_FOR_DELIVERY: { type: NOTIFICATION_TYPES.ORDER_OUT_FOR_DELIVERY, title: 'Order out for delivery', message: `Your order from ${o.business.name} is on its way.` },
+          DELIVERED: { type: NOTIFICATION_TYPES.ORDER_DELIVERED, title: 'Order delivered', message: `Your order from ${o.business.name} was delivered. Enjoy!` },
           COMPLETED: { type: NOTIFICATION_TYPES.ORDER_COMPLETED, title: 'Order completed', message: `Your order from ${o.business.name} is complete. Enjoy!` },
           CANCELLED: { type: NOTIFICATION_TYPES.ORDER_CANCELLED, title: 'Order cancelled', message: `Your order from ${o.business.name} was cancelled.` },
         };
@@ -4675,10 +5000,12 @@ export async function buildApp(): Promise<FastifyInstance> {
     const notice = noticeFor(status);
     await prisma.$transaction(async (tx) => {
       // completedAt is stamped once, atomically with the status change, so
-      // revenue windows can be derived honestly (Phase 16).
+      // revenue windows can be derived honestly (Phase 16). DELIVERED is the
+      // terminal state for delivery orders (they never use COMPLETED).
+      const isTerminal = status === 'COMPLETED' || status === 'DELIVERED';
       await tx.order.update({
         where: { id: o.id },
-        data: { status, ...(status === 'COMPLETED' ? { completedAt: new Date() } : {}) },
+        data: { status, ...(isTerminal ? { completedAt: new Date() } : {}) },
       });
       if (notice) {
         await createNotifications(prisma, [
@@ -4707,7 +5034,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
     // Refetch with the full include for the authoritative response.
     const fresh = await prisma.order.findUnique({ where: { id: o.id }, include: ORDER_INCLUDE });
-    return { data: publicOrder(fresh!) };
+    return { data: publicOrder(fresh!, { includeRiderPhone: true }) };
   });
 
   /* ------------------------------ Reviews ------------------------------ */
@@ -6303,7 +6630,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   /** Orders across all businesses with business + customer identity. */
   app.get('/api/v1/admin/orders', { preHandler: roles('ADMIN') }, async (q) => {
-    const query = z.object({ q: z.string().trim().max(120).optional(), status: z.enum(['PENDING', 'ACCEPTED', 'REJECTED', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED']).optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }).parse(q.query);
+    const query = z.object({ q: z.string().trim().max(120).optional(), status: z.enum(['PENDING', 'ACCEPTED', 'REJECTED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY', 'DELIVERED', 'COMPLETED', 'CANCELLED']).optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }).parse(q.query);
     const where: Record<string, unknown> = {};
     if (query.status) where.status = query.status;
     if (query.q) where.business = { name: { contains: query.q, mode: 'insensitive' } };
@@ -6313,7 +6640,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       orderBy: { createdAt: 'desc' },
       take: query.limit,
     });
-    return { data: orders.map(publicOrder) };
+    return { data: orders.map((o) => publicOrder(o)) };
   });
 
   /** Bookings across all businesses with business + customer identity. */
@@ -6323,7 +6650,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (query.status) where.status = query.status;
     const bookings = await prisma.booking.findMany({
       where,
-      include: { business: { select: { id: true, name: true, slug: true, ownerId: true, imageUrl: true } }, service: { select: { id: true, name: true, durationMinutes: true, priceMinor: true, currency: true } }, customer: { select: { id: true, email: true, firstName: true, lastName: true } } },
+      include: { ...BOOKING_INCLUDE, customer: { select: { id: true, email: true, firstName: true, lastName: true } } },
       orderBy: { createdAt: 'desc' },
       take: query.limit,
     });

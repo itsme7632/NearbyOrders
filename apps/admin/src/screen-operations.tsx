@@ -39,9 +39,25 @@ import type { Column } from './ds.js';
    Operations screens: Orders, Bookings, Verification review.
 ------------------------------------------------------------------- */
 
-const ORDER_STATUSES = ['PENDING', 'ACCEPTED', 'PREPARING', 'READY', 'COMPLETED', 'REJECTED', 'CANCELLED'];
+const ORDER_STATUSES = ['PENDING', 'ACCEPTED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY', 'DELIVERED', 'COMPLETED', 'REJECTED', 'CANCELLED'];
 const BOOKING_STATUSES = ['PENDING', 'CONFIRMED', 'COMPLETED', 'REJECTED', 'CANCELLED'];
 const VERIFICATION_STATUSES = ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'CHANGES_REQUESTED'];
+
+/** Human-readable fulfillment type. No em dashes. */
+function fulfillmentLabel(value: string | null | undefined): string {
+  if (!value) return 'N/A';
+  return value
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Service display names: multi-service items first, legacy `service` fallback. */
+function bookingServiceNames(b: AdminBooking): string {
+  const items = b.serviceItems ?? [];
+  if (items.length > 0) return items.map((i) => i.name).join(', ');
+  return b.service ? b.service.name : 'N/A';
+}
 
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
@@ -72,6 +88,7 @@ function OrderDrawer(props: { order: AdminOrder; onClose: () => void }) {
         items={[
           { label: 'Order ID', value: <span className="nb-mono">{o.id}</span> },
           { label: 'Status', value: <Badge value={o.status} /> },
+          { label: 'Fulfillment', value: fulfillmentLabel(o.fulfillmentType) },
           {
             label: 'Customer',
             value: (
@@ -84,6 +101,12 @@ function OrderDrawer(props: { order: AdminOrder; onClose: () => void }) {
             ),
           },
           { label: 'Business', value: o.business.name },
+          // Rider name only. Phone is intentionally excluded from admin
+          // responses and is never shown here.
+          { label: 'Rider', value: o.assignedRider ? o.assignedRider.name : 'Not assigned' },
+          ...(o.deliveryAddressText
+            ? [{ label: 'Delivery address', value: o.deliveryAddressText }]
+            : []),
           { label: 'Subtotal', value: fmtMoney(o.subtotalMinor, o.currency) },
           { label: 'Total', value: fmtMoney(o.totalMinor ?? o.subtotalMinor, o.currency) },
           { label: 'Placed', value: fmtDateTime(o.createdAt) },
@@ -106,7 +129,10 @@ export function Orders(props: { initialStatus?: string }) {
       render: (o) => (
         <>
           <span className="nb-cell-main nb-mono">#{shortId(o.id)}</span>
-          <span className="nb-cell-sub">{fmtDate(o.createdAt)}</span>
+          <span className="nb-cell-sub">
+            {fmtDate(o.createdAt)}
+            {o.assignedRider ? ` · Rider: ${o.assignedRider.name}` : ''}
+          </span>
         </>
       ),
     },
@@ -121,6 +147,14 @@ export function Orders(props: { initialStatus?: string }) {
       ),
     },
     { key: 'business', header: 'Business', render: (o) => o.business.name, hideBelow: 'md' },
+    {
+      key: 'fulfillment',
+      header: 'Fulfillment',
+      render: (o) => (
+        <span className="nb-badge nb-badge-neutral">{fulfillmentLabel(o.fulfillmentType)}</span>
+      ),
+      hideBelow: 'md',
+    },
     {
       key: 'amount',
       header: 'Amount',
@@ -176,10 +210,34 @@ export function Orders(props: { initialStatus?: string }) {
 
 function BookingDrawer(props: { booking: AdminBooking; onClose: () => void }) {
   const b = props.booking;
+  const serviceItems = b.serviceItems ?? [];
+  const servicesValue =
+    serviceItems.length > 0 ? (
+      <ul style={{ margin: 0, paddingLeft: 18 }}>
+        {serviceItems.map((it) => (
+          <li key={it.id} style={{ overflowWrap: 'anywhere' }}>
+            {it.name}{' '}
+            <span className="nb-muted">
+              ({fmtMoney(it.priceMinor, b.currency)} · {it.durationMinutes} min)
+            </span>
+          </li>
+        ))}
+      </ul>
+    ) : (
+      <span>{b.service ? b.service.name : 'N/A'}</span>
+    );
+  const subtitle =
+    serviceItems.length > 1
+      ? `${serviceItems.length} services`
+      : serviceItems.length === 1
+        ? serviceItems[0].name
+        : b.service
+          ? b.service.name
+          : b.business.name;
   return (
     <Drawer
       title={`Booking #${shortId(b.id)}`}
-      subtitle={b.service ? b.service.name : b.business.name}
+      subtitle={subtitle}
       meta={`Booking · ${b.id}`}
       status={<Badge value={b.status} />}
       onClose={props.onClose}
@@ -188,7 +246,15 @@ function BookingDrawer(props: { booking: AdminBooking; onClose: () => void }) {
         items={[
           { label: 'Booking ID', value: <span className="nb-mono">{b.id}</span> },
           { label: 'Status', value: <Badge value={b.status} /> },
-          { label: 'Service', value: b.service ? b.service.name : 'N/A' },
+          { label: 'Services', value: servicesValue },
+          {
+            label: 'Combined duration',
+            value: b.totalDurationMinutes != null ? `${b.totalDurationMinutes} min` : 'N/A',
+          },
+          {
+            label: 'Combined price',
+            value: fmtMoney(b.servicePriceMinor ?? 0, b.currency),
+          },
           {
             label: 'Customer',
             value: (
@@ -227,7 +293,9 @@ export function Bookings(props: { initialStatus?: string }) {
       header: 'Booking',
       render: (b) => (
         <>
-          <span className="nb-cell-main">{b.service ? b.service.name : 'N/A'}</span>
+          <span className="nb-cell-main" style={{ overflowWrap: 'anywhere' }}>
+            {bookingServiceNames(b)}
+          </span>
           <span className="nb-cell-sub">{fmtDateTime(b.startAt)}</span>
         </>
       ),
