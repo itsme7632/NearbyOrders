@@ -1,3 +1,4 @@
+import { RemoteImage } from '../components/RemoteImage.js';
 import { useEffect, useMemo, useState } from 'react';
 import './Search.css';
 import {
@@ -452,9 +453,9 @@ function SearchResultRow(props: { result: SearchResult; onOpen: () => void }) {
           </span>
         </span>
         {r.type === 'product' && r.imageUrl ? (
-          <img className="search-result-thumb" src={resolveImageUrl(r.imageUrl) ?? undefined} alt="" loading="lazy" />
+          <RemoteImage className="search-result-thumb" src={resolveImageUrl(r.imageUrl) ?? undefined} alt="" loading="lazy" />
         ) : r.type === 'business' && r.imageUrl ? (
-          <img className="search-result-thumb" src={resolveImageUrl(r.imageUrl) ?? undefined} alt="" loading="lazy" />
+          <RemoteImage className="search-result-thumb" src={resolveImageUrl(r.imageUrl) ?? undefined} alt="" loading="lazy" />
         ) : (
           <span className="search-result-thumb search-result-thumb-fallback" aria-hidden>
             <StoreIcon size={22} />
