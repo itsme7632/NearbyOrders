@@ -1,3 +1,4 @@
+import { RemoteImage } from '../components/RemoteImage.js';
 import { useState } from 'react';
 import { createRider, listRiders, updateRider, ApiError, type Rider, type RiderInput } from '../api.js';
 import { useAsyncData } from '../hooks.js';
@@ -81,7 +82,7 @@ export function OwnerRiders(props: { businessId: string; onBack: () => void }) {
       <div className="item-row">
         <span className="item-name rider-name">
           {r.photoUrl ? (
-            <img src={r.photoUrl} alt="" className="rider-photo" loading="lazy" />
+            <RemoteImage src={r.photoUrl} alt="" className="rider-photo" loading="lazy" />
           ) : null}
           {r.name}
         </span>
