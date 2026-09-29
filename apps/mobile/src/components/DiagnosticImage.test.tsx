@@ -52,6 +52,9 @@ describe('DiagnosticImage (flag enabled)', () => {
     expect(panel.textContent).toContain('naturalWidth');
     expect(panel.textContent).toContain('userAgent');
     expect(panel.textContent).toContain('origin');
+    expect(panel.textContent).toContain('fetchStatus');
+    expect(panel.textContent).toContain('fetchContentType');
+    expect(panel.textContent).toContain('fetchBodyBytes');
 
     // The "Open image directly" button is present.
     const openBtn = screen.getByRole('button', { name: /open image directly/i });
