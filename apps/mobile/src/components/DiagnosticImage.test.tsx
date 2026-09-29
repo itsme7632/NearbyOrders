@@ -38,6 +38,7 @@ describe('DiagnosticImage (flag enabled)', () => {
         },
       }),
     ));
+    vi.stubGlobal('URL', { createObjectURL: vi.fn().mockReturnValue('blob:diagnostic-test'), revokeObjectURL: vi.fn() });
     vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({
       width: 1920,
       height: 1080,
@@ -85,8 +86,11 @@ describe('DiagnosticImage (flag enabled)', () => {
       mode: 'cors',
       cache: 'no-store',
     });
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
     expect(createImageBitmap).toHaveBeenCalledTimes(1);
     expect(panel.textContent).toContain('DECODE_OK');
+    expect(screen.getByTestId('image-debug-blob-test')).not.toBeNull();
+    expect(screen.getByTestId('image-debug-blob-status').textContent).toContain('READY');
 
     const openBtn = screen.getByRole('button', { name: /open image directly/i });
     expect(openBtn).not.toBeNull();
