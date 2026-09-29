@@ -125,4 +125,89 @@ describe('AdminApp session sync (rate-limit regression)', () => {
     expect(vi.mocked(api.listPromotionRequests).mock.calls.length).toBe(settled.promotionRequests);
     expect(vi.mocked(api.listPromotionPaymentRequests).mock.calls.length).toBe(settled.promotionPaymentRequests);
   });
+
+  it('idle tab: unrelated state updates, rerenders, and session re-notifications never refire the five endpoints', async () => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root!.render(<AdminApp />);
+    });
+    // Let every initial-mount fetch settle (rail badges + dashboard screen).
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const settled = {
+      dashboard: vi.mocked(api.getDashboard).mock.calls.length,
+      verifications: vi.mocked(api.listVerifications).mock.calls.length,
+      promotionRequests: vi.mocked(api.listPromotionRequests).mock.calls.length,
+      promotionPaymentRequests: vi.mocked(api.listPromotionPaymentRequests).mock.calls.length,
+    };
+    expect(settled.dashboard).toBeGreaterThan(0);
+
+    // 1. Two full minutes of idle time.
+    await act(async () => {
+      vi.advanceTimersByTime(120_000);
+      await Promise.resolve();
+    });
+
+    // 2. Equivalent session objects re-notified through the subscription
+    // (fresh JSON.parse identity, identical content) — as production
+    // onSessionChange listeners can deliver.
+    await act(async () => {
+      api.setSession(JSON.parse(JSON.stringify(session)));
+      api.setSession(JSON.parse(JSON.stringify(session)));
+      await Promise.resolve();
+    });
+
+    // 3. Unrelated shell state update: toggle the mobile nav open and shut.
+    // This re-renders the entire AdminApp shell (and the Dashboard with a
+    // fresh inline onTriage prop) without touching the session.
+    const menuButton = container!.querySelector('.nb-menu-btn') as HTMLButtonElement;
+    expect(menuButton).toBeTruthy();
+    await act(async () => {
+      menuButton.click();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      menuButton.click();
+      await Promise.resolve();
+    });
+
+    // 4. A parent-level rerender of the whole app element.
+    await act(async () => {
+      root!.render(<AdminApp />);
+      await Promise.resolve();
+    });
+
+    // After initial load, an idle tab must NEVER refire the five
+    // queue-badge/dashboard endpoints for any of the above triggers.
+    expect(vi.mocked(api.getDashboard).mock.calls.length).toBe(settled.dashboard);
+    expect(vi.mocked(api.listVerifications).mock.calls.length).toBe(settled.verifications);
+    expect(vi.mocked(api.listPromotionRequests).mock.calls.length).toBe(settled.promotionRequests);
+    expect(vi.mocked(api.listPromotionPaymentRequests).mock.calls.length).toBe(settled.promotionPaymentRequests);
+  });
+
+  it('documents the two initial-mount fetch sources: rail badges and dashboard screen', async () => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root!.render(<AdminApp />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    // On a fresh login the five endpoints are fetched TWICE, not once:
+    // once by useQueueBadges (rail badges in main.tsx) and once by the
+    // Dashboard screen itself (useAsync + useExtraQueues in
+    // screen-dashboard.tsx). Both are legitimate initial-mount fetches —
+    // this test pins the count so a third source (or a refire) is caught.
+    expect(vi.mocked(api.getDashboard).mock.calls.length).toBe(2);
+    // listVerifications is called with SUBMITTED and UNDER_REVIEW by each
+    // source: 2 calls per source = 4 total.
+    expect(vi.mocked(api.listVerifications).mock.calls.length).toBe(4);
+    expect(vi.mocked(api.listPromotionRequests).mock.calls.length).toBe(2);
+    expect(vi.mocked(api.listPromotionPaymentRequests).mock.calls.length).toBe(2);
+  });
 });
