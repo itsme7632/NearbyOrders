@@ -1,3 +1,4 @@
+import { RemoteImage } from '../components/RemoteImage.js';
 import { useState } from 'react';
 import { getMyBusinesses, getVerification, logout, resolveImageUrl, type Business } from '../api.js';
 import { useAsyncData } from '../hooks.js';
