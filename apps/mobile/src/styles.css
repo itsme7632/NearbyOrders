@@ -6624,3 +6624,42 @@ nav.nav-v3, nav.business-nav-v3 {
   font-weight: 700;
   color: var(--ink);
 }
+
+/* TEMPORARY diagnostic panel for the Android WebView image-loading
+   investigation. Only rendered when VITE_IMAGE_DEBUG=true. Clearly visible
+   so the failure details can be read directly on the device. */
+.image-debug-panel {
+  margin-top: 8px;
+  padding: 12px;
+  border: 2px solid #b3261e;
+  border-radius: 10px;
+  background: #fff8f7;
+  color: #1a1a1a;
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-all;
+}
+.image-debug-title {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #b3261e;
+}
+.image-debug-list {
+  margin: 0 0 10px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 8px;
+}
+.image-debug-list dt {
+  font-weight: 700;
+  white-space: nowrap;
+}
+.image-debug-list dd {
+  margin: 0;
+  font-family: monospace;
+  font-size: 11px;
+}
+.image-debug-wrap {
+  word-break: break-all;
+}

@@ -7,6 +7,7 @@ import {
   STORAGE_NOT_CONNECTED_NOTICE,
 } from '../upload.js';
 import { AlertIcon } from './icons.js';
+import { DiagnosticImage } from './DiagnosticImage.js';
 
 /** What the uploader reports after every user action. */
 export type ImageUploaderState = {
@@ -141,7 +142,7 @@ export function ImageUploader(props: {
         </div>
       ) : hasCurrent ? (
         <div className="image-preview">
-          <img src={props.currentUrl ?? undefined} alt={props.label} className="image-preview-img" />
+          <DiagnosticImage src={props.currentUrl ?? undefined} alt={props.label} className="image-preview-img" />
           <div className="image-preview-meta">
             <span className="image-preview-name">Current image</span>
           </div>
