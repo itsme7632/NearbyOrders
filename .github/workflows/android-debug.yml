@@ -2,6 +2,12 @@ name: Android Debug APK
 
 on:
   workflow_dispatch:
+    inputs:
+      image_debug:
+        description: "Enable temporary Android image diagnostics"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -51,6 +57,10 @@ jobs:
 
       - name: Build mobile web app
         run: pnpm --filter @nearbyorders/mobile build
+        env:
+          # Diagnostic builds only: when the image_debug input is true,
+          # enable the already-merged DiagnosticImage instrumentation.
+          VITE_IMAGE_DEBUG: ${{ inputs.image_debug == true && 'true' || '' }}
 
       - name: Add Android platform
         working-directory: apps/mobile
