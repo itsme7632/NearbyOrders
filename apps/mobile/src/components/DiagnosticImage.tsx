@@ -29,7 +29,7 @@ export type ImageLoadFailure = {
   complete: boolean;
   /** img.naturalWidth at error time (0 when decode failed). */
   naturalWidth: number;
-  /** img.naturalHeight at error time (0 when decode failed). */
+  /** img.naturalHeight at error time. */
   naturalHeight: number;
   /** window.location.origin of the WebView page. */
   origin: string;
@@ -43,6 +43,10 @@ export type ImageLoadFailure = {
   fetchContentType: string;
   fetchContentLength: string;
   fetchBodyBytes: string;
+  /** Result of asking Chromium's image decoder to decode the fetched Blob. */
+  bitmapStatus: string;
+  bitmapWidth: string;
+  bitmapHeight: string;
 };
 
 export function DiagnosticImage(props: {
@@ -74,6 +78,9 @@ export function DiagnosticImage(props: {
         fetchContentType: '-',
         fetchContentLength: '-',
         fetchBodyBytes: '-',
+        bitmapStatus: 'SKIPPED',
+        bitmapWidth: '-',
+        bitmapHeight: '-',
       });
       return;
     }
@@ -81,6 +88,27 @@ export function DiagnosticImage(props: {
     try {
       const response = await fetch(props.src, { method: 'GET', mode: 'cors', cache: 'no-store' });
       const body = await response.blob();
+
+      let bitmapStatus = 'UNTESTED';
+      let bitmapWidth = '-';
+      let bitmapHeight = '-';
+
+      if (typeof createImageBitmap === 'function') {
+        try {
+          const bitmap = await createImageBitmap(body);
+          bitmapStatus = 'DECODE_OK';
+          bitmapWidth = String(bitmap.width);
+          bitmapHeight = String(bitmap.height);
+          bitmap.close();
+        } catch (error) {
+          bitmapStatus = error instanceof Error
+            ? `DECODE_FAILED: ${error.message}`
+            : `DECODE_FAILED: ${String(error)}`;
+        }
+      } else {
+        bitmapStatus = 'UNSUPPORTED';
+      }
+
       setFailure({
         ...baseFailure,
         fetchStatus: String(response.status),
@@ -88,6 +116,9 @@ export function DiagnosticImage(props: {
         fetchContentType: response.headers.get('content-type') ?? '(none)',
         fetchContentLength: response.headers.get('content-length') ?? '(none)',
         fetchBodyBytes: String(body.size),
+        bitmapStatus,
+        bitmapWidth,
+        bitmapHeight,
       });
     } catch (error) {
       setFailure({
@@ -97,6 +128,9 @@ export function DiagnosticImage(props: {
         fetchContentType: '-',
         fetchContentLength: '-',
         fetchBodyBytes: error instanceof Error ? error.message : String(error),
+        bitmapStatus: 'NOT_REACHED',
+        bitmapWidth: '-',
+        bitmapHeight: '-',
       });
     }
   };
@@ -148,6 +182,12 @@ export function DiagnosticImage(props: {
             <dd>{failure.fetchContentLength}</dd>
             <dt>fetchBodyBytes</dt>
             <dd className="image-debug-wrap">{failure.fetchBodyBytes}</dd>
+            <dt>bitmapStatus</dt>
+            <dd className="image-debug-wrap">{failure.bitmapStatus}</dd>
+            <dt>bitmapWidth</dt>
+            <dd>{failure.bitmapWidth}</dd>
+            <dt>bitmapHeight</dt>
+            <dd>{failure.bitmapHeight}</dd>
           </dl>
           <button type="button" className="btn btn-secondary btn-sm" onClick={openDirectly}>
             Open image directly
