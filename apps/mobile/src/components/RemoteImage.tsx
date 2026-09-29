@@ -21,8 +21,13 @@ export function RemoteImage({ src, onError, ...props }: RemoteImageProps) {
   const [usingBlobFallback, setUsingBlobFallback] = useState(false);
   const objectUrlRef = useRef<string | null>(null);
   const fallbackAttemptedRef = useRef(false);
+  const fetchControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    if (fetchControllerRef.current) {
+      fetchControllerRef.current.abort();
+      fetchControllerRef.current = null;
+    }
     if (objectUrlRef.current) {
       URL.revokeObjectURL(objectUrlRef.current);
       objectUrlRef.current = null;
@@ -34,6 +39,8 @@ export function RemoteImage({ src, onError, ...props }: RemoteImageProps) {
 
   useEffect(() => {
     return () => {
+      fetchControllerRef.current?.abort();
+      fetchControllerRef.current = null;
       if (objectUrlRef.current) {
         URL.revokeObjectURL(objectUrlRef.current);
         objectUrlRef.current = null;
@@ -47,11 +54,15 @@ export function RemoteImage({ src, onError, ...props }: RemoteImageProps) {
     if (!src || fallbackAttemptedRef.current) return;
     fallbackAttemptedRef.current = true;
 
+    const controller = new AbortController();
+    fetchControllerRef.current = controller;
+
     try {
       const response = await fetch(src, {
         method: 'GET',
         mode: 'cors',
         cache: 'no-store',
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -59,12 +70,15 @@ export function RemoteImage({ src, onError, ...props }: RemoteImageProps) {
       }
 
       const blob = await response.blob();
+      if (controller.signal.aborted) return;
       const objectUrl = URL.createObjectURL(blob);
       objectUrlRef.current = objectUrl;
       setUsingBlobFallback(true);
       setDisplaySrc(objectUrl);
     } catch {
       // Keep the original broken-image behavior if the fallback cannot load.
+    } finally {
+      if (fetchControllerRef.current === controller) fetchControllerRef.current = null;
     }
   };
 
