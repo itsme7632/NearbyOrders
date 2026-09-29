@@ -67,7 +67,40 @@ export function clearAuthState(): void {
     });
 }
 
+/**
+ * In-flight GET deduplication: identical GETs fired simultaneously (e.g. two
+ * owner components mounting in the same commit each needing /businesses/mine,
+ * or the overview's subscription state needed by two cards) share a single
+ * network request instead of hammering the API. Only simultaneous calls are
+ * merged — nothing is cached after it settles, so navigation and explicit
+ * reloads always fetch fresh data, failures are never shared as successes,
+ * and non-GET mutations are untouched.
+ */
+const inflightGets = new Map<string, Promise<unknown>>();
+
 async function requestEnvelope<T>(path: string, options: { method?: string; body?: unknown; auth?: boolean } = {}): Promise<T> {
+  if ((options.method ?? 'GET') === 'GET' && options.body === undefined) {
+    const key = `${path}|${options.auth ? 'auth' : 'anon'}`;
+    const existing = inflightGets.get(key);
+    if (existing) return existing as Promise<T>;
+    const promise = doRequestEnvelope<T>(path, options);
+    inflightGets.set(key, promise);
+    // Drop the entry as soon as it settles: later calls must re-fetch.
+    // A rejection clears the slot too, so one failure never poisons others.
+    promise.then(
+      () => {
+        if (inflightGets.get(key) === promise) inflightGets.delete(key);
+      },
+      () => {
+        if (inflightGets.get(key) === promise) inflightGets.delete(key);
+      },
+    );
+    return promise;
+  }
+  return doRequestEnvelope<T>(path, options);
+}
+
+async function doRequestEnvelope<T>(path: string, options: { method?: string; body?: unknown; auth?: boolean } = {}): Promise<T> {
   const headers: Record<string, string> = {};
   if (options.body !== undefined) headers['content-type'] = 'application/json';
   if (options.auth && session) headers.authorization = `Bearer ${session.accessToken}`;

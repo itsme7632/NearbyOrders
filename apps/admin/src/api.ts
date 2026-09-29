@@ -39,6 +39,20 @@ export function getSession(): Session | null {
   }
 }
 
+const sessionListeners = new Set<(s: Session | null) => void>();
+
+/**
+ * Subscribes to session changes (login, logout, 401-triggered logout).
+ * Replaces polling: every setSession() call notifies listeners synchronously,
+ * so the shell reacts to a 401 logout immediately instead of on a timer.
+ */
+export function onSessionChange(listener: (s: Session | null) => void): () => void {
+  sessionListeners.add(listener);
+  return () => {
+    sessionListeners.delete(listener);
+  };
+}
+
 export function setSession(next: Session | null): void {
   try {
     if (next) window.localStorage.setItem(TOKEN_KEY, JSON.stringify(next));
@@ -46,6 +60,7 @@ export function setSession(next: Session | null): void {
   } catch {
     /* storage unavailable: session lives for this page only */
   }
+  for (const listener of sessionListeners) listener(next);
 }
 
 async function request<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {

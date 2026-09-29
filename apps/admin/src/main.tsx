@@ -338,9 +338,13 @@ export function AdminApp() {
   };
 
   useEffect(() => {
-    // Keep in sync with logout triggered by a 401 inside the API client.
-    const timer = window.setInterval(() => setSessionState(api.getSession()), 1500);
-    return () => window.clearInterval(timer);
+    // Keeps the shell in sync with session changes — login, explicit logout,
+    // and 401-triggered logout inside the API client — via subscription.
+    // (A 1.5s polling interval used to live here; getSession() JSON.parses on
+    // every call, so each tick produced a new session identity, re-ran the
+    // [session]-keyed badge effect, and fired 5 API requests every 1.5s —
+    // ~200 req/min from one idle tab, exhausting the per-IP rate-limit bucket.)
+    return api.onSessionChange(setSessionState);
   }, []);
 
   if (!session) return <LoginScreen />;
