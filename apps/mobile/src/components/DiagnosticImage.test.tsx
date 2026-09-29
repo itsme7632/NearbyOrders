@@ -23,7 +23,6 @@ describe('DiagnosticImage (flag disabled)', () => {
     const img = container.querySelector('img.test-img') as HTMLImageElement;
     expect(img).not.toBeNull();
     expect(img.getAttribute('src')).toBe(TEST_SRC);
-    // No diagnostic panel in normal builds.
     expect(screen.queryByTestId('image-debug-panel')).toBeNull();
   });
 });
@@ -60,7 +59,6 @@ describe('DiagnosticImage (flag enabled)', () => {
     const img = container.querySelector('img') as HTMLImageElement;
     expect(img).not.toBeNull();
 
-    // Simulate the WebView failing to load the image.
     Object.defineProperty(img, 'currentSrc', { value: TEST_SRC, configurable: true });
     Object.defineProperty(img, 'complete', { value: true, configurable: true });
     Object.defineProperty(img, 'naturalWidth', { value: 0, configurable: true });
@@ -90,7 +88,6 @@ describe('DiagnosticImage (flag enabled)', () => {
     expect(createImageBitmap).toHaveBeenCalledTimes(1);
     expect(panel.textContent).toContain('DECODE_OK');
 
-    // The "Open image directly" button is present.
     const openBtn = screen.getByRole('button', { name: /open image directly/i });
     expect(openBtn).not.toBeNull();
   });
@@ -114,6 +111,8 @@ describe('DiagnosticImage (flag enabled)', () => {
   it('does not render the panel before an error occurs', async () => {
     vi.resetModules();
     vi.doMock('../imageDebug.js', () => ({ IMAGE_DEBUG: true }));
+    const { DiagnosticImage } = await import('./DiagnosticImage.js');
+
     render(<DiagnosticImage src={TEST_SRC} alt="Test" />);
     expect(screen.queryByTestId('image-debug-panel')).toBeNull();
   });
