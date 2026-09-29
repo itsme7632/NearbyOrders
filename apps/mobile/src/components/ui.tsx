@@ -4,7 +4,7 @@ import { formatDistanceKm, hasCoordinates } from '../location.js';
 import type { Business } from '../api.js';
 import { resolveImageUrl } from '../api.js';
 import { StoreIcon } from './icons.js';
-import { DiagnosticImage } from './DiagnosticImage.js';
+import { RemoteImage } from './RemoteImage.js';
 
 export function Money({ minor, currency = 'PKR' }: { minor: number; currency?: string }) {
   return <span className="money">{formatMoney(minor, currency)}</span>;
@@ -204,7 +204,7 @@ export function BusinessRow(props: { business: Business; onOpen: () => void; sel
     >
       <span className="biz-row-media">
         {b.imageUrl ? (
-          <DiagnosticImage src={resolveImageUrl(b.imageUrl) ?? undefined} alt="" loading="lazy" />
+          <RemoteImage src={resolveImageUrl(b.imageUrl) ?? undefined} alt="" loading="lazy" />
         ) : (
           <span className="pop-card-initial" aria-hidden>
             {b.name[0]?.toUpperCase() ?? '?'}
@@ -249,7 +249,7 @@ export function BusinessCard(props: { business: Business; onOpen: () => void }) 
     <button className="biz-card" onClick={props.onOpen}>
       <span className="biz-card-imgwrap">
         {b.imageUrl ? (
-          <DiagnosticImage className="biz-card-img" src={resolveImageUrl(b.imageUrl) ?? undefined} alt="" loading="lazy" />
+          <RemoteImage className="biz-card-img" src={resolveImageUrl(b.imageUrl) ?? undefined} alt="" loading="lazy" />
         ) : (
           <span className="detail-hero-fallback">
             <StoreIcon size={34} />
