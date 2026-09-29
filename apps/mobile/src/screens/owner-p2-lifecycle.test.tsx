@@ -282,8 +282,15 @@ describe('OwnerPlanCard: honest plan copy (§11-§13)', () => {
   it('never claims a plan unlocks visibility', async () => {
     const { container } = renderCard(subState({}));
     await waitFor(() => expect(container.textContent).toMatch(/choose a plan/i));
-    expect(screen.getByText(/choose a plan to continue after your trial/i)).toBeTruthy();
+    expect(screen.getByText(/choose a plan to get started/i)).toBeTruthy();
     expect(container.textContent).not.toMatch(/unlock bookings, orders and visibility/i);
+  });
+
+  it('no subscription: shows the working plan and shared "No plan yet" status', async () => {
+    const { container } = renderCard(subState({}));
+    await screen.findByText('No plan yet');
+    // The working plan (highlighted catalog plan) — never a generic placeholder.
+    expect(container.textContent).toMatch(/NearbyOrders Business/);
   });
 
   it('active plan: "Plan active until", never "Renews"', async () => {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { getMyBusinesses, getVerification, logout, type Business } from '../api.js';
+import { getMyBusinesses, getVerification, logout, resolveImageUrl, type Business } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, Loading } from '../components/ui.js';
 import {
@@ -66,7 +66,15 @@ export function OwnerBusinessProfile(props: {
       {/* 1) Business identity / status. */}
       <div className="card profile-hero">
         <div className="avatar" aria-hidden>
-          {active.name[0]?.toUpperCase() ?? '?'}
+          {resolveImageUrl(active.imageUrl) ? (
+            <img
+              src={resolveImageUrl(active.imageUrl) as string}
+              alt=""
+              style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit', display: 'block' }}
+            />
+          ) : (
+            active.name[0]?.toUpperCase() ?? '?'
+          )}
         </div>
         <div className="profile-hero-text">
           <h2 className="profile-hero-name">{active.name}</h2>

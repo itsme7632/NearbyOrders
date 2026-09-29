@@ -110,7 +110,10 @@ export function TrialFlow(props: TrialFlowProps) {
         ? 'Your free trial has already been used for this business.'
         : trialStatus === 'ELIGIBLE'
           ? 'Your business must be approved before you can start the free trial.'
-          : 'A free trial is not available for this business right now.'
+          : // NOT_ELIGIBLE (or unknown): the trial unlocks after the
+            // NearbyOrders team verifies and approves the business — never a
+            // dead-end "not available".
+            'Your free trial unlocks after the NearbyOrders team verifies and approves your business.'
       : null;
 
   return (

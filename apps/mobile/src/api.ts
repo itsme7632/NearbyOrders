@@ -1175,6 +1175,8 @@ export const createBusiness = (input: {
   phone?: string;
   address: string;
   city: string;
+  /** Explicit owner name for the admin "Owner" line; persisted to the account, never inferred from email. */
+  ownerName?: string;
 }) => request<Business>('/businesses', { method: 'POST', body: input, auth: true });
 
 export const updateBusiness = (

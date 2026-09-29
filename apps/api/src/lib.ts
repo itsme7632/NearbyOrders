@@ -151,6 +151,10 @@ const businessCore = {
 export const businessSchema = z.object({
   ...businessCore,
   categoryIds: z.array(z.string().uuid()).min(1),
+  // Explicit business-owner name captured at registration time. Persisted to
+  // the owner's User.firstName/lastName (never inferred from the email).
+  // Optional: existing businesses and accounts without a name stay valid.
+  ownerName: z.string().trim().min(1).max(120).optional(),
 });
 
 export const businessLocationSchema = z

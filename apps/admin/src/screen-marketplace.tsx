@@ -315,6 +315,8 @@ function BusinessDrawer(props: {
   const [decisionBusy, setDecisionBusy] = React.useState<string | null>(null);
 
   const ownerName = fullName(b.owner.firstName, b.owner.lastName) || 'N/A';
+  // Canonical categories from the BusinessCategory join; a business may have several.
+  const categoryNames = b.categories.map((c) => c.name).join(', ') || 'No category';
 
   const runStatus = async (status: AdminBusiness['status']) => {
     setBusy(true);
@@ -463,6 +465,13 @@ function BusinessDrawer(props: {
       actions={b.verificationApplicationId ? verificationActions : statusActions}
     >
       <SectionTitle>Profile</SectionTitle>
+      {api.resolveImageUrl(b.imageUrl) ? (
+        <img
+          src={api.resolveImageUrl(b.imageUrl) as string}
+          alt={`${b.name} photo`}
+          style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 12, display: 'block', marginBottom: 12 }}
+        />
+      ) : null}
       <DefinitionList
         items={[
           { label: 'Name', value: b.name },
@@ -478,7 +487,7 @@ function BusinessDrawer(props: {
               </span>
             ),
           },
-          { label: 'Category', value: b.category?.name ?? 'No category' },
+          { label: 'Category', value: categoryNames },
           { label: 'Submitted', value: fmtDate(b.createdAt) },
           { label: 'Approval', value: <Badge value={b.status} /> },
           { label: 'Verification', value: verificationBadge(b) },
@@ -651,7 +660,7 @@ export function Businesses(props: {
         <span>
           <span className="nb-cell-main">{b.name}</span>
           <span className="nb-cell-sub">
-            {[b.category?.name ?? 'No category', b.city].filter(Boolean).join(' · ')}
+            {[b.categories.map((c) => c.name).join(', ') || 'No category', b.city].filter(Boolean).join(' · ')}
           </span>
         </span>
       ),

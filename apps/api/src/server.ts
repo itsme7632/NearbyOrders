@@ -250,6 +250,15 @@ export async function buildApp(): Promise<FastifyInstance> {
     const publicMessage = (e as { publicMessage?: string }).publicMessage;
     if (status !== undefined && publicMessage)
       return r.status(status).send({ error: { code: (e as { code?: string }).code ?? 'CONFLICT', message: publicMessage } });
+    // Rate-limit rejections (429 from @fastify/rate-limit) must NOT use the
+    // generic INTERNAL_ERROR body: clients (admin, mobile) display
+    // error.message verbatim, and "An unexpected error occurred" makes a
+    // throttled request indistinguishable from a server crash. The message
+    // below is static and client-safe — no internals leak.
+    if (status === 429)
+      return r.status(429).send({
+        error: { code: 'RATE_LIMITED', message: 'Too many requests. Please wait a moment and try again.' },
+      });
     app.log.error(e);
     return r
       .status(status ?? 500)
@@ -941,7 +950,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   /* ----------------------- Businesses (owner) ------------------------ */
   app.post('/api/v1/businesses', { preHandler: roles('BUSINESS_OWNER') }, async (q, r) => {
     const d = businessSchema.parse(q.body);
-    const { categoryIds, latitude, longitude, ...input } = d;
+    const { categoryIds, latitude, longitude, ownerName, ...input } = d;
     const validCategories = await prisma.category.findMany({ where: { id: { in: categoryIds }, isActive: true } });
     if (validCategories.length !== categoryIds.length)
       return r.status(400).send({ error: { code: 'INVALID_CATEGORY', message: 'One or more categories are invalid' } });
@@ -993,6 +1002,20 @@ export async function buildApp(): Promise<FastifyInstance> {
               metadata: { reason: 'AUTO_APPROVE_BUSINESSES' },
             },
           });
+        // Explicit owner name from the registration form: persist it on the
+        // owner's User row (split into first/last on the last space) so the
+        // admin "Owner" line shows the real name. Never inferred from email;
+        // omitted entirely when the field was left blank.
+        if (ownerName?.trim()) {
+          const parts = ownerName.trim().split(/\s+/);
+          await tx.user.update({
+            where: { id: ownerId },
+            data: {
+              firstName: parts.length === 1 ? parts[0] : parts.slice(0, -1).join(' '),
+              lastName: parts.length === 1 ? null : parts[parts.length - 1],
+            },
+          });
+        }
         return created;
       });
     } catch (e) {
@@ -5318,8 +5341,12 @@ export async function buildApp(): Promise<FastifyInstance> {
       where,
       select: {
         id: true, name: true, slug: true, status: true, isVerified: true, verificationStatus: true, trialStatus: true,
-        city: true, address: true, createdAt: true,
+        city: true, address: true, imageUrl: true, createdAt: true,
         owner: { select: { id: true, email: true, firstName: true, lastName: true } },
+        // Canonical category relationship (BusinessCategory join): the admin
+        // previously selected nothing here, so every business rendered
+        // "No category". Flattened below like the customer endpoints.
+        categories: { include: { category: true } },
         // Operational activity counts (Phase 16): real aggregates, no tokens,
         // no customer data — just how alive this business is on the platform.
         _count: { select: { orders: true, bookings: true, services: true, products: true, reviews: true } },
@@ -5338,8 +5365,9 @@ export async function buildApp(): Promise<FastifyInstance> {
       if (!subscriptionStatusByBusiness.has(s.businessId)) subscriptionStatusByBusiness.set(s.businessId, evaluateSubscription(s));
     }
     return {
-      data: businesses.map(({ _count, ...b }) => ({
+      data: businesses.map(({ _count, categories, ...b }) => ({
         ...b,
+        categories: flattenCategories(categories),
         counts: _count,
         subscriptionStatus: subscriptionStatusByBusiness.get(b.id) ?? null,
       })),

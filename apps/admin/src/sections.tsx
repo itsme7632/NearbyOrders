@@ -2016,7 +2016,7 @@ export function BusinessDetailModal(props: {
             </tr>
             <tr>
               <th>Category</th>
-              <td>{b.category?.name ?? <span className="muted">N/A</span>}</td>
+              <td>{b.categories.length > 0 ? b.categories.map((c) => c.name).join(', ') : <span className="muted">N/A</span>}</td>
             </tr>
             <tr>
               <th>Location</th>

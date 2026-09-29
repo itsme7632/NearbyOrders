@@ -32,6 +32,13 @@ describe('rate limiting is per client IP behind the proxy chain', () => {
     }
     const throttled = await app.inject({ method: 'GET', url: '/api/v1/categories', headers: clientA });
     expect(throttled.statusCode).toBe(429);
+    // The 429 body must be self-describing: the generic INTERNAL_ERROR body
+    // ("An unexpected error occurred") once made throttled requests
+    // indistinguishable from server crashes in the admin/mobile clients,
+    // which display error.message verbatim.
+    const body = throttled.json() as { error?: { code?: string; message?: string } };
+    expect(body.error?.code).toBe('RATE_LIMITED');
+    expect(body.error?.message).toBe('Too many requests. Please wait a moment and try again.');
 
     // A different client IP must still have its own full bucket.
     const other = await app.inject({ method: 'GET', url: '/api/v1/categories', headers: clientB });

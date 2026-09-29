@@ -14,6 +14,21 @@
 const configuredBase = import.meta.env.VITE_API_BASE_URL as string | undefined;
 export const API_BASE = configuredBase?.replace(/\/+$/, '') || '/api/v1';
 
+/**
+ * Resolves a stored image URL to a fetchable absolute URL.
+ * The API stores server-generated relative paths ("/api/v1/images/<uuid>.<ext>");
+ * these resolve against the API origin. Same-origin default ('/api/v1') needs
+ * no rewriting; an absolute VITE_API_BASE_URL contributes its origin.
+ * Absolute URLs and null pass through unchanged.
+ */
+export function resolveImageUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (/^https?:\/\//i.test(url)) return url;
+  if (!url.startsWith('/api/v1/images/')) return url;
+  const m = /^https?:\/\/[^/]+/.exec(API_BASE);
+  return m ? `${m[0]}${url}` : url;
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -150,9 +165,11 @@ export type AdminBusiness = {
   isVerified: boolean;
   city: string;
   address: string;
+  imageUrl: string | null;
   createdAt: string;
   owner: { id: string; email: string; firstName: string | null; lastName: string | null };
-  category?: { id: string; name: string } | null;
+  /** Canonical categories from the BusinessCategory join (flattened by the API). */
+  categories: { id: string; name: string; slug: string }[];
   /** Verification application lifecycle; null when the owner never applied. */
   verificationStatus?: 'DRAFT' | 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'CHANGES_REQUESTED' | null;
   /** Id of the latest verification application, when one exists. */

@@ -212,10 +212,18 @@ describe('CreateBusinessScreen', () => {
 });
 
 describe('validateBusinessForm', () => {
-  const valid = { name: 'Gulberg Grill', categoryId: 'cat-1', description: '', phone: '', address: '12 Food Street', city: 'Karachi' };
+  const valid = { name: 'Gulberg Grill', ownerName: '', categoryId: 'cat-1', description: '', phone: '', address: '12 Food Street', city: 'Karachi' };
 
   it('accepts a valid form with no errors', () => {
     expect(validateBusinessForm(valid)).toEqual({});
+  });
+
+  it('accepts an optional owner name', () => {
+    expect(validateBusinessForm({ ...valid, ownerName: 'Muhammad Butt' })).toEqual({});
+  });
+
+  it('flags a too-short owner name', () => {
+    expect(validateBusinessForm({ ...valid, ownerName: 'X' })).toEqual({ ownerName: 'Enter your full name.' });
   });
 
   it('flags each invalid field', () => {

@@ -1,6 +1,13 @@
-import { getBusinessSubscription, listPaymentRequests, type BusinessSubscriptionState } from '../api.js';
+import { getBusinessSubscription, listPaymentRequests, listSubscriptionPlans, type BusinessSubscriptionState } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, Loading, Money } from '../components/ui.js';
+import {
+  HUB_STATUS_BADGE,
+  HUB_STATUS_LABEL,
+  getStoredPlanSlug,
+  hubStatusFor,
+  resolveWorkingPlan,
+} from './OwnerSubscriptionShared.js';
 
 /** One line of real subscription state, from the server, for owner surfaces. */
 export function SubscriptionBadge(props: { businessId: string; variant?: 'line' | 'hero'; onOpen?: () => void }) {
@@ -86,6 +93,7 @@ export function OwnerPlanCard(props: {
 }) {
   const sub = useAsyncData<BusinessSubscriptionState | null>(() => getBusinessSubscription(props.businessId), [props.businessId]);
   const requests = useAsyncData(() => listPaymentRequests(props.businessId), [props.businessId]);
+  const plans = useAsyncData(() => listSubscriptionPlans(), []);
 
   if (sub.loading) return <Loading label="Checking your plan…" />;
   if (sub.error) return null; // Quietly hidden rather than inventing a state.
@@ -93,7 +101,14 @@ export function OwnerPlanCard(props: {
   const state = sub.data;
   const s = state?.subscription ?? null;
   const trialWindow = state?.trial ?? null;
-  const plan = s?.plan ?? null;
+  // The working plan is resolved exactly like the subscription hub: the
+  // subscription's plan when one exists, else the owner's stored choice,
+  // else the highlighted catalog plan. If the catalog fails to load, fall
+  // back to the subscription's embedded plan rather than hiding the name.
+  const activePlans = (plans.data ?? []).filter((p) => p.isActive);
+  const plan =
+    resolveWorkingPlan(s?.plan ?? null, activePlans, getStoredPlanSlug(props.businessId)) ?? s?.plan ?? null;
+  const hubStatus = hubStatusFor(s);
   const trialDaysLeft =
     trialWindow?.daysRemaining ??
     (s?.status === 'TRIAL' && s.trialEndAt
@@ -113,25 +128,11 @@ export function OwnerPlanCard(props: {
           : 'Last payment cancelled'
     : 'No payments yet';
 
-  const statusBadge =
-    !s || s.status === 'EXPIRED' || s.status === 'CANCELLED'
-      ? 'badge-closed'
-      : s.status === 'SUSPENDED'
-        ? 'badge-warn'
-        : 'badge-open';
-  const statusText = !s
-    ? 'No subscription'
-    : s.status === 'TRIAL'
-      ? trialDaysLeft !== null
-        ? `Free trial: ${trialDaysLeft} day${trialDaysLeft === 1 ? '' : 's'} remaining`
-        : 'Free trial'
-      : s.status === 'ACTIVE'
-        ? 'Active'
-        : s.status === 'SUSPENDED'
-          ? 'Subscription suspended'
-          : s.status === 'CANCELLED'
-            ? 'Cancelled'
-            : 'Plan expired';
+  const statusBadge = HUB_STATUS_BADGE[hubStatus];
+  // Shared hub vocabulary ("Free trial", "Active", "No plan yet", …) so the
+  // profile card and the subscription screen never disagree. The trial
+  // countdown lives in the sub-line, not the badge.
+  const statusText = HUB_STATUS_LABEL[hubStatus];
 
   return (
     <section className="opc-card" aria-label="NearbyOrders plan">
@@ -150,13 +151,16 @@ export function OwnerPlanCard(props: {
       </div>
       <p className="opc-sub" role="status">
         {s?.status === 'ACTIVE' ? <span>Plan active until {new Date(s.currentPeriodEndAt).toLocaleDateString()}</span> : null}
-        {s?.status === 'TRIAL' && trialWindow?.endsAt ? (
-          <span>Trial ends {new Date(trialWindow.endsAt).toLocaleDateString()}</span>
+        {s?.status === 'TRIAL' ? (
+          <span>
+            {trialDaysLeft !== null ? `${trialDaysLeft} day${trialDaysLeft === 1 ? '' : 's'} remaining` : 'Free trial'}
+            {trialWindow?.endsAt ? ` · Trial ends ${new Date(trialWindow.endsAt).toLocaleDateString()}` : null}
+          </span>
         ) : null}
         {/* P2 §13: customer visibility is controlled by listing approval
             (Business.status), never by the subscription — so the card must
             not claim a plan unlocks visibility. */}
-        {!s ? <span>Choose a plan to continue after your trial.</span> : null}
+        {!s ? <span>Choose a plan to get started.</span> : null}
       </p>
       <div className="pay-details opc-pay">
         <div className="pay-detail-row">

@@ -12,9 +12,9 @@ import { Button, ErrorState, Field, Loading } from '../components/ui.js';
 import { BusinessLimitNotice } from '../components/BusinessLimitNotice.js';
 import { AlertIcon, StoreIcon } from '../components/icons.js';
 
-type FormState = { name: string; categoryId: string; description: string; phone: string; address: string; city: string };
+type FormState = { name: string; ownerName: string; categoryId: string; description: string; phone: string; address: string; city: string };
 
-const initialForm: FormState = { name: '', categoryId: '', description: '', phone: '', address: '', city: '' };
+const initialForm: FormState = { name: '', ownerName: '', categoryId: '', description: '', phone: '', address: '', city: '' };
 
 /** Basic phone sanity: starts with + or a digit, then digits/spaces/dashes. */
 const phoneOk = (value: string): boolean => /^[+\d][\d\s-]{5,19}$/.test(value.trim());
@@ -24,6 +24,10 @@ export function validateBusinessForm(form: FormState): Partial<Record<keyof Form
   const errors: Partial<Record<keyof FormState, string>> = {};
   if (form.name.trim().length < 2) errors.name = 'Business name must be at least 2 characters.';
   else if (form.name.trim().length > 120) errors.name = 'Business name must be at most 120 characters.';
+  // Owner name is optional (existing accounts without one stay valid), but when
+  // given it must be a real name — it is shown to the admin as the owner.
+  if (form.ownerName.trim() && form.ownerName.trim().length < 2) errors.ownerName = 'Enter your full name.';
+  else if (form.ownerName.trim().length > 120) errors.ownerName = 'Owner name must be at most 120 characters.';
   if (!form.categoryId) errors.categoryId = 'Choose the category that fits your business.';
   if (form.description.length > 2000) errors.description = 'Description must be at most 2000 characters.';
   if (form.phone.trim() && !phoneOk(form.phone)) errors.phone = 'Enter a valid phone number, e.g. +92 300 1234567.';
@@ -76,6 +80,7 @@ export function CreateBusinessScreen(props: {
         phone: form.phone.trim() || undefined,
         address: form.address.trim(),
         city: form.city.trim(),
+        ownerName: form.ownerName.trim() || undefined,
       };
       const business = await createBusiness(payload);
       // The server-returned status drives post-creation messaging (approved
@@ -166,6 +171,18 @@ export function CreateBusinessScreen(props: {
           />
         </Field>
         {err('name')}
+
+        <Field label="Business Owner Name" hint="Optional: your name as the business owner. Shown to the admin team, never inferred from your email.">
+          <input
+            type="text"
+            value={form.ownerName}
+            onChange={(e) => set('ownerName')(e.target.value)}
+            placeholder="e.g. Muhammad Butt"
+            maxLength={120}
+            autoComplete="name"
+          />
+        </Field>
+        {err('ownerName')}
 
         <Field label="Category">
           <select value={form.categoryId} onChange={(e) => set('categoryId')(e.target.value)}>

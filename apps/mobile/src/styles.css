@@ -3502,7 +3502,7 @@ nav.business-nav-v3 .nav-item.active {
 .biz-hero-overlay .badge-open { background: var(--success); color: #fff; }
 .biz-hero-overlay .badge-closed { background: rgba(255, 255, 255, 0.25); color: #fff; }
 .biz-hero-close { font-size: 12px; opacity: 0.9; }
-.biz-hero-overlay .biz-hero-name { margin: 0; color: #fff; font-size: 23px; letter-spacing: -0.02em; text-shadow: 0 1px 8px rgba(0,0,0,0.35); }
+.biz-hero-overlay .biz-hero-name { margin: 0; color: #fff; font-size: 23px; letter-spacing: -0.02em; text-shadow: 0 1px 8px rgba(0,0,0,0.35); overflow-wrap: anywhere; }
 .biz-hero-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 5px; font-size: 12.5px; }
 .biz-hero-meta-item { opacity: 0.92; }
 .biz-hero-overlay .biz-card-rating { color: #ffd98a; }
