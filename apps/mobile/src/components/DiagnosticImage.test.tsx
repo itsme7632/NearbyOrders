@@ -44,7 +44,7 @@ describe('DiagnosticImage (flag enabled)', () => {
     fireEvent.error(img);
 
     // The diagnostic panel appears with the captured details.
-    const panel = screen.getByTestId('image-debug-panel');
+    const panel = await screen.findByTestId('image-debug-panel');
     expect(panel).not.toBeNull();
     expect(panel.textContent).toContain('IMAGE LOAD FAILED');
     expect(screen.getByTestId('image-debug-src').textContent).toBe(TEST_SRC);
