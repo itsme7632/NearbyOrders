@@ -1,3 +1,4 @@
+import { RemoteImage } from '../components/RemoteImage.js';
 import { useEffect, useState } from 'react';
 import { getBusiness, listBusinessReviews, listFeaturedBusinesses, getSession, resolveImageUrl, type Business, type FeaturedPlacement, type Product, type PublicReview, type ReviewPage } from '../api.js';
 import { useAsyncData } from '../hooks.js';
@@ -317,7 +318,7 @@ export function BusinessDetailScreen(props: {
             {b.products.map((p) => (
               <div key={p.id} className="svc-row">
                 {p.imageUrl ? (
-                  <img className="svc-thumb" src={resolveImageUrl(p.imageUrl) ?? undefined} alt="" loading="lazy" />
+                  <RemoteImage className="svc-thumb" src={resolveImageUrl(p.imageUrl) ?? undefined} alt="" loading="lazy" />
                 ) : (
                   <span className="svc-thumb pop-card-initial" aria-hidden>
                     {p.name[0]?.toUpperCase() ?? '?'}
