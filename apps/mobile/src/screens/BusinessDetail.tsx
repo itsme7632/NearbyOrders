@@ -11,7 +11,6 @@ import { useCartCount } from '../useCartCount.js';
 import { Stars } from '../components/ReviewForm.js';
 import { directionsUrl, formatDistanceKm, hasCoordinates } from '../location.js';
 import { useSavedBusiness } from './customer-experience.js';
-import { DiagnosticImage } from '../components/DiagnosticImage.js';
 import { HeartIcon } from '../components/icons.js';
 import { BusinessMapContext } from './BusinessMapContext.js';
 import './BusinessDetail.css';
@@ -133,7 +132,7 @@ export function BusinessDetailScreen(props: {
       <div className="biz-hero-full">
         <div className="biz-hero-media" role="img" aria-label={b.imageUrl ? `${b.name} photo` : undefined}>
           {b.imageUrl ? (
-            <DiagnosticImage src={resolveImageUrl(b.imageUrl) ?? undefined} alt={`${b.name} photo`} />
+            <RemoteImage src={resolveImageUrl(b.imageUrl) ?? undefined} alt={`${b.name} photo`} />
           ) : (
             <span className="hero-initial" aria-hidden>
               {b.name[0]?.toUpperCase() ?? '?'}
@@ -363,7 +362,7 @@ export function BusinessDetailScreen(props: {
       {activeTab === 'photos' && b.imageUrl ? (
         <section className="detail-section detail-section-tab" aria-label="Photos">
           <div className="detail-hero-media-v3" style={{ height: 220 }}>
-            <DiagnosticImage src={resolveImageUrl(b.imageUrl) ?? undefined} alt={`${b.name} photo`} />
+            <RemoteImage src={resolveImageUrl(b.imageUrl) ?? undefined} alt={`${b.name} photo`} />
           </div>
         </section>
       ) : null}
