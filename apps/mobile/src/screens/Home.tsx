@@ -1,3 +1,4 @@
+import { RemoteImage } from '../components/RemoteImage.js';
 import { useState } from 'react';
 import {
   getSession,
@@ -545,7 +546,7 @@ function DiscoverCard(props: { result: ProductSearchResult | ServiceSearchResult
     >
       <span className="discover-media" aria-hidden>
         {isProduct && r.imageUrl ? (
-          <img src={resolveImageUrl(r.imageUrl) ?? undefined} alt="" loading="lazy" />
+          <RemoteImage src={resolveImageUrl(r.imageUrl) ?? undefined} alt="" loading="lazy" />
         ) : (
           <span className="discover-initial">{r.name[0]?.toUpperCase() ?? '?'}</span>
         )}
@@ -776,7 +777,7 @@ function ContextCard(props: {
           <button type="button" key={f.business.id} className="biz-row" onClick={() => props.onOpenBusiness(f.business.id)}>
             <span className="biz-row-media" aria-hidden>
               {f.business.imageUrl ? (
-                <img src={resolveImageUrl(f.business.imageUrl) ?? undefined} alt="" loading="lazy" />
+                <RemoteImage src={resolveImageUrl(f.business.imageUrl) ?? undefined} alt="" loading="lazy" />
               ) : (
                 <span className="pop-card-initial">{f.business.name[0]?.toUpperCase() ?? '?'}</span>
               )}
@@ -812,7 +813,7 @@ function SpotlightCard(props: { business: Business; onOpen: () => void }) {
     <button type="button" className="spotlight-card" onClick={props.onOpen}>
       <span className="spotlight-media">
         {b.imageUrl ? (
-          <img src={resolveImageUrl(b.imageUrl) ?? undefined} alt="" loading="lazy" />
+          <RemoteImage src={resolveImageUrl(b.imageUrl) ?? undefined} alt="" loading="lazy" />
         ) : (
           <span className="spotlight-initial" aria-hidden>
             {b.name[0]?.toUpperCase() ?? '?'}
@@ -846,7 +847,7 @@ export function PopularBusinessCard(props: { business: Business; onOpen: () => v
     <button type="button" className="pop-card" onClick={props.onOpen}>
       <span className="pop-card-media">
         {b.imageUrl ? (
-          <img src={resolveImageUrl(b.imageUrl) ?? undefined} alt="" loading="lazy" />
+          <RemoteImage src={resolveImageUrl(b.imageUrl) ?? undefined} alt="" loading="lazy" />
         ) : (
           <span className="pop-card-initial" aria-hidden>
             {b.name[0]?.toUpperCase() ?? '?'}
