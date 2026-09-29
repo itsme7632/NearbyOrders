@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ImgHTMLAttributes } from 'react';
+import { useEffect, useRef, useState, type ImgHTMLAttributes, type ReactEventHandler } from 'react';
 
 type RemoteImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> & {
   src: string | undefined;
@@ -41,7 +41,7 @@ export function RemoteImage({ src, onError, ...props }: RemoteImageProps) {
     };
   }, []);
 
-  const handleError: React.ReactEventHandler<HTMLImageElement> = async (event) => {
+  const handleError: ReactEventHandler<HTMLImageElement> = async (event) => {
     onError?.(event);
 
     if (!src || fallbackAttemptedRef.current) return;
