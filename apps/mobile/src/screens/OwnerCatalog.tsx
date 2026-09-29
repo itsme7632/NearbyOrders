@@ -1,3 +1,4 @@
+import { RemoteImage } from '../components/RemoteImage.js';
 import { useEffect, useState } from 'react';
 import {
   listOwnerServices,
@@ -384,7 +385,7 @@ export function validateProductForm(form: { name: string; price: string; descrip
 /** Small product thumbnail: the saved image, or a neutral placeholder. */
 function ProductThumb(props: { imageUrl: string | null; name: string }) {
   return props.imageUrl ? (
-    <img src={resolveImageUrl(props.imageUrl) ?? undefined} alt={props.name} className="product-thumb" loading="lazy" />
+    <RemoteImage src={resolveImageUrl(props.imageUrl) ?? undefined} alt={props.name} className="product-thumb" loading="lazy" />
   ) : (
     <span className="product-thumb product-thumb-empty" aria-hidden>
       <OrdersIcon size={18} />
