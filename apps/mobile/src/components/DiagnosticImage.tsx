@@ -37,6 +37,12 @@ export type ImageLoadFailure = {
   userAgent: string;
   /** ISO timestamp of the error event. */
   timestamp: string;
+  /** Result of a one-shot CORS fetch of the same URL after the img failed. */
+  fetchStatus: string;
+  fetchType: string;
+  fetchContentType: string;
+  fetchContentLength: string;
+  fetchBodyBytes: string;
 };
 
 export function DiagnosticImage(props: {
@@ -47,9 +53,9 @@ export function DiagnosticImage(props: {
 }) {
   const [failure, setFailure] = useState<ImageLoadFailure | null>(null);
 
-  const handleError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+  const handleError = async (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
-    setFailure({
+    const baseFailure = {
       src: props.src ?? '(undefined)',
       currentSrc: img.currentSrc,
       complete: img.complete,
@@ -58,7 +64,41 @@ export function DiagnosticImage(props: {
       origin: window.location.origin,
       userAgent: navigator.userAgent,
       timestamp: new Date().toISOString(),
-    });
+    };
+
+    if (!props.src) {
+      setFailure({
+        ...baseFailure,
+        fetchStatus: 'SKIPPED',
+        fetchType: '-',
+        fetchContentType: '-',
+        fetchContentLength: '-',
+        fetchBodyBytes: '-',
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch(props.src, { method: 'GET', mode: 'cors', cache: 'no-store' });
+      const body = await response.blob();
+      setFailure({
+        ...baseFailure,
+        fetchStatus: String(response.status),
+        fetchType: response.type,
+        fetchContentType: response.headers.get('content-type') ?? '(none)',
+        fetchContentLength: response.headers.get('content-length') ?? '(none)',
+        fetchBodyBytes: String(body.size),
+      });
+    } catch (error) {
+      setFailure({
+        ...baseFailure,
+        fetchStatus: 'FETCH_FAILED',
+        fetchType: '-',
+        fetchContentType: '-',
+        fetchContentLength: '-',
+        fetchBodyBytes: error instanceof Error ? error.message : String(error),
+      });
+    }
   };
 
   const openDirectly = () => {
@@ -98,6 +138,16 @@ export function DiagnosticImage(props: {
             <dd className="image-debug-wrap">{failure.userAgent}</dd>
             <dt>timestamp</dt>
             <dd>{failure.timestamp}</dd>
+            <dt>fetchStatus</dt>
+            <dd>{failure.fetchStatus}</dd>
+            <dt>fetchType</dt>
+            <dd>{failure.fetchType}</dd>
+            <dt>fetchContentType</dt>
+            <dd>{failure.fetchContentType}</dd>
+            <dt>fetchContentLength</dt>
+            <dd>{failure.fetchContentLength}</dd>
+            <dt>fetchBodyBytes</dt>
+            <dd className="image-debug-wrap">{failure.fetchBodyBytes}</dd>
           </dl>
           <button type="button" className="btn btn-secondary btn-sm" onClick={openDirectly}>
             Open image directly
