@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'NearbyOrders',
   webDir: 'dist',
   server: {
-    androidScheme: 'http',
+    androidScheme: 'https',
   },
   // No `plugins` block: the Android top inset is measured in JS at startup
   // (see src/statusBar.ts -> --native-statusbar-height -> --sat in
