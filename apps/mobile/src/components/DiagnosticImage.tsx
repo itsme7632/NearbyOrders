@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { IMAGE_DEBUG } from '../imageDebug.js';
 
 /**
@@ -15,9 +15,11 @@ import { IMAGE_DEBUG } from '../imageDebug.js';
  * including an "Open image directly" button that opens the failing URL in
  * the system browser (outside the WebView) for comparison.
  *
- * This component MUST NOT implement any fallback, retry, proxy,
- * fetch-and-convert-to-blob, URL rewrite, or referrer-policy change. It is
- * instrumentation only.
+ * This component MUST NOT change the normal image path or implement a
+ * production fallback. In diagnostic mode only, after the direct <img>
+ * fails, it also runs a Blob -> object URL -> <img> experiment so we can
+ * distinguish a WebView direct-network image failure from an <img> rendering
+ * failure. It is instrumentation only.
  */
 
 export type ImageLoadFailure = {
@@ -56,6 +58,14 @@ export function DiagnosticImage(props: {
   loading?: 'lazy' | 'eager';
 }) {
   const [failure, setFailure] = useState<ImageLoadFailure | null>(null);
+  const [blobSrc, setBlobSrc] = useState<string | null>(null);
+  const [blobImageStatus, setBlobImageStatus] = useState('NOT_STARTED');
+
+  useEffect(() => {
+    return () => {
+      if (blobSrc) URL.revokeObjectURL(blobSrc);
+    };
+  }, [blobSrc]);
 
   const handleError = async (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
@@ -88,6 +98,14 @@ export function DiagnosticImage(props: {
     try {
       const response = await fetch(props.src, { method: 'GET', mode: 'cors', cache: 'no-store' });
       const body = await response.blob();
+
+      if (typeof URL.createObjectURL === 'function') {
+        const objectUrl = URL.createObjectURL(body);
+        setBlobSrc(objectUrl);
+        setBlobImageStatus('READY - waiting for <img>');
+      } else {
+        setBlobImageStatus('UNSUPPORTED: URL.createObjectURL');
+      }
 
       let bitmapStatus = 'UNTESTED';
       let bitmapWidth = '-';
@@ -189,6 +207,19 @@ export function DiagnosticImage(props: {
             <dt>bitmapHeight</dt>
             <dd>{failure.bitmapHeight}</dd>
           </dl>
+          {blobSrc ? (
+            <div className="image-debug-blob-test" data-testid="image-debug-blob-test">
+              <strong>BLOB → OBJECT URL → &lt;IMG&gt;</strong>
+              <div data-testid="image-debug-blob-status">{blobImageStatus}</div>
+              <img
+                src={blobSrc}
+                alt="Blob diagnostic"
+                className={props.className}
+                onLoad={() => setBlobImageStatus('LOADED')}
+                onError={() => setBlobImageStatus('FAILED')}
+              />
+            </div>
+          ) : null}
           <button type="button" className="btn btn-secondary btn-sm" onClick={openDirectly}>
             Open image directly
           </button>
