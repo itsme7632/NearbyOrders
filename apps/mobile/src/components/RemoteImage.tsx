@@ -13,8 +13,13 @@ type RemoteImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> & {
  *
  * Keep the normal direct URL as the first path. If that path errors, fetch the
  * exact URL, create a temporary object URL for the response Blob, and switch
- * the same <img> to that local object URL. Object URLs are revoked when the
- * image changes or unmounts.
+ * the same <img> to that local object URL.
+ *
+ * To avoid making a failed direct <img> request followed by a second full
+ * request feel unnecessarily slow, a small delayed fallback fetch is started
+ * for images that have not loaded after 250ms. If the direct image succeeds,
+ * that fallback request is aborted. This keeps fast direct loads fast while
+ * removing most of the sequential delay on the Android WebView failure path.
  */
 export function RemoteImage({ src, onError, ...props }: RemoteImageProps) {
   const [displaySrc, setDisplaySrc] = useState(src);
@@ -22,35 +27,9 @@ export function RemoteImage({ src, onError, ...props }: RemoteImageProps) {
   const objectUrlRef = useRef<string | null>(null);
   const fallbackAttemptedRef = useRef(false);
   const fetchControllerRef = useRef<AbortController | null>(null);
+  const loadedRef = useRef(false);
 
-  useEffect(() => {
-    if (fetchControllerRef.current) {
-      fetchControllerRef.current.abort();
-      fetchControllerRef.current = null;
-    }
-    if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current);
-      objectUrlRef.current = null;
-    }
-    fallbackAttemptedRef.current = false;
-    setUsingBlobFallback(false);
-    setDisplaySrc(src);
-  }, [src]);
-
-  useEffect(() => {
-    return () => {
-      fetchControllerRef.current?.abort();
-      fetchControllerRef.current = null;
-      if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current);
-        objectUrlRef.current = null;
-      }
-    };
-  }, []);
-
-  const handleError: ReactEventHandler<HTMLImageElement> = async (event) => {
-    onError?.(event);
-
+  const startFallbackFetch = async () => {
     if (!src || fallbackAttemptedRef.current) return;
     fallbackAttemptedRef.current = true;
 
@@ -70,7 +49,8 @@ export function RemoteImage({ src, onError, ...props }: RemoteImageProps) {
       }
 
       const blob = await response.blob();
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || loadedRef.current) return;
+
       const objectUrl = URL.createObjectURL(blob);
       objectUrlRef.current = objectUrl;
       setUsingBlobFallback(true);
@@ -82,10 +62,55 @@ export function RemoteImage({ src, onError, ...props }: RemoteImageProps) {
     }
   };
 
+  useEffect(() => {
+    if (fetchControllerRef.current) {
+      fetchControllerRef.current.abort();
+      fetchControllerRef.current = null;
+    }
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+
+    fallbackAttemptedRef.current = false;
+    loadedRef.current = false;
+    setUsingBlobFallback(false);
+    setDisplaySrc(src);
+
+    // Give the normal browser image path a short head start. On the Android
+    // WebView failure path, this overlaps the fallback request with the
+    // browser's failed image request instead of waiting for the failure first.
+    const timer = window.setTimeout(() => {
+      if (!loadedRef.current) void startFallbackFetch();
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+      fetchControllerRef.current?.abort();
+      fetchControllerRef.current = null;
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
+    };
+  }, [src]);
+
+  const handleLoad: React.ReactEventHandler<HTMLImageElement> = () => {
+    loadedRef.current = true;
+    fetchControllerRef.current?.abort();
+    fetchControllerRef.current = null;
+  };
+
+  const handleError: ReactEventHandler<HTMLImageElement> = async (event) => {
+    onError?.(event);
+    await startFallbackFetch();
+  };
+
   return (
     <img
       {...props}
       src={displaySrc}
+      onLoad={handleLoad}
       onError={handleError}
       data-image-blob-fallback={usingBlobFallback ? 'true' : undefined}
     />
