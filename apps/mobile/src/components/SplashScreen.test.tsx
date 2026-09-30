@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SplashScreen } from './SplashScreen';
 
@@ -9,7 +9,7 @@ describe('SplashScreen', () => {
   it('renders the final Embrace construction during the 900ms splash window', () => {
     render(<SplashScreen />);
 
-    expect(screen.getByRole('presentation')).toBeInTheDocument();
+    expect(document.querySelector('.app-splash')).toBeTruthy();
     expect(document.querySelector('.app-splash-ring')).toBeTruthy();
     expect(document.querySelector('.app-splash-n--left')).toBeTruthy();
     expect(document.querySelector('.app-splash-n--right')).toBeTruthy();
@@ -22,11 +22,11 @@ describe('SplashScreen', () => {
     act(() => {
       vi.advanceTimersByTime(899);
     });
-    expect(screen.getByRole('presentation')).toBeInTheDocument();
+    expect(document.querySelector('.app-splash')).toBeTruthy();
 
     act(() => {
       vi.advanceTimersByTime(1);
     });
-    expect(screen.queryByRole('presentation')).toBeNull();
+    expect(document.querySelector('.app-splash')).toBeNull();
   });
 });
