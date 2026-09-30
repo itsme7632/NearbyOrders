@@ -531,18 +531,15 @@ export function App() {
       route.name === 'notifications');
   if (authFlow && content === null) content = session ? profileHubScreen : profileAuthScreen;
 
-  // Session restore gate: nothing else renders until the refresh-token
-  // exchange has resolved, so the app never paints on a stale identity.
-  // The status-bar gutter stays mounted — the Android inset guarantee is
-  // structural, not content-dependent.
+  // Session restore gate: keep the splash mounted while the refresh-token
+  // exchange resolves, so the 900ms launch animation starts at app launch
+  // rather than waiting on auth/network work. The app content remains behind
+  // the opaque splash until auth is ready.
   if (!authReady) {
-    return (
-      <main>
-        <StatusbarGutter />
-        <div className="screen">
-          <Loading label="Signing you in…" />
-        </div>
-      </main>
+    content = (
+      <div className="screen">
+        <Loading label="Signing you in…" />
+      </div>
     );
   }
 
