@@ -7,6 +7,7 @@ import { useRoute, useAsyncData } from './hooks.js';
 import { applyDefaultModeForSession, initModeSessionSync, setAppMode, useAppMode } from './mode.js';
 import { BellIcon, ExploreIcon, HomeIcon, OrdersIcon, BookingsIcon, MeridianMark, ProfileIcon, StoreIcon } from './components/icons.js';
 import { Loading } from './components/ui.js';
+import { RemoteImage } from './components/RemoteImage.js';
 import { ToastProvider } from './components/primitives.js';
 import { HomeScreen } from './screens/Home.js';
 import { ExploreScreen } from './screens/Explore.js';
@@ -117,7 +118,7 @@ function OwnerAppHeader(props: {
         onClick={props.onAvatar}
       >
         {first?.imageUrl ? (
-          <img src={resolveImageUrl(first.imageUrl) ?? undefined} alt="" />
+          <RemoteImage src={resolveImageUrl(first.imageUrl) ?? undefined} alt="" loading="eager" />
         ) : initial ? (
           <span aria-hidden>{initial}</span>
         ) : (
