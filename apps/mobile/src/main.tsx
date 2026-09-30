@@ -9,6 +9,7 @@ import { BellIcon, ExploreIcon, HomeIcon, OrdersIcon, BookingsIcon, MeridianMark
 import { Loading } from './components/ui.js';
 import { RemoteImage } from './components/RemoteImage.js';
 import { ToastProvider } from './components/primitives.js';
+import { SplashScreen } from './components/SplashScreen.js';
 import { HomeScreen } from './screens/Home.js';
 import { ExploreScreen } from './screens/Explore.js';
 import { SearchScreen } from './screens/Search.js';
@@ -547,6 +548,7 @@ export function App() {
 
   return (
     <ToastProvider>
+    <SplashScreen />
     <main className={authFlow ? 'auth-mode' : undefined}>
       <StatusbarGutter />
       {/* Phase 3I: keyboard / screen-reader users can jump past the header. */}
