@@ -1,21 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- NearbyOrders splash icon (Android 12+ SplashScreen API): the Meridian N,
-     large and centered on the porcelain window background.
-     288dp canvas, artwork within r=96 of center.
-     Rendered through the animated-vector wrapper so the platform draws it at
-     full size instead of upscaling a 108dp pre-render. -->
+<!-- NearbyOrders Embrace mark for the Android 12+ native splash.
+     White production geometry on the Ink splash background.
+     The N is constructed from the same circular O geometry used by the
+     in-app animated splash. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="288dp"
     android:height="288dp"
-    android:viewportWidth="288"
-    android:viewportHeight="288">
+    android:viewportWidth="120"
+    android:viewportHeight="120">
     <path
-        android:fillColor="#16222E"
-        android:pathData="M 93.6 68.4 L 106.1 68.4 L 106.1 180.1 L 93.6 180.1 Z" />
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="12"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M95,60 A35,35 0,1 1,25,60 A35,35 0,1 1,95,60" />
     <path
-        android:fillColor="#E23A2E"
-        android:pathData="M 93.6 68.4 L 123.4 68.4 L 182.1 166.3 L 164.3 219.6 Z" />
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="12"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M46,27.9 L46,92.1" />
     <path
-        android:fillColor="#16222E"
-        android:pathData="M 180.2 68.4 L 194.4 68.4 L 194.4 153.1 L 180.2 164.4 Z" />
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="12"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M74,27.9 L74,92.1" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="12"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M46,27.9 L74,92.1" />
 </vector>
