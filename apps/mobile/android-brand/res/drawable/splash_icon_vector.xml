@@ -1,20 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- NearbyOrders Embrace mark for the Android 12+ native splash.
-     White production geometry on the Ink splash background.
-     The N is constructed from the same circular O geometry used by the
-     in-app animated splash. -->
+<!-- First frame for the native Android splash.
+     The native splash hands off directly into the React N -> O animation,
+     so it intentionally shows only the N construction rather than the
+     completed Embrace mark. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="288dp"
     android:height="288dp"
     android:viewportWidth="120"
     android:viewportHeight="120">
-    <path
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="12"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M95,60 A35,35 0,1 1,25,60 A35,35 0,1 1,95,60" />
     <path
         android:fillColor="@android:color/transparent"
         android:strokeColor="#FFFFFF"
