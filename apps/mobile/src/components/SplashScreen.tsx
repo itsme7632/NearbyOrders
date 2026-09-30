@@ -22,10 +22,10 @@ export function SplashScreen() {
         focusable="false"
       >
         <g className="app-splash-mark__construction">
-          <circle className="app-splash-ring" cx="60" cy="60" r="35" />
-          <path className="app-splash-n app-splash-n--left" d="M46 27.9 L46 92.1" />
-          <path className="app-splash-n app-splash-n--right" d="M74 27.9 L74 92.1" />
-          <path className="app-splash-n app-splash-n--diagonal" d="M46 27.9 L74 92.1" />
+          <circle className="app-splash-ring" cx="60" cy="60" r="35" pathLength="1" />
+          <path className="app-splash-n app-splash-n--left" d="M46 27.9 L46 92.1" pathLength="1" />
+          <path className="app-splash-n app-splash-n--right" d="M74 27.9 L74 92.1" pathLength="1" />
+          <path className="app-splash-n app-splash-n--diagonal" d="M46 27.9 L74 92.1" pathLength="1" />
         </g>
       </svg>
     </div>
