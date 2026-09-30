@@ -1,5 +1,6 @@
 /**
- * Brand asset regression tests — Concept 3B "Meridian N" (approved 2026-09-25, LOCKED).
+ * Brand asset regression tests — N+O identity (Phase 9 geometry approved and
+ * FROZEN 2026-09-30; Phase 9B production color application).
  *
  * Verifies the canonical vector sources, their published web copies, the
  * Android resource tree, and the splash/theme wiring. These tests guard the
@@ -17,13 +18,16 @@ const publicBrandDir = join(mobileDir, 'public', 'brand');
 const androidRes = join(mobileDir, 'android-brand', 'res');
 
 const SLATE = '#16222E';
+const SLATE_DEEP = '#0F1822';
 const EMBER = '#E23A2E';
 const PORCELAIN = '#F2F5F7';
 
-// Locked Meridian N geometry (1000x1000 grid) — byte-exact path data.
-const LEFT_STEM = 'M220,80 h69.7 v620.5 h-69.7 Z';
-const EMBER_DIAG = 'M220,80 L385.3,80 L711.6,623.8 L612.6,920.1 Z';
-const RIGHT_STEM = 'M701.1,80 L779.9,80 L779.9,550.6 L701.1,613.3 Z';
+// Frozen N+O geometry (120x120 grid) — byte-exact path data.
+const N_LEFT = 'M29 90 L29 30 L52.17 52.42';
+const N_RIGHT = 'M67.83 67.58 L91 90 L91 30';
+const O_RING = 'M50 60 A10 10 0 1 1 70 60 A10 10 0 1 1 50 60 Z';
+const WELD_0 =
+  'M49.09 39.70 L57.00 47.35 L55.69 47.74 L54.43 48.25 L53.23 48.90 L52.11 49.67 L51.07 50.55 L50.14 51.53 L49.30 52.61 L48.59 53.77 L48.00 55.00 L47.54 56.28 C50.12 47.65 55.56 45.96 49.09 39.70 Z';
 
 function read(p: string): string {
   return readFileSync(p, 'utf8');
@@ -51,25 +55,37 @@ describe('brand canonical sources', () => {
     expect(statSync(p).size).toBeGreaterThan(200);
   });
 
-  it('mark.svg carries the locked geometry and palette', () => {
+  it('mark.svg carries the frozen geometry and production palette', () => {
     const svg = read(join(brandDir, 'mark.svg'));
-    expect(svg).toContain('viewBox="0 0 1000 1000"');
-    expect(svg).toContain(`d="${LEFT_STEM}"`);
-    expect(svg).toContain(`d="${EMBER_DIAG}"`);
-    expect(svg).toContain(`d="${RIGHT_STEM}"`);
-    expect(svg).toContain(`fill="${SLATE}"`);
+    expect(svg).toContain('viewBox="0 0 120 120"');
+    expect(svg).toContain(`d="${N_LEFT}"`);
+    expect(svg).toContain(`d="${N_RIGHT}"`);
+    // N is stroked, not filled.
+    expect(svg).toContain(`stroke="${SLATE}"`);
+    expect(svg).toContain('stroke-width="14"');
+    // O ring + welds in ember.
+    expect(svg).toContain('<circle cx="60" cy="60" r="10"');
+    expect(svg).toContain(`stroke="${EMBER}"`);
+    expect(svg).toContain('stroke-width="6"');
+    expect(svg).toContain(`d="${WELD_0}"`);
     expect(svg).toContain(`fill="${EMBER}"`);
     expect(svg).not.toContain('linearGradient');
     expect(svg).not.toContain('radialGradient');
+    // Seven elements: 2 N sub-paths, ring, 4 weld slivers.
+    expect(svg.match(/<path|<circle/g)?.length).toBe(7);
+    // No generic black anywhere in the brand.
+    expect(svg).not.toContain('#000000');
+    expect(svg).not.toContain('#000"');
   });
 
-  it('mark-on-dark.svg keeps identical geometry, porcelain stems', () => {
+  it('mark-on-dark.svg keeps identical geometry, porcelain N', () => {
     const svg = read(join(brandDir, 'mark-on-dark.svg'));
-    expect(svg).toContain(`d="${LEFT_STEM}"`);
-    expect(svg).toContain(`d="${EMBER_DIAG}"`);
-    expect(svg).toContain(`d="${RIGHT_STEM}"`);
-    expect(svg).toContain(`fill="${PORCELAIN}"`);
-    expect(svg).toContain(`fill="${EMBER}"`);
+    expect(svg).toContain(`d="${N_LEFT}"`);
+    expect(svg).toContain(`d="${N_RIGHT}"`);
+    expect(svg).toContain('<circle cx="60" cy="60" r="10"');
+    expect(svg).toContain(`stroke="${PORCELAIN}"`);
+    expect(svg).toContain(`stroke="${EMBER}"`);
+    expect(svg).toContain(`d="${WELD_0}"`);
   });
 
   it('logo.svg lockup: Bricolage Grotesque wordmark, Nearby slate + Orders ember', () => {
@@ -79,13 +95,23 @@ describe('brand canonical sources', () => {
     expect(svg).toContain('Orders');
     expect(svg).toContain(`fill="${SLATE}"`);
     expect(svg).toContain(`fill="${EMBER}"`);
+    expect(svg).toContain(`d="${N_LEFT}"`);
   });
 
   it('icon-launcher.svg is a porcelain tile with the mark', () => {
     const svg = read(join(brandDir, 'icon-launcher.svg'));
     expect(svg).toContain('viewBox="0 0 108 108"');
     expect(svg).toContain(`fill="${PORCELAIN}"`);
-    expect(svg).toContain(EMBER_DIAG);
+    expect(svg).toContain(N_LEFT);
+    expect(svg).toContain(EMBER);
+  });
+
+  it('icon-monochrome.svg is a single-color white silhouette', () => {
+    const svg = read(join(brandDir, 'icon-monochrome.svg'));
+    expect(svg).toContain('#FFFFFF');
+    expect(svg).not.toContain(SLATE);
+    expect(svg).not.toContain(EMBER);
+    expect(svg).toContain(N_LEFT);
   });
 });
 
@@ -111,8 +137,6 @@ describe('published web copies', () => {
     const html = read(join(mobileDir, 'index.html'));
     expect(html).toContain('href="/brand/nearbyorders-mark.svg"');
     expect(html).toContain('content="#16222e"');
-    expect(html).not.toContain('mark-on-light');
-    expect(html).not.toContain('#5C1310');
   });
 });
 
@@ -144,13 +168,15 @@ describe('android brand resources', () => {
     },
   );
 
-  it('ic_launcher_foreground.xml carries the Meridian N in brand colors', () => {
+  it('ic_launcher_foreground.xml carries the N+O in brand colors', () => {
     const xml = read(join(androidRes, 'drawable', 'ic_launcher_foreground.xml'));
     expect(xml).toContain('viewportWidth="108"');
     expect(xml).toContain(SLATE);
     expect(xml).toContain(EMBER);
-    // Three paths: left stem, ember diagonal, right stem.
-    expect(xml.match(/<path/g)?.length).toBe(3);
+    // pathData stays byte-identical to the approved 120-grid geometry.
+    expect(xml).toContain(`android:pathData="${N_LEFT}"`);
+    expect(xml).toContain(`android:pathData="${N_RIGHT}"`);
+    expect(xml).toContain(`android:pathData="${O_RING}"`);
   });
 
   it('ic_launcher_monochrome.xml is a single-color silhouette', () => {
@@ -158,20 +184,33 @@ describe('android brand resources', () => {
     expect(xml).toContain('#FFFFFF');
     expect(xml).not.toContain(SLATE);
     expect(xml).not.toContain(EMBER);
-    expect(xml.match(/<path/g)?.length).toBe(3);
   });
 
-  it('splash uses the Meridian N on the porcelain window background', () => {
+  it('splash uses the N+O on the porcelain window background', () => {
     const vector = read(join(androidRes, 'drawable', 'splash_icon_vector.xml'));
     expect(vector).toContain('viewportWidth="288"');
     expect(vector).toContain(SLATE);
     expect(vector).toContain(EMBER);
+    expect(vector).toContain(`android:pathData="${N_LEFT}"`);
+    // Named targets for the N -> O choreography.
+    expect(vector).toContain('android:name="n_path_l"');
+    expect(vector).toContain('android:name="n_path_r"');
+    expect(vector).toContain('android:name="o_group"');
     const wrapper = read(join(androidRes, 'drawable', 'splash_icon.xml'));
     expect(wrapper).toContain('@drawable/splash_icon_vector');
+    expect(wrapper).toContain('@animator/n_draw');
+    expect(wrapper).toContain('@animator/o_fade');
+    const nDraw = read(join(androidRes, 'animator', 'n_draw.xml'));
+    expect(nDraw).toContain('trimPathEnd');
+    expect(nDraw).toContain('android:duration="300"');
+    const oFade = read(join(androidRes, 'animator', 'o_fade.xml'));
+    expect(oFade).toContain('android:propertyName="alpha"');
+    expect(oFade).toContain('android:startOffset="250"');
     const colors = read(join(androidRes, 'values', 'colors.xml'));
     expect(colors).toContain(`<color name="splash_background">${PORCELAIN}</color>`);
     expect(colors).toContain(`<color name="ic_launcher_background">${PORCELAIN}</color>`);
     expect(colors).toContain(`<color name="colorPrimary">${SLATE}</color>`);
+    expect(colors).toContain(`<color name="colorPrimaryDark">${SLATE_DEEP}</color>`);
     expect(colors).toContain(`<color name="colorAccent">${EMBER}</color>`);
   });
 

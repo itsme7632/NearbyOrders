@@ -1,6 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Wraps the static splash vector as an animated-vector (no animators) so the
-     Android 12+ splash pipeline renders it at full size instead of upscaling a
-     108dp pre-render (which shows up blurry on xhdpi+ devices). -->
+<!-- NearbyOrders launch splash: N draws first (0-300ms), then the O ring +
+     welds fade in (250-700ms), then a 200ms settle hold — the approved 900ms
+     N -> O storyboard. Finishes on the exact production mark. -->
 <animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:drawable="@drawable/splash_icon_vector" />
+    android:drawable="@drawable/splash_icon_vector">
+    <target
+        android:name="n_path_l"
+        android:animation="@animator/n_draw" />
+    <target
+        android:name="n_path_r"
+        android:animation="@animator/n_draw" />
+    <target
+        android:name="o_group"
+        android:animation="@animator/o_fade" />
+    <target
+        android:name="mark_root"
+        android:animation="@animator/settle" />
+</animated-vector>

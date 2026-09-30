@@ -1,7 +1,7 @@
 import React from 'react';
 
 /* ------------------------------------------------------------------
-   NearbyOrders Admin — Meridian Ops Refined design primitives.
+   NearbyOrders Admin — Ops Refined design primitives.
 
    Every admin screen is composed from these primitives so the panel
    feels like ONE product. Screens must not invent their own
@@ -11,26 +11,36 @@ import React from 'react';
 /* ------------------------- brand mark ------------------------------ */
 
 /**
- * The approved Meridian N (Concept 3B) geometry, taken from
+ * The approved NearbyOrders N+O mark (Phase 9 geometry, frozen 2026-09-30;
+ * Phase 9B production color application), taken from
  * apps/mobile/brand/mark.svg. Same paths, no reinterpretation.
- * `dark` renders the porcelain-stem variant for dark surfaces.
+ * `dark` renders the porcelain-N variant for dark surfaces.
  */
-export function MeridianMark(props: { size?: number; dark?: boolean }) {
-  const stem = props.dark ? '#F2F5F7' : '#16222E';
+export function NearbyOrdersMark(props: { size?: number; dark?: boolean }) {
+  const n = props.dark ? '#F2F5F7' : '#16222E';
   const size = props.size ?? 24;
+  const welds = [
+    'M49.09 39.70 L57.00 47.35 L55.69 47.74 L54.43 48.25 L53.23 48.90 L52.11 49.67 L51.07 50.55 L50.14 51.53 L49.30 52.61 L48.59 53.77 L48.00 55.00 L47.54 56.28 C50.12 47.65 55.56 45.96 49.09 39.70 Z',
+    'M39.36 49.76 L47.26 57.41 L47.60 56.09 L48.08 54.82 L48.68 53.60 L49.41 52.45 L50.26 51.39 L51.21 50.42 L52.26 49.55 L53.40 48.80 L54.61 48.17 L55.87 47.67 C47.34 50.53 45.82 56.02 39.36 49.76 Z',
+    'M70.91 80.30 L63.00 72.65 L64.31 72.26 L65.57 71.75 L66.77 71.10 L67.89 70.33 L68.93 69.45 L69.86 68.47 L70.70 67.39 L71.41 66.23 L72.00 65.00 L72.46 63.72 C69.88 72.35 64.44 74.04 70.91 80.30 Z',
+    'M80.64 70.24 L72.74 62.59 L72.40 63.91 L71.92 65.18 L71.32 66.40 L70.59 67.55 L69.74 68.61 L68.79 69.58 L67.74 70.45 L66.60 71.20 L65.39 71.83 L64.13 72.33 C72.66 69.47 74.18 63.98 80.64 70.24 Z',
+  ];
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 1000 1000"
+      viewBox="0 0 120 120"
       role="img"
       aria-label="NearbyOrders mark"
       focusable="false"
     >
-      <title>NearbyOrders mark, the Meridian N</title>
-      <path d="M220,80 h69.7 v620.5 h-69.7 Z" fill={stem} />
-      <path d="M220,80 L385.3,80 L711.6,623.8 L612.6,920.1 Z" fill="#E23A2E" />
-      <path d="M701.1,80 L779.9,80 L779.9,550.6 L701.1,613.3 Z" fill={stem} />
+      <title>NearbyOrders mark, N+O</title>
+      <path d="M29 90 L29 30 L52.17 52.42" stroke={n} strokeWidth={14} fill="none" strokeLinejoin="round" strokeLinecap="round" />
+      <path d="M67.83 67.58 L91 90 L91 30" stroke={n} strokeWidth={14} fill="none" strokeLinejoin="round" strokeLinecap="round" />
+      <path d="M50 60 A10 10 0 1 1 70 60 A10 10 0 1 1 50 60 Z" fill="none" stroke="#E23A2E" strokeWidth={6} />
+      {welds.map((d) => (
+        <path key={d.slice(0, 12)} d={d} fill="#E23A2E" />
+      ))}
     </svg>
   );
 }

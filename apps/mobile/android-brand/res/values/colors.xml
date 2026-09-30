@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- NearbyOrders brand colors (Atlas Refined).
+<!-- NearbyOrders brand colors (production app theme, Phase 9B).
      Also supplies colorPrimary/colorPrimaryDark/colorAccent, which the
      generated AppTheme references. -->
 <resources>
     <color name="ic_launcher_background">#F2F5F7</color>
     <color name="splash_background">#F2F5F7</color>
     <color name="colorPrimary">#16222E</color>
-    <color name="colorPrimaryDark">#0E1620</color>
+    <color name="colorPrimaryDark">#0F1822</color>
     <color name="colorAccent">#E23A2E</color>
 </resources>
