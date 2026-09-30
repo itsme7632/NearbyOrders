@@ -22,6 +22,7 @@ import {
   PinIcon,
   StarIcon,
   StoreIcon,
+  UserIcon,
   HelpIcon,
 } from '../components/icons.js';
 import { OwnerHubRow } from './owner-ui.js';
@@ -228,6 +229,12 @@ function OverviewBody(props: {
       <OvSection label="Catalog" sub="Manage everything you sell" className="ov-section-catalog">
         <OwnerHubRow icon={<ActivityIcon size={18} />} title="Services" subtitle="Add and manage your services" onClick={() => onOpen(`${base}/services`)} />
         <OwnerHubRow icon={<OrdersIcon size={18} />} title="Products / Menu" subtitle="Add products or menu items" onClick={() => onOpen(`${base}/products`)} />
+      </OvSection>
+
+      {/* Delivery: the business's own delivery team. Riders are managed here;
+          assignment to ready orders happens from the Orders board. */}
+      <OvSection label="Delivery">
+        <OwnerHubRow icon={<UserIcon size={18} />} title="Riders" subtitle="Manage your delivery team" onClick={() => onOpen(`${base}/riders`)} />
       </OvSection>
 
       <OvSection label="Grow">

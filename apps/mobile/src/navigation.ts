@@ -14,7 +14,7 @@ export type BusinessTab = (typeof businessTabs)[number];
  * hub; the five subscription-* routes are dedicated destinations reachable
  * from the hub and from deep links. 'choose-plan' is the legacy alias for
  * the change-plan route. */
-export const ownerScreens = ['profile', 'hours', 'delivery', 'services', 'products', 'bookings', 'orders', 'payments', 'payment-methods', 'advances', 'reviews', 'subscription', 'subscription-plan', 'subscription-change-plan', 'subscription-payment-methods', 'subscription-make-payment', 'subscription-payment-history', 'choose-plan', 'verification', 'promotions', 'settings', 'location'] as const;
+export const ownerScreens = ['profile', 'hours', 'delivery', 'riders', 'services', 'products', 'bookings', 'orders', 'payments', 'payment-methods', 'advances', 'reviews', 'subscription', 'subscription-plan', 'subscription-change-plan', 'subscription-payment-methods', 'subscription-make-payment', 'subscription-payment-history', 'choose-plan', 'verification', 'promotions', 'settings', 'location'] as const;
 export type OwnerScreenName = (typeof ownerScreens)[number];
 
 /** Customer-mode bottom navigation. LOCKED tab set:

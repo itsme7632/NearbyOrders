@@ -19,6 +19,7 @@ import { OwnerSubscriptionPaymentHistory } from './OwnerSubscriptionPaymentHisto
 import { OwnerVerification } from './OwnerVerificationScreen.js';
 import { OwnerPromotions } from './OwnerPromotionsScreen.js';
 import { OwnerReviews } from './OwnerReviews.js';
+import { OwnerRiders } from './OwnerRiders.js';
 
 /** Page titles for each dedicated management screen. */
 const TITLE: Record<string, string> = {
@@ -32,6 +33,7 @@ const TITLE: Record<string, string> = {
   products: 'Products / Menu',
   bookings: 'Business Bookings',
   orders: 'Business Orders',
+  riders: 'Riders',
   payments: 'Customer Payments',
   'payment-methods': 'Business Payment Methods',
   subscription: 'Business Subscription',
@@ -116,6 +118,9 @@ export function OwnerScreen(props: {
       break;
     case 'orders':
       body = <OwnerOrders businessId={businessId} />;
+      break;
+    case 'riders':
+      body = <OwnerRiders businessId={businessId} onBack={onBack} />;
       break;
     // Customer Payments and Business Payment Methods are one management area
     // (verification queue + the channels customers pay into).
