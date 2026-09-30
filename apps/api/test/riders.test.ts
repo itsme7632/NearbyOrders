@@ -101,3 +101,101 @@ describe('rider CRUD', () => {
     expect(check.name).toBe('Ali');
   });
 });
+
+describe('rider photo contract', () => {
+  const PHOTO = 'https://example.com/rider.jpg';
+  const PHOTO2 = 'https://example.com/rider2.jpg';
+
+  it('create without a photo succeeds (photoUrl omitted)', async () => {
+    const { owner, businessId } = await riderFixture();
+    const res = await createRider(owner.token, businessId, { name: 'Ali', phone: '+92 300 1234567' });
+    expect(res.statusCode).toBe(201);
+    expect((JSON.parse(res.body).data as { photoUrl: string | null }).photoUrl).toBeNull();
+  });
+
+  it('create with photoUrl: null succeeds (optional empty photo)', async () => {
+    const { owner, businessId } = await riderFixture();
+    const res = await createRider(owner.token, businessId, {
+      name: 'Ali',
+      phone: '+92 300 1234567',
+      photoUrl: null,
+    });
+    expect(res.statusCode).toBe(201);
+    expect((JSON.parse(res.body).data as { photoUrl: string | null }).photoUrl).toBeNull();
+  });
+
+  it('create with an uploaded photo URL succeeds', async () => {
+    const { owner, businessId } = await riderFixture();
+    const res = await createRider(owner.token, businessId, {
+      name: 'Ali',
+      phone: '+92 300 1234567',
+      photoUrl: PHOTO,
+    });
+    expect(res.statusCode).toBe(201);
+    expect((JSON.parse(res.body).data as { photoUrl: string | null }).photoUrl).toBe(PHOTO);
+  });
+
+  it('create with an invalid photo URL is rejected', async () => {
+    const { owner, businessId } = await riderFixture();
+    const res = await createRider(owner.token, businessId, {
+      name: 'Ali',
+      phone: '+92 300 1234567',
+      photoUrl: 'not-a-url',
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('update omitting photoUrl preserves the existing photo', async () => {
+    const { owner, businessId } = await riderFixture();
+    const created = await createRider(owner.token, businessId, {
+      name: 'Ali',
+      phone: '+92 300 1234567',
+      photoUrl: PHOTO,
+    });
+    const riderId = (JSON.parse(created.body).data as { id: string }).id;
+    const updated = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/owner/businesses/${businessId}/riders/${riderId}`,
+      headers: authed(owner.token),
+      payload: { note: 'Evening shift' },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect((JSON.parse(updated.body).data as { photoUrl: string | null }).photoUrl).toBe(PHOTO);
+  });
+
+  it('update with a new photo URL replaces the photo', async () => {
+    const { owner, businessId } = await riderFixture();
+    const created = await createRider(owner.token, businessId, {
+      name: 'Ali',
+      phone: '+92 300 1234567',
+      photoUrl: PHOTO,
+    });
+    const riderId = (JSON.parse(created.body).data as { id: string }).id;
+    const updated = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/owner/businesses/${businessId}/riders/${riderId}`,
+      headers: authed(owner.token),
+      payload: { photoUrl: PHOTO2 },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect((JSON.parse(updated.body).data as { photoUrl: string | null }).photoUrl).toBe(PHOTO2);
+  });
+
+  it('update with photoUrl: null clears the photo', async () => {
+    const { owner, businessId } = await riderFixture();
+    const created = await createRider(owner.token, businessId, {
+      name: 'Ali',
+      phone: '+92 300 1234567',
+      photoUrl: PHOTO,
+    });
+    const riderId = (JSON.parse(created.body).data as { id: string }).id;
+    const updated = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/owner/businesses/${businessId}/riders/${riderId}`,
+      headers: authed(owner.token),
+      payload: { photoUrl: null },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect((JSON.parse(updated.body).data as { photoUrl: string | null }).photoUrl).toBeNull();
+  });
+});

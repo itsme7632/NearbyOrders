@@ -1,6 +1,7 @@
 import { RemoteImage } from '../components/RemoteImage.js';
-import { useState } from 'react';
-import { createRider, listRiders, updateRider, ApiError, type Rider, type RiderInput } from '../api.js';
+import { useEffect, useState } from 'react';
+import { createRider, listRiders, updateRider, createApiImageStorageProvider, ApiError, type Rider, type RiderInput } from '../api.js';
+import { setImageStorageProvider } from '../upload.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, Loading } from '../components/ui.js';
 import { OrdersIcon } from '../components/icons.js';
@@ -17,6 +18,12 @@ export function OwnerRiders(props: { businessId: string; onBack: () => void }) {
   const [editing, setEditing] = useState<Rider | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Riders belong to the business: rider photos upload through the
+    // business's image endpoint, via the same provider the profile uses.
+    setImageStorageProvider(createApiImageStorageProvider(props.businessId));
+  }, [props.businessId]);
 
   const save = async (input: RiderInput) => {
     setSaving(true);

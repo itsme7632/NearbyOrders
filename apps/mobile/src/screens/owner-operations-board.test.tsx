@@ -216,7 +216,9 @@ describe('RiderForm', () => {
       expect(onSubmit).toHaveBeenCalledWith({
         name: 'Ahmed',
         phone: '03001234567',
-        photoUrl: null,
+        // No photo picked on create: the key is omitted (undefined), which the
+        // API contract treats as "no photo" — never null-on-create.
+        photoUrl: undefined,
         note: null,
         isActive: true,
       }),

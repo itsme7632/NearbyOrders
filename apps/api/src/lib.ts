@@ -272,7 +272,9 @@ const riderPhone = z.string().trim().min(7).max(20).regex(/^[+0-9][0-9\s\-()]*$/
 export const riderCreateSchema = z.object({
   name: z.string().trim().min(2).max(120),
   phone: riderPhone,
-  photoUrl: z.string().url().max(2000).optional(),
+  // Optional rider photo: omitted/undefined and explicit null both mean "no
+  // photo" (mirrors riderUpdateSchema). Never rejects null.
+  photoUrl: z.string().url().max(2000).nullable().optional(),
   note: z.string().trim().max(500).optional(),
   isActive: z.boolean().optional(),
 });
