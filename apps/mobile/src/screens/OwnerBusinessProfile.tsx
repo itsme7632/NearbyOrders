@@ -68,9 +68,10 @@ export function OwnerBusinessProfile(props: {
       <div className="card profile-hero">
         <div className="avatar" aria-hidden>
           {resolveImageUrl(active.imageUrl) ? (
-            <img
-              src={resolveImageUrl(active.imageUrl) as string}
+            <RemoteImage
+              src={resolveImageUrl(active.imageUrl) ?? undefined}
               alt=""
+              loading="eager"
               style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit', display: 'block' }}
             />
           ) : (
