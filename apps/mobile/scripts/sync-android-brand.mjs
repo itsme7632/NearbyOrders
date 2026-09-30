@@ -10,7 +10,7 @@
  * What it does:
  *  1. Copies android-brand/res/** -> android/app/src/main/res/ (overwrite).
  *  2. Rewrites the AppTheme.NoActionBarLaunch style to the Android 12+
- *     SplashScreen API (warm-cream background, brand splash icon), replacing
+ *     SplashScreen API (Ink background, Embrace splash icon), replacing
  *     the legacy Capacitor `android:background @drawable/splash` approach.
  *  3. Removes obsolete default-Capacitor resources the brand replaces:
  *     splash.png files, the white ic_launcher_background vector, the old
