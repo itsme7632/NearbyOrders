@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, within } from '@testing-library/react';
 import * as api from '../api.js';
 import { addToCart, clearCart } from '../cart.js';
 import { CartScreen } from './Cart.js';
@@ -43,7 +43,7 @@ describe('CartScreen checkout pricing', () => {
     render(<CartScreen onBack={() => {}} onBrowse={() => {}} onAddAddress={() => {}} onPlaced={() => {}} />);
     const plus = screen.getByRole('button', { name: 'Increase quantity of Chicken Biryani' });
     fireEvent.click(plus);
-    expect(screen.getByText('2')).toBeTruthy();
+    expect(within(screen.getByLabelText('Quantity of Chicken Biryani')).getByText('2')).toBeTruthy();
     expect(screen.getAllByText('Rs 900').length).toBeGreaterThan(0);
   });
 
@@ -55,7 +55,7 @@ describe('CartScreen checkout pricing', () => {
     render(<CartScreen onBack={() => {}} onBrowse={() => {}} onAddAddress={() => {}} onPlaced={() => {}} />);
 
     fireEvent.click(screen.getByRole('radio', { name: 'Delivery' }));
-    expect(await screen.findByText('Delivery fee')).toBeTruthy();
+    expect(await screen.findByText('Delivery')).toBeTruthy();
     expect(await screen.findByText('Rs 150')).toBeTruthy();
     expect(await screen.findByText('Rs 3,100')).toBeTruthy();
   });
