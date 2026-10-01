@@ -63,7 +63,7 @@ export function DiagnosticImage(props: {
 
   useEffect(() => {
     return () => {
-      if (blobSrc) URL.revokeObjectURL(blobSrc);
+      if (blobSrc && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(blobSrc);
     };
   }, [blobSrc]);
 
