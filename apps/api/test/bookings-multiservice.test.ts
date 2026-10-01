@@ -124,7 +124,7 @@ describe('multi-service bookings', () => {
     const { owner, customer, businessId, svcA, svcB } = await multiFixture();
     await app.inject({
       method: 'PATCH',
-      url: `/api/v1/businesses/${businessId}/services/${svcB.id}`,
+      url: `/api/v1/services/${svcB.id}`,
       headers: authed(owner.token),
       payload: { isActive: false },
     });
