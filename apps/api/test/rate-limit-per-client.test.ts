@@ -4,7 +4,17 @@ import { makeApp, type TestApp } from './helpers.js';
 let app: TestApp;
 
 beforeAll(async () => {
-  app = await makeApp();
+  // The shared Vitest config raises the default limit so auth-heavy tests do
+  // not throttle. This regression intentionally exercises a 100-request
+  // bucket, so scope the lower limit to this app instance only.
+  const previous = process.env.RATE_LIMIT_MAX;
+  process.env.RATE_LIMIT_MAX = '100';
+  try {
+    app = await makeApp();
+  } finally {
+    if (previous === undefined) delete process.env.RATE_LIMIT_MAX;
+    else process.env.RATE_LIMIT_MAX = previous;
+  }
 });
 
 afterAll(async () => {
