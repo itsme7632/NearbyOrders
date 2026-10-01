@@ -31,7 +31,7 @@ describe('CartScreen checkout pricing', () => {
     render(<CartScreen onBack={() => {}} onBrowse={() => {}} onAddAddress={() => {}} onPlaced={() => {}} />);
 
     expect(screen.getByText('Order total')).toBeTruthy();
-    expect(screen.queryByText('Delivery')).toBeNull();
+    expect(screen.queryByText('Delivery fee')).toBeNull();
     expect(screen.getAllByText('Rs 2,950').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByRole('button', { name: /place order/i })).toBeTruthy();
   });
