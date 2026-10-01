@@ -6,6 +6,7 @@ const app = await makeApp();
 const ADDRESS = {
   label: 'Home',
   phone: '03001234567',
+  recipientName: 'Test Customer',
   addressText: 'House 12, Street 4, Gulberg III, Lahore',
 };
 
@@ -17,12 +18,13 @@ const deliveryFixture = async () => {
   const { id: businessId } = await createBusiness(app, owner.token);
   await approveBusiness(businessId);
   // Enable delivery on the business.
-  await app.inject({
-    method: 'PATCH',
+  const deliverySettings = await app.inject({
+    method: 'PUT',
     url: `/api/v1/owner/businesses/${businessId}/delivery-settings`,
     headers: authed(owner.token),
     payload: { deliveryEnabled: true, codEnabled: true, deliveryFeeMinor: 20000 },
   });
+  expect(deliverySettings.statusCode).toBe(200);
   const prod = await app.inject({
     method: 'POST',
     url: `/api/v1/businesses/${businessId}/products`,
