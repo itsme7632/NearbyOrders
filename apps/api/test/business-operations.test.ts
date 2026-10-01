@@ -66,8 +66,10 @@ const createConfirmedBooking = async (
   for (let i = 1; i < 7 && !date; i++) {
     const d = new Date(Date.now() + i * 86_400_000).toISOString().slice(0, 10);
     const avail = await app.inject({ method: 'GET', url: `/api/v1/businesses/${businessId}/services/${serviceId}/availability?date=${d}` });
-    const slots = (JSON.parse(avail.body).data?.slots ?? []) as { start: string }[];
-    const slot = slots[slotOffset];
+    const slots = (JSON.parse(avail.body).data?.slots ?? []) as { start: string; available?: boolean }[];
+    // Availability is business-local (PKT). The first slots of "tomorrow" can already be in the past when the CI runner is still on the previous UTC date, so only choose slots the API currently marks available.
+    const availableSlots = slots.filter((slot) => slot.available !== false);
+    const slot = availableSlots[slotOffset];
     if (slot) {
       date = d;
       startTime = slot.start as string;
