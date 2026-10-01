@@ -249,10 +249,10 @@ describe('rider assignment', () => {
 
     const notes = await app.inject({
       method: 'GET',
-      url: '/api/v1/me/notifications',
+      url: '/api/v1/notifications',
       headers: authed(customer.token),
     });
-    const items = JSON.parse(notes.body).data as { type: string; message: string }[];
+    const items = (JSON.parse(notes.body).data as { items: { type: string; message: string }[] }).items;
     const assigned = items.find((n) => n.type === 'RIDER_ASSIGNED');
     expect(assigned).toBeDefined();
     expect(assigned!.message).toContain('Test Rider');
