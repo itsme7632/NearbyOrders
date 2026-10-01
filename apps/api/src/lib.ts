@@ -269,18 +269,35 @@ export const serviceSchema = z.object({
  */
 const riderPhone = z.string().trim().min(7).max(20).regex(/^[+0-9][0-9\s\-()]*$/, 'Invalid phone number');
 
+/**
+ * Rider photo image reference: the same canonical image rule as the
+ * business/product imageUrl fields (absolute URL, or the server-generated
+ * /api/v1/images/... path accepted via isServerImagePath) — but WITHOUT the
+ * null-to-undefined transform. On update, explicit null must survive
+ * validation so the route handler can clear the photo; omitted/undefined
+ * preserves the existing value.
+ */
+const riderPhotoUrl = z
+  .union([
+    z.string().url().max(2000),
+    z.string().refine(isServerImagePath, { message: 'Invalid image URL' }),
+    z.null(),
+  ])
+  .optional();
+
 export const riderCreateSchema = z.object({
   name: z.string().trim().min(2).max(120),
   phone: riderPhone,
-  photoUrl: z.string().url().max(2000).optional(),
-  note: z.string().trim().max(500).optional(),
+  photoUrl: riderPhotoUrl,
+  // Optional note: explicit null stores none (mirrors riderUpdateSchema).
+  note: z.string().trim().max(500).nullable().optional(),
   isActive: z.boolean().optional(),
 });
 
 export const riderUpdateSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
   phone: riderPhone.optional(),
-  photoUrl: z.string().url().max(2000).nullable().optional(),
+  photoUrl: riderPhotoUrl,
   note: z.string().trim().max(500).nullable().optional(),
   isActive: z.boolean().optional(),
 });

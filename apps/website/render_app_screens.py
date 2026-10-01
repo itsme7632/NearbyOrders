@@ -14,7 +14,9 @@ rendered as static images.
 Runtime data (business names, prices, ratings, dates) is clearly fictional
 demo data. It does not represent real users or real businesses.
 """
+import io
 import os
+import cairosvg
 from PIL import Image, ImageDraw, ImageFont
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "screens")
@@ -155,19 +157,18 @@ def status_bar(d):
     for i, h in enumerate((10, 16, 22, 28)):
         d.rectangle([bx + i*11, 50 - h, bx + i*11 + 7, 50], fill=INK)
 
-def meridian_mark(d, x, y, s):
-    """Simplified Meridian N: bold slate N, ember diagonal resolving to a point."""
-    f = font(True, 800, s)
-    d.text((x, y), "N", font=f, fill=INK)
-    w = d.textlength("N", font=f)
-    yb = y + s * 1.02
-    d.polygon([(x + 2, yb), (x + w * 0.62, yb - s*0.16), (x + w*0.62, yb - s*0.06), (x + 2, yb + s*0.1)], fill=EMBER)
-    pr = s * 0.11
-    px, py = x + w * 0.78, yb - s * 0.19
-    d.ellipse([px - pr, py - pr, px + pr, py + pr], fill=EMBER)
+def brand_mark(img, x, y, s):
+    """The approved N+O mark, rasterized from the canonical vector master."""
+    cache = brand_mark.__dict__.setdefault('cache', {})
+    if s not in cache:
+        master = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              '..', 'mobile', 'brand', 'mark.svg')
+        png = cairosvg.svg2png(url=master, output_width=s * 4, output_height=s * 4)
+        cache[s] = Image.open(io.BytesIO(png)).convert('RGBA').resize((s, s), Image.LANCZOS)
+    img.paste(cache[s], (x, y), cache[s])
 
-def app_header(d, y=54):
-    meridian_mark(d, 30, y + 8, 40)
+def app_header(img, d, y=54):
+    brand_mark(img, 30, y + 8, 40)
     d.text((84, y + 16), "Nearby", font=font(True, 600, 30), fill=INK)
     w = d.textlength("Nearby", font=font(True, 600, 30))
     d.text((84 + w, y + 16), "Orders", font=font(True, 800, 30), fill=EMBER)
@@ -302,7 +303,7 @@ def render_home():
     img = Image.new("RGB", (W, H), PORCELAIN)
     d = ImageDraw.Draw(img)
     status_bar(d)
-    y = app_header(d)  # 130
+    y = app_header(img, d)  # 130
     # home-context: tappable location row (Home.tsx)
     i_pin(d, PX + 12, y + 22, 30, INK)
     d.text((PX + 32, y + 10), "Your neighborhood", font=font(False, 600, 19), fill=MUTED)
@@ -359,7 +360,7 @@ def render_explore():
     img = Image.new("RGB", (W, H), PORCELAIN)
     d = ImageDraw.Draw(img)
     status_bar(d)
-    y = app_header(d)
+    y = app_header(img, d)
     # explore-hero (Explore.tsx)
     tracked(d, (PX, y), "Explore", font(True, 800, 54), INK, ls=-1)
     y += 66
@@ -575,7 +576,7 @@ def render_orders():
     img = Image.new("RGB", (W, H), PORCELAIN)
     d = ImageDraw.Draw(img)
     status_bar(d)
-    y = app_header(d)
+    y = app_header(img, d)
     tracked(d, (PX, y), "My orders", font(True, 800, 44), INK, ls=-1)
     y += 66
     # seg-tabs: Active / All (Orders.tsx)
@@ -598,7 +599,7 @@ def render_bookings():
     img = Image.new("RGB", (W, H), PORCELAIN)
     d = ImageDraw.Draw(img)
     status_bar(d)
-    y = app_header(d)
+    y = app_header(img, d)
     tracked(d, (PX, y), "My bookings", font(True, 800, 44), INK, ls=-1)
     y += 66
     y = section_header(d, y, "Upcoming", "2 bookings", action_color=MUTED)

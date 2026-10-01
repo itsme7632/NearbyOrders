@@ -76,6 +76,13 @@ describe('dedicated owner management screens', () => {
     expect(parseHash('#/owner/biz-1')).toEqual({ name: 'tabs' });
   });
 
+  it('registers the riders management screen (rider discoverability)', () => {
+    // Regression: the OwnerRiders screen existed but its route was rejected
+    // by the parser, so rider management was unreachable.
+    expect(ownerScreens).toContain('riders');
+    expect(parseHash('#/owner/biz-1/riders')).toEqual({ name: 'owner-screen', screen: 'riders', businessId: 'biz-1' });
+  });
+
   it('requires the exact dedicated route format (never a payments hub)', () => {
     expect(parseHash('#/owner/biz-1/payments')).toEqual({ name: 'owner-screen', screen: 'payments', businessId: 'biz-1' });
     expect(parseHash('#/owner/payments-hub')).toEqual({ name: 'tabs' });

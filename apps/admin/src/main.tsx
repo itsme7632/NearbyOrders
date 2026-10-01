@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import * as api from './api.js';
-import { Avatar, Field, FormActions, FormError, MeridianMark, useAsync } from './ds.js';
+import { Avatar, Field, FormActions, FormError, NearbyOrdersMark, useAsync } from './ds.js';
 import { Dashboard } from './screen-dashboard.js';
 import { Businesses, Categories, Reviews, Users } from './screen-marketplace.js';
 import { Bookings, Orders, VerificationReview } from './screen-operations.js';
@@ -149,7 +149,7 @@ function LoginScreen() {
       <form className="nb-auth-card" onSubmit={submit}>
         <div className="nb-auth-brand">
           <span className="nb-brand-mark" aria-hidden>
-            <MeridianMark size={20} />
+            <NearbyOrdersMark size={20} />
           </span>
           NearbyOrders
         </div>
@@ -180,7 +180,7 @@ function SideNav(props: { section: Section; onGo: (s: Section) => void; badges: 
     <>
       <div className="nb-brand">
         <span className="nb-brand-mark" aria-hidden>
-          <MeridianMark size={22} />
+          <NearbyOrdersMark size={22} />
         </span>
         <span className="nb-brand-name">NearbyOrders</span>
       </div>

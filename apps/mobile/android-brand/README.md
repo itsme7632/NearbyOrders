@@ -21,16 +21,16 @@ project is regenerated. The script (`../scripts/sync-android-brand.mjs`):
 
 - `res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher{,_round}.png` —
   legacy launcher icons (API 24–25) + round variants: porcelain tile with the
-  Meridian N.
+  N+O mark.
 - `res/mipmap-anydpi-v26/ic_launcher{,_round}.xml` — adaptive icons
   (API 26+): porcelain background, vector foreground, monochrome layer for
   Android 13+ themed icons.
-- `res/drawable/ic_launcher_foreground.xml` — vector Meridian N (108dp).
+- `res/drawable/ic_launcher_foreground.xml` — vector N+O mark (108dp).
 - `res/drawable/ic_launcher_monochrome.xml` — white silhouette for themed icons.
-- `res/drawable/splash_icon.xml` + `splash_icon_vector.xml` — 288dp splash
-  artwork (the N large on transparent over the porcelain window background)
-  wrapped as an animated-vector so the platform renders it at full size
-  instead of upscaling a 108dp pre-render.
+- `res/drawable/splash_icon.xml` + `splash_icon_vector.xml` + `res/animator/*` —
+  288dp splash artwork (the N+O mark large on transparent over the porcelain
+  window background) with the approved N → O choreography: the N draws in
+  over 0–300ms, then the O ring + welds fade in over 250–700ms.
 - `res/values/colors.xml` — Atlas Refined brand colors; also provides
   `colorPrimary`, `colorPrimaryDark`, `colorAccent` referenced by the
   generated `AppTheme`.

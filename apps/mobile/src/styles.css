@@ -213,7 +213,7 @@ main.auth-mode {
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  /* The Meridian N carries its own brand colors — no tile behind it. */
+  /* The N+O mark carries its own brand colors — no tile behind it. */
   background: transparent;
   border-radius: 0;
   box-shadow: none;

@@ -5,7 +5,7 @@ Reads:  brand/icon-launcher.svg
 Writes: android-brand/res/mipmap-<density>/ic_launcher.png
         android-brand/res/mipmap-<density>/ic_launcher_round.png
 
-Square icons are the burgundy tile + cream mark. Round icons are the same
+Square icons are the porcelain tile + slate/ember N+O mark. Round icons are the same
 artwork circle-cropped (matching what launchers do with android:roundIcon).
 """
 import io

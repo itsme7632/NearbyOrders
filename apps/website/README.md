@@ -58,7 +58,7 @@ A dedicated human-design-quality pass refined the locked direction without chang
 
 ## Brand & rules honored
 
-- Meridian N / Atlas Refined: porcelain `#F2F5F7`, slate `#16222E`, ember `#E23A2E`; Bricolage Grotesque + Inter + JetBrains Mono.
+- N+O / Atlas Refined: porcelain `#F2F5F7`, slate `#16222E`, ember `#E23A2E`; Bricolage Grotesque + Inter + JetBrains Mono.
 - No gradients, glassmorphism, neon, or generic startup illustration.
 - No fake statistics, testimonials, business names, ratings, or app-store claims. The phone screens are the real customer app; the business dashboard is labeled as an illustrative preview.
 - Android-only CTAs throughout; no iOS mentions.

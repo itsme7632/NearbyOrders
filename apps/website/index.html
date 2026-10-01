@@ -6,6 +6,9 @@
 <title>NearbyOrders: Discover, Order &amp; Book Nearby</title>
 <meta name="description" content="NearbyOrders is the local marketplace app for Android. Discover nearby businesses, place orders, and make bookings, all in one place.">
 <link rel="canonical" href="https://nearbyorders.com/">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#16222E">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="NearbyOrders">
 <meta property="og:title" content="NearbyOrders: Discover, Order &amp; Book Nearby">
@@ -14,7 +17,7 @@
 <meta property="og:image" content="https://nearbyorders.com/og-cover.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="NearbyOrders wordmark with the Meridian N mark">
+<meta property="og:image:alt" content="NearbyOrders wordmark with the N+O mark">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,7 +27,7 @@
    NEARBYORDERS · FINAL PRODUCTION WEBSITE
    Foundation: Concept 01 "Product First" + restrained local-
    discovery influence from Concept 02.
-   Brand: MERIDIAN N / ATLAS REFINED
+   Brand: N+O / ATLAS REFINED
    Tokens: Porcelain #F2F5F7 · Slate #16222E · Ember #E23A2E
    Type: Bricolage Grotesque (display) · Inter (body) ·
          JetBrains Mono (meta labels)
@@ -110,11 +113,9 @@ h2{font-size:clamp(34px,4.4vw,56px);margin-bottom:18px}
 .nav{display:flex;align-items:center;justify-content:space-between;height:72px}
 .brand{display:flex;align-items:center;gap:11px;font-family:var(--font-display);font-weight:800;font-size:21px;letter-spacing:-.01em}
 .brand-mark{
-  width:34px;height:34px;border-radius:10px;background:var(--slate);color:#fff;
-  display:grid;place-items:center;font-family:var(--font-display);font-weight:800;font-size:20px;
-  position:relative;overflow:hidden;
+  width:34px;height:34px;flex:0 0 auto;
 }
-.brand-mark::after{content:"";position:absolute;left:6px;right:6px;bottom:7px;height:3px;background:var(--ember);transform:skewX(-24deg);border-radius:2px}
+.brand-mark svg{display:block;width:100%;height:100%}
 .nav-links{display:flex;align-items:center;gap:34px;list-style:none}
 .nav-links a{font-weight:500;font-size:15px;color:var(--muted);transition:color .15s}
 .nav-links a:hover{color:var(--ink)}
@@ -397,7 +398,7 @@ h2{font-size:clamp(34px,4.4vw,56px);margin-bottom:18px}
   <div class="wrap">
     <nav class="nav" aria-label="Primary">
       <a class="brand" href="#top" aria-label="NearbyOrders home">
-        <span class="brand-mark" aria-hidden="true">N</span>
+        <svg class="brand-mark" viewBox="0 0 120 120" role="img" aria-label="NearbyOrders mark"><path d="M29 90 L29 30 L52.17 52.42" stroke="#16222E" stroke-width="14" fill="none" stroke-linejoin="round" stroke-linecap="round"/><path d="M67.83 67.58 L91 90 L91 30" stroke="#16222E" stroke-width="14" fill="none" stroke-linejoin="round" stroke-linecap="round"/><path d="M50 60 A10 10 0 1 1 70 60 A10 10 0 1 1 50 60 Z" fill="none" stroke="#E23A2E" stroke-width="6"/><path d="M49.09 39.70 L57.00 47.35 L55.69 47.74 L54.43 48.25 L53.23 48.90 L52.11 49.67 L51.07 50.55 L50.14 51.53 L49.30 52.61 L48.59 53.77 L48.00 55.00 L47.54 56.28 C50.12 47.65 55.56 45.96 49.09 39.70 Z" fill="#E23A2E"/><path d="M39.36 49.76 L47.26 57.41 L47.60 56.09 L48.08 54.82 L48.68 53.60 L49.41 52.45 L50.26 51.39 L51.21 50.42 L52.26 49.55 L53.40 48.80 L54.61 48.17 L55.87 47.67 C47.34 50.53 45.82 56.02 39.36 49.76 Z" fill="#E23A2E"/><path d="M70.91 80.30 L63.00 72.65 L64.31 72.26 L65.57 71.75 L66.77 71.10 L67.89 70.33 L68.93 69.45 L69.86 68.47 L70.70 67.39 L71.41 66.23 L72.00 65.00 L72.46 63.72 C69.88 72.35 64.44 74.04 70.91 80.30 Z" fill="#E23A2E"/><path d="M80.64 70.24 L72.74 62.59 L72.40 63.91 L71.92 65.18 L71.32 66.40 L70.59 67.55 L69.74 68.61 L68.79 69.58 L67.74 70.45 L66.60 71.20 L65.39 71.83 L64.13 72.33 C72.66 69.47 74.18 63.98 80.64 70.24 Z" fill="#E23A2E"/></svg>
         NearbyOrders
       </a>
       <ul class="nav-links" id="navLinks">
@@ -648,7 +649,7 @@ h2{font-size:clamp(34px,4.4vw,56px);margin-bottom:18px}
       </div>
       <div class="plat-link" aria-hidden="true"><span class="pline"></span><span style="font-size:20px">▾</span></div>
       <div class="plat-node plat-core">
-        <span class="brand-mark" aria-hidden="true">N</span>
+        <svg class="brand-mark" viewBox="0 0 120 120" role="img" aria-label="NearbyOrders mark"><path d="M29 90 L29 30 L52.17 52.42" stroke="#16222E" stroke-width="14" fill="none" stroke-linejoin="round" stroke-linecap="round"/><path d="M67.83 67.58 L91 90 L91 30" stroke="#16222E" stroke-width="14" fill="none" stroke-linejoin="round" stroke-linecap="round"/><path d="M50 60 A10 10 0 1 1 70 60 A10 10 0 1 1 50 60 Z" fill="none" stroke="#E23A2E" stroke-width="6"/><path d="M49.09 39.70 L57.00 47.35 L55.69 47.74 L54.43 48.25 L53.23 48.90 L52.11 49.67 L51.07 50.55 L50.14 51.53 L49.30 52.61 L48.59 53.77 L48.00 55.00 L47.54 56.28 C50.12 47.65 55.56 45.96 49.09 39.70 Z" fill="#E23A2E"/><path d="M39.36 49.76 L47.26 57.41 L47.60 56.09 L48.08 54.82 L48.68 53.60 L49.41 52.45 L50.26 51.39 L51.21 50.42 L52.26 49.55 L53.40 48.80 L54.61 48.17 L55.87 47.67 C47.34 50.53 45.82 56.02 39.36 49.76 Z" fill="#E23A2E"/><path d="M70.91 80.30 L63.00 72.65 L64.31 72.26 L65.57 71.75 L66.77 71.10 L67.89 70.33 L68.93 69.45 L69.86 68.47 L70.70 67.39 L71.41 66.23 L72.00 65.00 L72.46 63.72 C69.88 72.35 64.44 74.04 70.91 80.30 Z" fill="#E23A2E"/><path d="M80.64 70.24 L72.74 62.59 L72.40 63.91 L71.92 65.18 L71.32 66.40 L70.59 67.55 L69.74 68.61 L68.79 69.58 L67.74 70.45 L66.60 71.20 L65.39 71.83 L64.13 72.33 C72.66 69.47 74.18 63.98 80.64 70.24 Z" fill="#E23A2E"/></svg>
         <span class="pn-tag" style="color:var(--ember)">NearbyOrders</span>
         <h3>One platform</h3>
         <p>nearbyorders.com · api.nearbyorders.com · one shared backend for app and web.</p>
@@ -698,7 +699,7 @@ h2{font-size:clamp(34px,4.4vw,56px);margin-bottom:18px}
     <div class="footer-grid">
       <div class="footer-brand">
         <a class="brand" href="#top" aria-label="NearbyOrders home">
-          <span class="brand-mark" aria-hidden="true">N</span>
+          <svg class="brand-mark" viewBox="0 0 120 120" role="img" aria-label="NearbyOrders mark"><path d="M29 90 L29 30 L52.17 52.42" stroke="#16222E" stroke-width="14" fill="none" stroke-linejoin="round" stroke-linecap="round"/><path d="M67.83 67.58 L91 90 L91 30" stroke="#16222E" stroke-width="14" fill="none" stroke-linejoin="round" stroke-linecap="round"/><path d="M50 60 A10 10 0 1 1 70 60 A10 10 0 1 1 50 60 Z" fill="none" stroke="#E23A2E" stroke-width="6"/><path d="M49.09 39.70 L57.00 47.35 L55.69 47.74 L54.43 48.25 L53.23 48.90 L52.11 49.67 L51.07 50.55 L50.14 51.53 L49.30 52.61 L48.59 53.77 L48.00 55.00 L47.54 56.28 C50.12 47.65 55.56 45.96 49.09 39.70 Z" fill="#E23A2E"/><path d="M39.36 49.76 L47.26 57.41 L47.60 56.09 L48.08 54.82 L48.68 53.60 L49.41 52.45 L50.26 51.39 L51.21 50.42 L52.26 49.55 L53.40 48.80 L54.61 48.17 L55.87 47.67 C47.34 50.53 45.82 56.02 39.36 49.76 Z" fill="#E23A2E"/><path d="M70.91 80.30 L63.00 72.65 L64.31 72.26 L65.57 71.75 L66.77 71.10 L67.89 70.33 L68.93 69.45 L69.86 68.47 L70.70 67.39 L71.41 66.23 L72.00 65.00 L72.46 63.72 C69.88 72.35 64.44 74.04 70.91 80.30 Z" fill="#E23A2E"/><path d="M80.64 70.24 L72.74 62.59 L72.40 63.91 L71.92 65.18 L71.32 66.40 L70.59 67.55 L69.74 68.61 L68.79 69.58 L67.74 70.45 L66.60 71.20 L65.39 71.83 L64.13 72.33 C72.66 69.47 74.18 63.98 80.64 70.24 Z" fill="#E23A2E"/></svg>
           NearbyOrders
         </a>
         <p>The local marketplace app. Discover nearby businesses, order what you need, and book when you need it.</p>

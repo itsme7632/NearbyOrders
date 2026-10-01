@@ -1,5 +1,5 @@
 /* ==================================================================
-   NearbyOrders Admin — MERIDIAN OPS REFINED
+   NearbyOrders Admin — OPS REFINED
    Operations control room on the approved brand system:
    Porcelain #F2F5F7 · Slate #16222E · Ember #E23A2E
    Bricolage Grotesque (display) · Inter (interface) · JetBrains Mono (IDs)
@@ -388,7 +388,7 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.015em; }
 .nb-section-title:first-child { margin-top: 0; }
 
 /* ============================ stat band ============================= */
-/* Compact operational stats (Meridian Ops) with editorial numerals. */
+/* Compact operational stats with editorial numerals. */
 
 .nb-stat-band {
   display: grid;
