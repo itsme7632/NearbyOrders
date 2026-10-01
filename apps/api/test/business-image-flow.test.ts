@@ -37,7 +37,7 @@ afterAll(async () => {
 const IMAGE_A2 = '/api/v1/images/uploads/c9c11e89-7f62-417a-b9fe-d135680144e0.png';
 const IMAGE_B1 = '/api/v1/images/uploads/bea9ab6e-7998-4d21-bee2-70679af58884.jpg';
 
-const PASSWORD = 'Test1234!';
+const PASSWORD = 'Test1234!Secure';
 
 async function freshLogin(email: string): Promise<string> {
   const res = await app.inject({
