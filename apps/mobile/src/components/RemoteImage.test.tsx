@@ -33,11 +33,12 @@ describe('RemoteImage', () => {
     fireEvent.error(img);
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith(SRC, {
+      expect(fetch).toHaveBeenCalledWith(SRC, expect.objectContaining({
         method: 'GET',
         mode: 'cors',
         cache: 'no-store',
-      });
+        signal: expect.any(AbortSignal),
+      }));
       expect(img.getAttribute('src')).toBe('blob:remote-image-test');
       expect(img.getAttribute('data-image-blob-fallback')).toBe('true');
     });
