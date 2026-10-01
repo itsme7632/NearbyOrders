@@ -88,8 +88,11 @@ describe('production plan seed (single-plan picker incident)', () => {
       expect(matching, `duplicate rows for plan slug ${slug}`).toHaveLength(1);
     }
 
+    // Catalog rows may already be referenced by subscriptions from earlier
+    // integration tests, so they can legitimately survive the cleanup. The
+    // seed contract is that all three catalog slugs exist afterward; only
+    // newly-created rows need the creation-value assertions below.
     const seeded = rows.filter((r) => !preExistingIds.has(r.id));
-    expect(seeded.length).toBeGreaterThan(0);
     const seededBySlug = new Map(seeded.map((r) => [r.slug, r]));
 
     const starter = seededBySlug.get('starter');
