@@ -325,6 +325,7 @@ describe('business overview (redesigned hub)', () => {
   });
 
   it('shows today\'s activity from the live overview, with tappable rows', async () => {
+    const onOpen = vi.fn();
     const onOpenOrder = vi.fn();
     const onOpenBooking = vi.fn();
     vi.mocked(api.getOwnerOverview).mockResolvedValue(
@@ -350,7 +351,7 @@ describe('business overview (redesigned hub)', () => {
         needsAttention: { pendingOrders: 0, pendingBookings: 0, pendingPayments: 0 },
       }),
     );
-    await renderHome({ onOpenOrder, onOpenBooking });
+    await renderHome({ onOpen, onOpenOrder, onOpenBooking });
     const region = await screen.findByRole('region', { name: 'Today' });
     // Today's counts and collected revenue, verbatim from the server.
     const tiles = region.querySelectorAll('.metric-tile-num');
@@ -361,7 +362,8 @@ describe('business overview (redesigned hub)', () => {
     fireEvent.click(within(region).getByRole('button', { name: /Ayesha Khan/ }));
     expect(onOpenBooking).toHaveBeenCalledWith('bk-9');
     fireEvent.click(within(region).getByRole('button', { name: /Sara Ahmed/ }));
-    expect(onOpenOrder).toHaveBeenCalledWith('ord-111111');
+    expect(onOpenOrder).not.toHaveBeenCalled();
+    expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/orders');
   });
 
   it('shows an honest quiet-day state when there is no activity today', async () => {
