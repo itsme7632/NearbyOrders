@@ -90,18 +90,18 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
     setBusiness(null);
     setMethods(null);
     setMethodsError(false);
-    Promise.all([
+    Promise.allSettled([
       getBusiness(cart.businessId),
       listBusinessPayInMethods(cart.businessId),
     ])
-      .then(([detail, list]) => {
+      .then(([detailResult, methodsResult]) => {
         if (!alive) return;
-        setBusiness(detail);
-        setMethods(list);
-      })
-      .catch(() => {
-        if (!alive) return;
-        setMethodsError(true);
+        if (detailResult.status === 'fulfilled') setBusiness(detailResult.value);
+        if (methodsResult.status === 'fulfilled') {
+          setMethods(methodsResult.value);
+        } else {
+          setMethodsError(true);
+        }
       })
       .finally(() => {
         if (alive) setBusinessLoading(false);
