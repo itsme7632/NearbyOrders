@@ -104,15 +104,25 @@ export function addToCart(input: {
   if (!cart) cart = { businessId: input.businessId, businessName: input.businessName, items: [] };
   const existing = cart.items.find((i) => i.productId === input.product.id);
   if (existing) {
-    existing.quantity = clampQuantity(existing.quantity + (input.quantity ?? 1));
+    const quantity = clampQuantity(existing.quantity + (input.quantity ?? 1));
+    cart = {
+      ...cart,
+      items: cart.items.map((item) => (item.productId === input.product.id ? { ...item, quantity } : item)),
+    };
   } else {
-    cart.items.push({
-      productId: input.product.id,
-      name: input.product.name,
-      unitPriceMinor: input.product.priceMinor,
-      quantity: clampQuantity(input.quantity ?? 1),
-      imageUrl: input.product.imageUrl,
-    });
+    cart = {
+      ...cart,
+      items: [
+        ...cart.items,
+        {
+          productId: input.product.id,
+          name: input.product.name,
+          unitPriceMinor: input.product.priceMinor,
+          quantity: clampQuantity(input.quantity ?? 1),
+          imageUrl: input.product.imageUrl,
+        },
+      ],
+    };
   }
   emit();
   return { added: true };
@@ -144,17 +154,17 @@ export function replaceWith(input: {
 export function setQuantity(productId: string, quantity: number): void {
   if (!cart) return;
   const next = quantity < 1 ? 0 : clampQuantity(quantity);
-  cart.items = cart.items.filter((i) => i.productId !== productId || next > 0);
-  const item = cart.items.find((i) => i.productId === productId);
-  if (item) item.quantity = next;
-  if (cart.items.length === 0) cart = null;
+  const items = cart.items
+    .filter((i) => i.productId !== productId || next > 0)
+    .map((i) => (i.productId === productId ? { ...i, quantity: next } : i));
+  cart = items.length ? { ...cart, items } : null;
   emit();
 }
 
 export function removeFromCart(productId: string): void {
   if (!cart) return;
-  cart.items = cart.items.filter((i) => i.productId !== productId);
-  if (cart.items.length === 0) cart = null;
+  const items = cart.items.filter((i) => i.productId !== productId);
+  cart = items.length ? { ...cart, items } : null;
   emit();
 }
 
