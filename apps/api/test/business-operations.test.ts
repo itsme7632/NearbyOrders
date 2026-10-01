@@ -67,7 +67,8 @@ const createConfirmedBooking = async (
     const d = new Date(Date.now() + i * 86_400_000).toISOString().slice(0, 10);
     const avail = await app.inject({ method: 'GET', url: `/api/v1/businesses/${businessId}/services/${serviceId}/availability?date=${d}` });
     const slots = (JSON.parse(avail.body).data?.slots ?? []) as { start: string }[];
-    const slot = slots[slotOffset];
+    const availableSlots = slots.filter((slot) => (slot as { available?: boolean }).available !== false);
+    const slot = availableSlots[slotOffset];
     if (slot) {
       date = d;
       startTime = slot.start as string;
