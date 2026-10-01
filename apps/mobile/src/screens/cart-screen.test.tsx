@@ -47,7 +47,7 @@ describe('CartScreen checkout pricing', () => {
     expect(screen.getAllByText('Rs 900').length).toBeGreaterThan(0);
   });
 
-  it('shows the configured delivery fee and total before placing a delivery order', () => {
+  it('shows the configured delivery fee and total before placing a delivery order', async () => {
     vi.spyOn(api, 'listBusinessPayInMethods').mockResolvedValue([]);
     vi.spyOn(api, 'getBusiness').mockResolvedValue({ ...biz, id: biz.businessId, slug: 'butt-spices', status: 'APPROVED' as const, description: null, imageUrl: null, isVerified: true, address: '', city: '', locality: null, latitude: null, longitude: null, phone: null, email: null, currency: 'PKR', categories: [], deliveryEnabled: true, deliveryFeeMinor: 15000 });
     vi.spyOn(api, 'getSession').mockReturnValue(null);
