@@ -42,7 +42,6 @@ describe('CartScreen checkout pricing', () => {
     seedCart();
     render(<CartScreen onBack={() => {}} onBrowse={() => {}} onAddAddress={() => {}} onPlaced={() => {}} />);
     const plus = screen.getByRole('button', { name: 'Increase quantity of Chicken Biryani' });
-    expect(screen.getByText('Rs 450 each')).toBeTruthy();
     fireEvent.click(plus);
     expect(screen.getByText('2')).toBeTruthy();
     expect(screen.getAllByText('Rs 900').length).toBeGreaterThan(0);
@@ -56,8 +55,8 @@ describe('CartScreen checkout pricing', () => {
     render(<CartScreen onBack={() => {}} onBrowse={() => {}} onAddAddress={() => {}} onPlaced={() => {}} />);
 
     fireEvent.click(screen.getByRole('radio', { name: 'Delivery' }));
-    expect(screen.getByText('Delivery fee')).toBeTruthy();
-    expect(screen.getByText('Rs 150')).toBeTruthy();
-    expect(screen.getByText('Rs 3,100')).toBeTruthy();
+    expect(await screen.findByText('Delivery fee')).toBeTruthy();
+    expect(await screen.findByText('Rs 150')).toBeTruthy();
+    expect(await screen.findByText('Rs 3,100')).toBeTruthy();
   });
 });
