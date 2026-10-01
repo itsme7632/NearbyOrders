@@ -55,7 +55,7 @@ describe('CartScreen checkout pricing', () => {
     render(<CartScreen onBack={() => {}} onBrowse={() => {}} onAddAddress={() => {}} onPlaced={() => {}} />);
 
     fireEvent.click(screen.getByRole('radio', { name: 'Delivery' }));
-    expect(await screen.findByText('Delivery')).toBeTruthy();
+    expect(within(screen.getByRole('region', { name: 'Order summary' })).getByText('Delivery')).toBeTruthy();
     expect(await screen.findByText('Rs 150')).toBeTruthy();
     expect(await screen.findByText('Rs 3,100')).toBeTruthy();
   });
