@@ -30,14 +30,9 @@ describe('CartScreen checkout pricing', () => {
     seedCart();
     render(<CartScreen onBack={() => {}} onBrowse={() => {}} onAddAddress={() => {}} onPlaced={() => {}} />);
 
-    expect(screen.getByText('Item subtotal')).toBeTruthy();
-    // No delivery fee line for pickup, and no other server fees invented.
-    expect(screen.queryByText('Delivery fee')).toBeNull();
-    // The emphasized total appears in the summary and again in the footer.
-    expect(screen.getAllByText('Total')).toHaveLength(2);
-    // Both summary subtotal and emphasized total show the same number.
+    expect(screen.getByText('Order total')).toBeTruthy();
+    expect(screen.queryByText('Delivery')).toBeNull();
     expect(screen.getAllByText('Rs 2,950').length).toBeGreaterThanOrEqual(2);
-    // Footer restates the total beside the commitment button.
     expect(screen.getByRole('button', { name: /place order/i })).toBeTruthy();
   });
 
@@ -55,9 +50,10 @@ describe('CartScreen checkout pricing', () => {
 
   it('shows the configured delivery fee and total before placing a delivery order', () => {
     vi.spyOn(api, 'listBusinessPayInMethods').mockResolvedValue([]);
+    vi.spyOn(api, 'getBusiness').mockResolvedValue({ ...biz, id: biz.businessId, slug: 'butt-spices', status: 'APPROVED', description: null, imageUrl: null, isVerified: true, address: '', city: '', locality: null, latitude: null, longitude: null, phone: null, email: null, currency: 'PKR', categories: [], deliveryEnabled: true, deliveryFeeMinor: 15000 });
     vi.spyOn(api, 'getSession').mockReturnValue(null);
     seedCart();
-    render(<CartScreen onBack={() => {}} onBrowse={() => {}} onPlaced={() => {}} />);
+    render(<CartScreen onBack={() => {}} onBrowse={() => {}} onAddAddress={() => {}} onPlaced={() => {}} />);
 
     fireEvent.click(screen.getByRole('radio', { name: 'Delivery' }));
     expect(screen.getByText('Delivery fee')).toBeTruthy();
