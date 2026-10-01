@@ -12,7 +12,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-const biz = { businessId: 'biz-a', businessName: 'Butt Spices' };
+const biz = { businessId: 'biz-a', businessName: 'Butt Spices', name: 'Butt Spices' };
 const productA = { id: 'p-biryani', name: 'Chicken Biryani', priceMinor: 45000, imageUrl: null };
 const productB = { id: 'p-karahi', name: 'Chicken Karahi', priceMinor: 125000, imageUrl: null };
 
@@ -38,7 +38,7 @@ describe('CartScreen checkout pricing', () => {
 
   it('updates quantity immediately when the plus control is tapped', () => {
     vi.spyOn(api, 'listBusinessPayInMethods').mockResolvedValue([]);
-    vi.spyOn(api, 'getBusiness').mockResolvedValue({ ...biz, id: biz.businessId, slug: 'butt-spices', status: 'APPROVED', description: null, imageUrl: null, isVerified: true, address: '', city: '', locality: null, latitude: null, longitude: null, phone: null, email: null, currency: 'PKR', categories: [], deliveryEnabled: true, deliveryFeeMinor: 15000 });
+    vi.spyOn(api, 'getBusiness').mockResolvedValue({ ...biz, id: biz.businessId, slug: 'butt-spices', status: 'APPROVED' as const, description: null, imageUrl: null, isVerified: true, address: '', city: '', locality: null, latitude: null, longitude: null, phone: null, email: null, currency: 'PKR', categories: [], deliveryEnabled: true, deliveryFeeMinor: 15000 });
     seedCart();
     render(<CartScreen onBack={() => {}} onBrowse={() => {}} onAddAddress={() => {}} onPlaced={() => {}} />);
     const plus = screen.getByRole('button', { name: 'Increase quantity of Chicken Biryani' });
@@ -50,7 +50,7 @@ describe('CartScreen checkout pricing', () => {
 
   it('shows the configured delivery fee and total before placing a delivery order', () => {
     vi.spyOn(api, 'listBusinessPayInMethods').mockResolvedValue([]);
-    vi.spyOn(api, 'getBusiness').mockResolvedValue({ ...biz, id: biz.businessId, slug: 'butt-spices', status: 'APPROVED', description: null, imageUrl: null, isVerified: true, address: '', city: '', locality: null, latitude: null, longitude: null, phone: null, email: null, currency: 'PKR', categories: [], deliveryEnabled: true, deliveryFeeMinor: 15000 });
+    vi.spyOn(api, 'getBusiness').mockResolvedValue({ ...biz, id: biz.businessId, slug: 'butt-spices', status: 'APPROVED' as const, description: null, imageUrl: null, isVerified: true, address: '', city: '', locality: null, latitude: null, longitude: null, phone: null, email: null, currency: 'PKR', categories: [], deliveryEnabled: true, deliveryFeeMinor: 15000 });
     vi.spyOn(api, 'getSession').mockReturnValue(null);
     seedCart();
     render(<CartScreen onBack={() => {}} onBrowse={() => {}} onAddAddress={() => {}} onPlaced={() => {}} />);
