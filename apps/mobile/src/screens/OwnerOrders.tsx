@@ -104,6 +104,7 @@ export function OwnerOrders(props: { businessId: string; orders?: Order[] }) {
   const orders = props.orders ? { data: props.orders, loading: false, error: null, reload: selfFetched.reload } : selfFetched;
   const list = (orders.data ?? []).filter((o) => o.business.id === props.businessId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [boardFilter, setBoardFilter] = useState<ColumnKey | 'ALL'>('ALL');
   const [assignOrderId, setAssignOrderId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -243,13 +244,49 @@ export function OwnerOrders(props: { businessId: string; orders?: Order[] }) {
   }
 
   return (
-    <section aria-label="Operations board">
-      <div className="owner-head">
-        <h2>Operations board</h2>
+    <section aria-label="Operations board" className="ops-workspace">
+      <div className="ops-workspace-head">
+        <div>
+          <span className="cart-kicker">BUSINESS ORDERS</span>
+          <h2>Orders</h2>
+          <p className="ops-subtitle">Move each order through one clear next step.</p>
+        </div>
+        <span className="ops-active-count">
+          {mine.filter((o) => !['DELIVERED', 'COMPLETED', 'REJECTED', 'CANCELLED'].includes(o.status)).length} active
+        </span>
       </div>
       {error ? <ErrorState message={error} /> : null}
+
+      <div className="ops-filters" role="tablist" aria-label="Order status">
+        {([
+          ['ALL', 'All'],
+          ['NEW', 'New'],
+          ['PREPARING', 'Preparing'],
+          ['READY', 'Ready'],
+          ['OUT_FOR_DELIVERY', 'Out for delivery'],
+          ['COMPLETED', 'Completed'],
+        ] as const).map(([key, label]) => {
+          const count = key === 'ALL'
+            ? mine.length
+            : mine.filter((o) => columnFor(o.status) === key).length;
+          return (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={boardFilter === key}
+              className={`ops-filter${boardFilter === key ? ' is-active' : ''}`}
+              onClick={() => setBoardFilter(key)}
+            >
+              <span>{label}</span>
+              <small>{count}</small>
+            </button>
+          );
+        })}
+      </div>
+
       {!mine.length ? (
-        <div className="card">
+        <div className="card ops-empty-state">
           <EmptyState
             icon={<OrdersIcon size={28} />}
             title="No customer orders yet"
@@ -257,75 +294,85 @@ export function OwnerOrders(props: { businessId: string; orders?: Order[] }) {
           />
         </div>
       ) : (
-        <div className="ops-board">
-          {BOARD_COLUMNS.map((col) => {
-            const cards = mine
-              .filter((o) => (col.statuses as readonly OrderStatus[]).includes(o.status))
-              .sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
-            return (
-              <div key={col.key} className="ops-column" aria-label={col.title}>
-                <div className="ops-column-head">
-                  <h3>{col.title}</h3>
-                  <span className="ops-count">{cards.length}</span>
-                </div>
-                <ul className="ops-cards">
-                  {cards.map((o) => {
-                    const action = nextAction(o);
-                    return (
-                      <li key={o.id} className="ops-card">
-                        <button
-                          type="button"
-                          className="order-card-open"
-                          onClick={() => setSelectedId(o.id)}
-                          aria-label={`Open order ${orderNo(o)}`}
-                        >
-                          <div className="order-card-top">
-                            <span className="order-no">{orderNo(o)}</span>
-                            <span className={`badge ${STATUS_CLASS[o.status]}`}>{STATUS_LABEL[o.status]}</span>
-                          </div>
-                          <div className="item-row">
-                            <span className="item-name">{customerName(o)}</span>
-                            <Money minor={o.totalMinor ?? o.subtotalMinor} currency={o.currency} />
-                          </div>
-                          <p className="order-meta">
-                            <span className={`badge ${isDelivery(o) ? 'badge-warn' : 'badge-open'}`}>
-                              {isDelivery(o) ? 'Delivery' : 'Pickup'}
-                            </span>{' '}
-                            {formatWhen(o.createdAt)} · {itemCount(o)} item{itemCount(o) === 1 ? '' : 's'}
-                          </p>
-                          {isDelivery(o) && o.deliveryAddressText ? (
-                            <p className="order-meta ops-address">{o.deliveryAddressText}</p>
+        <div className="ops-list">
+          {BOARD_COLUMNS
+            .filter((col) => boardFilter === 'ALL' || col.key === boardFilter)
+            .map((col) => {
+              const cards = mine
+                .filter((o) => (col.statuses as readonly OrderStatus[]).includes(o.status))
+                .sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
+              if (!cards.length) {
+                return (
+                  <section key={col.key} className="ops-section">
+                    <div className="ops-section-head">
+                      <div>
+                        <h3>{col.title}</h3>
+                        <span>0 orders</span>
+                      </div>
+                    </div>
+                    <div className="ops-section-empty">Nothing here right now.</div>
+                  </section>
+                );
+              }
+              return (
+                <section key={col.key} className="ops-section" aria-label={col.title}>
+                  <div className="ops-section-head">
+                    <div>
+                      <h3>{col.title}</h3>
+                      <span>{cards.length} order{cards.length === 1 ? '' : 's'}</span>
+                    </div>
+                    <span className={`ops-section-dot ops-dot-${col.key.toLowerCase().replaceAll('_', '-')}`} aria-hidden />
+                  </div>
+                  <ul className="ops-order-list">
+                    {cards.map((o) => {
+                      const action = nextAction(o);
+                      return (
+                        <li key={o.id} className="ops-order-card">
+                          <button
+                            type="button"
+                            className="ops-order-open"
+                            onClick={() => setSelectedId(o.id)}
+                            aria-label={`Open order ${orderNo(o)}`}
+                          >
+                            <div className="ops-order-top">
+                              <span className="order-no">{orderNo(o)}</span>
+                              <span className={`badge ${STATUS_CLASS[o.status]}`}>{STATUS_LABEL[o.status]}</span>
+                            </div>
+                            <div className="ops-order-main">
+                              <div>
+                                <strong>{customerName(o)}</strong>
+                                <p>{formatWhen(o.createdAt)} · {itemCount(o)} item{itemCount(o) === 1 ? '' : 's'}</p>
+                              </div>
+                              <Money minor={o.totalMinor ?? o.subtotalMinor} currency={o.currency} />
+                            </div>
+                            <div className="ops-order-meta">
+                              <span className={`ops-fulfillment ${isDelivery(o) ? 'is-delivery' : ''}`}>
+                                {isDelivery(o) ? 'Delivery' : 'Pickup'}
+                              </span>
+                              {isDelivery(o) && o.deliveryAddressText ? <span className="ops-address">{o.deliveryAddressText}</span> : null}
+                              {o.assignedRider ? <span>Rider: {o.assignedRider.name}</span> : null}
+                            </div>
+                          </button>
+                          {action ? (
+                            <div className="ops-order-action">
+                              {action.kind === 'assign-rider' ? (
+                                <Button full variant="primary" disabled={busyId === o.id} onClick={() => setAssignOrderId(o.id)}>
+                                  {action.label}
+                                </Button>
+                              ) : (
+                                <Button full variant={action.variant} disabled={busyId === o.id} onClick={() => void act(o, action.status)}>
+                                  {busyId === o.id ? 'Working…' : action.label}
+                                </Button>
+                              )}
+                            </div>
                           ) : null}
-                          {o.assignedRider ? (
-                            <p className="order-meta">Rider: {o.assignedRider.name}</p>
-                          ) : null}
-                        </button>
-                        {action ? (
-                          <div className="btn-row">
-                            {action.kind === 'assign-rider' ? (
-                              <Button sm variant="primary" disabled={busyId === o.id} onClick={() => setAssignOrderId(o.id)}>
-                                {action.label}
-                              </Button>
-                            ) : (
-                              <Button
-                                sm
-                                variant={action.variant}
-                                disabled={busyId === o.id}
-                                onClick={() => void act(o, action.status)}
-                              >
-                                {busyId === o.id ? 'Working…' : action.label}
-                              </Button>
-                            )}
-                          </div>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
-                {!cards.length ? <p className="hint ops-empty">Nothing here.</p> : null}
-              </div>
-            );
-          })}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              );
+            })}
         </div>
       )}
       {assignModal}
