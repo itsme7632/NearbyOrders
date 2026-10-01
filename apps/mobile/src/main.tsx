@@ -241,8 +241,14 @@ export function App() {
       setTab(resolveTab('Bookings'));
       push(`/booking/${n.entityId}`);
     } else if (n.entityType === 'Order') {
-      setTab(resolveTab('Orders'));
-      push(`/order/${n.entityId}`);
+      if (mode === 'BUSINESS') {
+        // Owner notifications must never open the customer order-detail
+        // surface. The business board is scoped to owned businesses.
+        push('/owner');
+      } else {
+        setTab(resolveTab('Orders'));
+        push(`/order/${n.entityId}`);
+      }
     } else if (n.entityType === 'Review') {
       setAppMode('BUSINESS');
       push('/owner');
@@ -260,8 +266,12 @@ export function App() {
         setTab(resolveTab('Bookings'));
         push(link);
       } else if (link.startsWith('/order/')) {
-        setTab(resolveTab('Orders'));
-        push(link);
+        if (mode === 'BUSINESS') {
+          push('/owner');
+        } else {
+          setTab(resolveTab('Orders'));
+          push(link);
+        }
       } else if (link.startsWith('/business/')) {
         setAppMode('BUSINESS');
         push('/owner');
@@ -313,6 +323,7 @@ export function App() {
           setTab('Explore');
           push('/');
         }}
+        onAddAddress={() => push('/addresses')}
         onPlaced={() => {
           setTab(resolveTab('Orders'));
           push('/');

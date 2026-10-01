@@ -68,7 +68,7 @@ export function RemoteImage({ src, onError, ...props }: RemoteImageProps) {
       fetchControllerRef.current = null;
     }
     if (objectUrlRef.current) {
-      URL.revokeObjectURL(objectUrlRef.current);
+      if (typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(objectUrlRef.current);
       objectUrlRef.current = null;
     }
 
@@ -89,7 +89,7 @@ export function RemoteImage({ src, onError, ...props }: RemoteImageProps) {
       fetchControllerRef.current?.abort();
       fetchControllerRef.current = null;
       if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current);
+        if (typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(objectUrlRef.current);
         objectUrlRef.current = null;
       }
     };

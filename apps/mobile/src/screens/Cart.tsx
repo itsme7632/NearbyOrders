@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   createOrder,
   listBusinessPayInMethods,
+  getBusiness,
   submitOrderPayment,
   uploadPaymentReceipt,
   ApiError,
@@ -19,7 +20,7 @@ import { cartSubtotal, clearCart, getCart, lineTotal, onCartChange, removeFromCa
  * digital channel (Easypaisa etc.) whose proof the business verifies before
  * the payment is ever "paid". There is no gateway and no self-attestation.
  */
-export function CartScreen(props: { onBack: () => void; onBrowse: () => void; onPlaced: (orderId: string) => void }) {
+export function CartScreen(props: { onBack: () => void; onBrowse: () => void; onAddAddress: () => void; onPlaced: (orderId: string) => void }) {
   const [cart, setCart] = useState<Cart | null>(getCart());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,17 +39,29 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
   // Phase 17: the customer's address book drives DELIVERY checkout.
   const [addresses, setAddresses] = useState<CustomerAddress[] | null>(null);
   const [addressId, setAddressId] = useState<string | null>(null);
+  const [business, setBusiness] = useState<Awaited<ReturnType<typeof getBusiness>> | null>(null);
+  const [businessLoading, setBusinessLoading] = useState(false);
   const [methodId, setMethodId] = useState<string | null>(null);
   const [reference, setReference] = useState('');
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
 
   const digitalMethods = useMemo(() => (methods ?? []).filter((m) => m.type !== 'CASH'), [methods]);
   const selected = digitalMethods.find((m) => m.id === methodId) ?? null;
+  const selectedAddress = addresses?.find((a) => a.id === addressId) ?? null;
+  const deliveryFeeMinor = business?.deliveryFeeMinor ?? null;
+  const deliveryAvailable = business?.deliveryEnabled !== false;
+  const checkoutTotalMinor = cart ? cartSubtotal(cart) + (fulfillment === 'DELIVERY' ? deliveryFeeMinor ?? 0 : 0) : 0;
 
-  // Keep in sync with cart mutations triggered elsewhere (e.g. removed elsewhere).
-  const sync = () => setCart(getCart());
-  onCartChange(sync);
-  // Re-subscribe on every render keeps this simple and correct for this scale.
+  // Keep checkout synchronized with product-page quantity changes. Clone the
+  // snapshot because the small local cart store mutates its object in place;
+  // setting the same object reference would not trigger a React render.
+  useEffect(() => {
+    const unsubscribe = onCartChange(() => {
+      const next = getCart();
+      setCart(next ? { ...next, items: next.items.map((item) => ({ ...item })) } : null);
+    });
+    return unsubscribe;
+  }, []);
 
   // Phase 17: load the address book once for the delivery selector.
   useEffect(() => {
@@ -68,21 +81,34 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
     };
   }, []);
 
-  // Load the business's pay-in channels once; failures degrade to cash-only.
+  // Load public business detail for delivery capability/fee and the
+  // business payment channels together.
   useEffect(() => {
     let alive = true;
     if (!cart) return;
-    listBusinessPayInMethods(cart.businessId)
-      .then((list) => {
-        if (alive) setMethods(list);
+    setBusinessLoading(true);
+    setBusiness(null);
+    setMethods(null);
+    setMethodsError(false);
+    Promise.allSettled([
+      getBusiness(cart.businessId),
+      listBusinessPayInMethods(cart.businessId),
+    ])
+      .then(([detailResult, methodsResult]) => {
+        if (!alive) return;
+        if (detailResult.status === 'fulfilled') setBusiness(detailResult.value);
+        if (methodsResult.status === 'fulfilled') {
+          setMethods(methodsResult.value);
+        } else {
+          setMethodsError(true);
+        }
       })
-      .catch(() => {
-        if (alive) setMethodsError(true);
+      .finally(() => {
+        if (alive) setBusinessLoading(false);
       });
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cart?.businessId]);
 
   const place = async () => {
@@ -205,13 +231,14 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
       </p>
       {error ? <ErrorState message={error} /> : null}
 
-      <section className="checkout-step" aria-label="Items">
-        <h2 className="checkout-step-title">
-          <span className="checkout-step-num" aria-hidden>
-            1
-          </span>
-          Your items
-        </h2>
+      <section className="cart-panel cart-items-panel" aria-label="Items">
+        <div className="cart-panel-head">
+          <div>
+            <span className="cart-kicker">YOUR ORDER</span>
+            <h2>Your items</h2>
+          </div>
+          <span className="cart-item-count">{cart.items.reduce((sum, item) => sum + item.quantity, 0)} items</span>
+        </div>
         <ul className="cart-list">
           {cart.items.map((item) => (
             <li key={item.productId} className="cart-item">
@@ -251,43 +278,18 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
             </li>
           ))}
         </ul>
-        <div className="cart-summary" aria-label="Price summary">
-          <div className="cart-line">
-            <span className="type-meta">Item subtotal</span>
-            <span className="type-price">
-              <Money minor={cartSubtotal(cart)} currency="PKR" />
-            </span>
-          </div>
-          {/* Pre-order, the customer API has no server fee numbers (delivery
-              settings are owner-authenticated). When delivery is chosen the
-              fee is set by the business — shown as a line, never invented. */}
-          {fulfillment === 'DELIVERY' ? (
-            <div className="cart-line">
-              <span className="type-meta">Delivery fee</span>
-              <span className="type-meta">Set by the business</span>
-            </div>
-          ) : null}
-          <div className="cart-line cart-total">
-            <span className="type-section">
-              {fulfillment === 'DELIVERY' ? 'Total · delivery fee added by the business' : 'Total'}
-            </span>
-            <span className="type-price">
-              <Money minor={cartSubtotal(cart)} currency="PKR" />
-            </span>
-          </div>
-        </div>
       </section>
 
       {/* Fulfillment: pickup or delivery (fee comes from business settings). */}
-      <section className="checkout-step" aria-label="How do you want to receive the order?">
-        <h2 className="checkout-step-title">
-          <span className="checkout-step-num" aria-hidden>
-            2
-          </span>
-          Receiving
-        </h2>
+      <section className="cart-panel" aria-label="Receiving">
+        <div className="cart-panel-head">
+          <div>
+            <span className="cart-kicker">HOW YOU'LL RECEIVE IT</span>
+            <h2>Receiving</h2>
+          </div>
+        </div>
         <div className="pay-methods" role="radiogroup" aria-label="Receiving option">
-          {(['PICKUP', 'DELIVERY'] as const).map((kind) => (
+          {(['PICKUP', ...(deliveryAvailable ? (['DELIVERY'] as const) : [])] as const).map((kind) => (
             <button
               key={kind}
               type="button"
@@ -300,36 +302,61 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
             </button>
           ))}
         </div>
-        {fulfillment === 'DELIVERY' && addresses && addresses.length > 0 ? (
-          <div className="pay-methods addr-picker" role="radiogroup" aria-label="Delivery address">
+        {fulfillment === 'DELIVERY' ? (
+          <div className="cart-address-box">
+            <div className="cart-address-copy">
+              <span className="cart-field-label">Delivery address</span>
+              {addresses === null ? (
+                <strong>Loading addresses…</strong>
+              ) : selectedAddress ? (
+                <>
+                  <strong>{selectedAddress.label}</strong>
+                  <span>Saved address selected for delivery</span>
+                </>
+              ) : (
+                <>
+                  <strong>No address</strong>
+                  <span>Add a delivery address before placing this order.</span>
+                </>
+              )}
+            </div>
+            <Button sm variant="secondary" onClick={props.onAddAddress}>
+              {selectedAddress ? 'Change' : 'Add address'}
+            </Button>
+          </div>
+        ) : null}
+        {fulfillment === 'DELIVERY' && addresses && addresses.length > 1 ? (
+          <div className="cart-address-options" role="radiogroup" aria-label="Saved delivery addresses">
             {addresses.map((a) => (
               <button
                 key={a.id}
                 type="button"
                 role="radio"
                 aria-checked={addressId === a.id}
-                className={`pay-chip${addressId === a.id ? ' pay-chip-active' : ''}`}
+                className={`cart-address-option${addressId === a.id ? ' is-selected' : ''}`}
                 onClick={() => setAddressId(a.id)}
               >
-                {a.label}: {a.addressText.length > 42 ? `${a.addressText.slice(0, 42)}…` : a.addressText}
+                <span>{a.label}</span>
+                {a.isDefault ? <small>Default</small> : null}
               </button>
             ))}
           </div>
         ) : null}
-        {fulfillment === 'DELIVERY' && addresses !== null && addresses.length === 0 ? (
-          <p className="addr-hint">No saved addresses yet. Add one under Profile → Addresses. The business will confirm delivery details with you.</p>
+        {fulfillment === 'DELIVERY' && businessLoading ? <p className="hint">Checking delivery fee…</p> : null}
+        {fulfillment === 'DELIVERY' && !businessLoading && deliveryFeeMinor === null ? (
+          <p className="addr-hint">Delivery fee is currently unavailable. Please try again in a moment.</p>
         ) : null}
       </section>
 
       {/* Payment method: cash flows need nothing; digital needs proof. */}
       {digitalMethods.length > 0 ? (
-        <section className="checkout-step" aria-label="Payment method">
-          <h2 className="checkout-step-title">
-            <span className="checkout-step-num" aria-hidden>
-              3
-            </span>
-            Payment
-          </h2>
+        <section className="cart-panel" aria-label="Payment method">
+          <div className="cart-panel-head">
+            <div>
+              <span className="cart-kicker">PAYMENT</span>
+              <h2>Payment</h2>
+            </div>
+          </div>
           <div className="pay-methods" role="radiogroup" aria-label="Payment method">
             <button
               type="button"
@@ -410,24 +437,40 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
         </p>
       )}
 
-      {/* Checkout footer: restate the total beside the commitment so the
-          price is unmissable at the moment of decision. */}
-      <div className="checkout-footer">
-        <div className="checkout-footer-total">
-          <span className="checkout-footer-label type-label">
-            {fulfillment === 'DELIVERY' ? 'Total · delivery fee confirmed by the business' : 'Total'}
-          </span>
-          <strong className="checkout-footer-value">
-            <Money minor={cartSubtotal(cart)} currency="PKR" />
-          </strong>
+      <section className="cart-panel cart-summary-panel" aria-label="Order summary">
+        <div className="cart-panel-head">
+          <div>
+            <span className="cart-kicker">SUMMARY</span>
+            <h2>Order total</h2>
+          </div>
         </div>
-        <Button full className="btn-ember" onClick={place} disabled={busy || (!!selected && (!reference.trim() || !receiptFile))}>
+        <div className="cart-price-list">
+          <div className="cart-line"><span>Items</span><Money minor={cartSubtotal(cart)} currency="PKR" /></div>
+          {fulfillment === 'DELIVERY' ? (
+            <div className="cart-line">
+              <span>Delivery</span>
+              <span>{deliveryFeeMinor !== null ? <Money minor={deliveryFeeMinor} currency="PKR" /> : '—'}</span>
+            </div>
+          ) : null}
+          <div className="cart-line cart-total">
+            <span>Total</span>
+            <Money minor={checkoutTotalMinor} currency="PKR" />
+          </div>
+        </div>
+        <Button
+          full
+          className="btn-ember"
+          onClick={place}
+          disabled={
+            busy ||
+            (fulfillment === 'DELIVERY' && (!addressId || deliveryFeeMinor === null || businessLoading)) ||
+            (!!selected && (!reference.trim() || !receiptFile))
+          }
+        >
           {busy ? 'Placing order…' : selected ? 'Submit order + payment proof' : 'Place order'}
         </Button>
-        <Button full variant="ghost" onClick={clearCart} disabled={busy}>
-          Clear cart
-        </Button>
-      </div>
+        <button type="button" className="cart-clear-link" onClick={clearCart} disabled={busy}>Clear cart</button>
+      </section>
     </div>
   );
 }

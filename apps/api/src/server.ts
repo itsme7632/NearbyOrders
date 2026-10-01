@@ -4353,7 +4353,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (serviceIds.length !== rawIds.length)
       return r.status(400).send({ error: { code: 'DUPLICATE_SERVICES', message: 'Duplicate service IDs are not allowed' } });
     if (serviceIds.length === 0 || serviceIds.length > 10)
-      return r.status(400).send({ error: { code: 'INVALID_SERVICES', message: 'Provide 1–10 service IDs' } });
+      return r.status(400).send({ error: { code: 'INVALID_SERVICES', message: 'Provide 1-10 service IDs' } });
 
     const business = await prisma.business.findFirst({
       where: { OR: [{ id: businessId }, { slug: businessId }], status: 'APPROVED', archivedAt: null },
@@ -4433,7 +4433,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (serviceIds.length !== rawIds.length)
       return r.status(400).send({ error: { code: 'DUPLICATE_SERVICE', message: 'Each service may only be selected once' } });
     if (serviceIds.length === 0 || serviceIds.length > 10)
-      return r.status(400).send({ error: { code: 'INVALID_SERVICES', message: 'Select 1–10 services' } });
+      return r.status(400).send({ error: { code: 'INVALID_SERVICES', message: 'Select 1-10 services' } });
 
     const services = await prisma.service.findMany({ where: { id: { in: serviceIds }, businessId: business.id } });
     if (services.length !== serviceIds.length)

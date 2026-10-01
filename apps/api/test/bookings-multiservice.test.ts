@@ -124,7 +124,7 @@ describe('multi-service bookings', () => {
     const { owner, customer, businessId, svcA, svcB } = await multiFixture();
     await app.inject({
       method: 'PATCH',
-      url: `/api/v1/businesses/${businessId}/services/${svcB.id}`,
+      url: `/api/v1/services/${svcB.id}`,
       headers: authed(owner.token),
       payload: { isActive: false },
     });
@@ -173,10 +173,10 @@ describe('multi-service bookings', () => {
     });
     const notes = await app.inject({
       method: 'GET',
-      url: '/api/v1/me/notifications',
+      url: '/api/v1/notifications',
       headers: authed(owner.token),
     });
-    const items = JSON.parse(notes.body).data as { type: string; message: string }[];
+    const items = (JSON.parse(notes.body).data as { items: { type: string; message: string }[] }).items;
     const created = items.find((n) => n.type === 'BOOKING_CREATED');
     expect(created).toBeDefined();
     expect(created!.message).toContain('Haircut');

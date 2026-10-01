@@ -187,7 +187,7 @@ function OverviewBody(props: {
         onOpen={onOpen}
         base={base}
         onOpenBooking={props.onOpenBooking}
-        onOpenOrder={props.onOpenOrder}
+        onOpenOrder={() => onOpen(`${base}/orders`)}
       />
 
       {/* Plan: the single subscription entry point on this screen. Sits
@@ -207,7 +207,7 @@ function OverviewBody(props: {
       <TodayActivity
         overview={overview}
         currency={active.currency}
-        onOpenOrder={props.onOpenOrder}
+        onOpenOrder={() => onOpen(`${base}/orders`)}
         onOpenBooking={props.onOpenBooking}
       />
 

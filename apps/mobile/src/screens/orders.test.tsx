@@ -32,7 +32,7 @@ const order = (patch: Partial<Order> = {}): Order => ({
 
 describe('cart screen', () => {
   it('shows the empty state with a browse action', () => {
-    render(<CartScreen onBack={() => {}} onBrowse={() => {}} onPlaced={() => {}} />);
+    render(<CartScreen onBack={() => {}} onBrowse={() => {}} onAddAddress={() => {}} onPlaced={() => {}} />);
     expect(screen.getByText('Your cart is empty')).toBeTruthy();
     expect(screen.getByText('Find businesses')).toBeTruthy();
   });
@@ -41,7 +41,7 @@ describe('cart screen', () => {
     addToCart({ businessId: 'biz-1', businessName: 'Butt Spices', product: { id: 'p1', name: 'Chicken Biryani', priceMinor: 45000, imageUrl: null } });
     addToCart({ businessId: 'biz-1', businessName: 'Butt Spices', product: { id: 'p2', name: 'Chicken Karahi', priceMinor: 125000, imageUrl: null }, quantity: 2 });
 
-    render(<CartScreen onBack={() => {}} onBrowse={() => {}} onPlaced={() => {}} />);
+    render(<CartScreen onBack={() => {}} onBrowse={() => {}} onAddAddress={() => {}} onPlaced={() => {}} />);
     expect(screen.getByText(/Ordering from/)).toBeTruthy();
     expect(screen.getByText('Chicken Biryani')).toBeTruthy();
     // 2 biryani + 2 karahi quantities via the steppers.
@@ -53,7 +53,7 @@ describe('cart screen', () => {
   it('increase/decrease updates quantities; decrease below 1 removes the item', async () => {
     addToCart({ businessId: 'biz-1', businessName: 'Butt Spices', product: { id: 'p1', name: 'Chicken Biryani', priceMinor: 45000, imageUrl: null } });
 
-    render(<CartScreen onBack={() => {}} onBrowse={() => {}} onPlaced={() => {}} />);
+    render(<CartScreen onBack={() => {}} onBrowse={() => {}} onAddAddress={() => {}} onPlaced={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'Increase quantity of Chicken Biryani' }));
     expect(getCart()!.items[0].quantity).toBe(2);
 
@@ -65,7 +65,7 @@ describe('cart screen', () => {
 
   it('Remove clears the item and shows the empty state', async () => {
     addToCart({ businessId: 'biz-1', businessName: 'Butt Spices', product: { id: 'p1', name: 'Chicken Biryani', priceMinor: 45000, imageUrl: null } });
-    render(<CartScreen onBack={() => {}} onBrowse={() => {}} onPlaced={() => {}} />);
+    render(<CartScreen onBack={() => {}} onBrowse={() => {}} onAddAddress={() => {}} onPlaced={() => {}} />);
 
     fireEvent.click(screen.getByText('Remove'));
     expect(await screen.findByText('Your cart is empty')).toBeTruthy();
@@ -75,7 +75,7 @@ describe('cart screen', () => {
     vi.spyOn(api, 'createOrder').mockResolvedValue(order());
     addToCart({ businessId: 'biz-1', businessName: 'Butt Spices', product: { id: 'p1', name: 'Chicken Biryani', priceMinor: 45000, imageUrl: null } });
 
-    render(<CartScreen onBack={() => {}} onBrowse={() => {}} onPlaced={() => {}} />);
+    render(<CartScreen onBack={() => {}} onBrowse={() => {}} onAddAddress={() => {}} onPlaced={() => {}} />);
     fireEvent.click(screen.getByText('Place order'));
 
     expect(await screen.findByText('Order placed!')).toBeTruthy();
@@ -92,7 +92,7 @@ describe('cart screen', () => {
     vi.spyOn(api, 'createOrder').mockRejectedValue(new api.ApiError(400, 'INVALID_PRODUCTS', 'One or more products are unavailable'));
     addToCart({ businessId: 'biz-1', businessName: 'Butt Spices', product: { id: 'p1', name: 'Chicken Biryani', priceMinor: 45000, imageUrl: null } });
 
-    render(<CartScreen onBack={() => {}} onBrowse={() => {}} onPlaced={() => {}} />);
+    render(<CartScreen onBack={() => {}} onBrowse={() => {}} onAddAddress={() => {}} onPlaced={() => {}} />);
     fireEvent.click(screen.getByText('Place order'));
 
     expect(await screen.findByText(/no longer available/)).toBeTruthy();
