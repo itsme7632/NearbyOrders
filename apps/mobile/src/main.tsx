@@ -241,7 +241,7 @@ export function App() {
       setTab(resolveTab('Bookings'));
       push(`/booking/${n.entityId}`);
     } else if (n.entityType === 'Order') {
-      if (appMode === 'BUSINESS') {
+      if (mode === 'BUSINESS') {
         // Owner notifications must never open the customer order-detail
         // surface. The business board is scoped to owned businesses.
         push('/owner');
@@ -266,7 +266,7 @@ export function App() {
         setTab(resolveTab('Bookings'));
         push(link);
       } else if (link.startsWith('/order/')) {
-        if (appMode === 'BUSINESS') {
+        if (mode === 'BUSINESS') {
           push('/owner');
         } else {
           setTab(resolveTab('Orders'));
