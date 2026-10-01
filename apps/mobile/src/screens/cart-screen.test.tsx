@@ -25,9 +25,10 @@ function seedCart() {
 describe('CartScreen checkout pricing', () => {
   it('separates item subtotal and an emphasized total, with no invented fees', () => {
     vi.spyOn(api, 'listBusinessPayInMethods').mockResolvedValue([]);
+    vi.spyOn(api, 'getBusiness').mockResolvedValue({ ...biz, id: biz.businessId, slug: 'butt-spices', status: 'APPROVED', description: null, imageUrl: null, isVerified: true, address: '', city: '', locality: null, latitude: null, longitude: null, phone: null, email: null, currency: 'PKR', categories: [], deliveryEnabled: true, deliveryFeeMinor: 15000 });
     vi.spyOn(api, 'getSession').mockReturnValue(null);
     seedCart();
-    render(<CartScreen onBack={() => {}} onBrowse={() => {}} onPlaced={() => {}} />);
+    render(<CartScreen onBack={() => {}} onBrowse={() => {}} onAddAddress={() => {}} onPlaced={() => {}} />);
 
     expect(screen.getByText('Item subtotal')).toBeTruthy();
     // No delivery fee line for pickup, and no other server fees invented.
@@ -40,7 +41,19 @@ describe('CartScreen checkout pricing', () => {
     expect(screen.getByRole('button', { name: /place order/i })).toBeTruthy();
   });
 
-  it('shows a delivery fee line (no invented number) when delivery is chosen', () => {
+  it('updates quantity immediately when the plus control is tapped', () => {
+    vi.spyOn(api, 'listBusinessPayInMethods').mockResolvedValue([]);
+    vi.spyOn(api, 'getBusiness').mockResolvedValue({ ...biz, id: biz.businessId, slug: 'butt-spices', status: 'APPROVED', description: null, imageUrl: null, isVerified: true, address: '', city: '', locality: null, latitude: null, longitude: null, phone: null, email: null, currency: 'PKR', categories: [], deliveryEnabled: true, deliveryFeeMinor: 15000 });
+    seedCart();
+    render(<CartScreen onBack={() => {}} onBrowse={() => {}} onAddAddress={() => {}} onPlaced={() => {}} />);
+    const plus = screen.getByRole('button', { name: 'Increase quantity of Chicken Biryani' });
+    expect(screen.getByText('Rs 450 each')).toBeTruthy();
+    fireEvent.click(plus);
+    expect(screen.getByText('2')).toBeTruthy();
+    expect(screen.getAllByText('Rs 900').length).toBeGreaterThan(0);
+  });
+
+  it('shows the configured delivery fee and total before placing a delivery order', () => {
     vi.spyOn(api, 'listBusinessPayInMethods').mockResolvedValue([]);
     vi.spyOn(api, 'getSession').mockReturnValue(null);
     seedCart();
@@ -48,8 +61,7 @@ describe('CartScreen checkout pricing', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: 'Delivery' }));
     expect(screen.getByText('Delivery fee')).toBeTruthy();
-    expect(screen.getByText('Set by the business')).toBeTruthy();
-    // The total is unchanged: only the business can set the delivery fee.
-    expect(screen.getAllByText('Rs 2,950').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('Rs 150')).toBeTruthy();
+    expect(screen.getByText('Rs 3,100')).toBeTruthy();
   });
 });
