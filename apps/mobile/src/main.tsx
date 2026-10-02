@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { businessTabs, navigationTabs, resolveTab, type BusinessTab, type Tab } from './navigation.js';
@@ -19,6 +19,8 @@ import { ProfileScreen, EditProfileScreen, ChangePasswordScreen } from './screen
 // (OwnerDashboardScreen intentionally not imported: /owner renders OwnerBusinessHome.)
 import { OwnerScreen } from './screens/OwnerScreen.js';
 import { OwnerBookingDetailScreen } from './screens/OwnerBookings.js';
+import { OwnerOrderDetailScreen } from './screens/OwnerOrderDetail.js';
+import { ForegroundPushBanner, enqueueForegroundPush } from './components/ForegroundPushBanner.js';
 import { OwnerBusinessHome } from './screens/OwnerBusinessHome.js';
 import { OwnerBusinessOrders } from './screens/OwnerBusinessOrders.js';
 import { OwnerBusinessBookings } from './screens/OwnerBusinessBookings.js';
@@ -140,6 +142,10 @@ export function App() {
   const [justCreatedStatus, setJustCreatedStatus] = useState<string | null>(null);
   const { mode } = useAppMode();
   useEffect(() => onSessionChange(setSession), []);
+  // The push deep-link callback is registered once with the native layer,
+  // so it reads the live mode through a ref instead of a stale closure.
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
 
   // Persistent login: on startup, a securely stored refresh token is
   // exchanged for a fresh session (POST /auth/refresh, then GET /auth/me).
@@ -241,14 +247,11 @@ export function App() {
       setTab(resolveTab('Bookings'));
       push(`/booking/${n.entityId}`);
     } else if (n.entityType === 'Order') {
-      if (mode === 'BUSINESS') {
-        // Owner notifications must never open the customer order-detail
-        // surface. The business board is scoped to owned businesses.
-        push('/owner');
-      } else {
-        setTab(resolveTab('Orders'));
-        push(`/order/${n.entityId}`);
-      }
+      // The /order/:id route is context-aware: business mode renders the
+      // business detail (never the customer surface); the order id is
+      // preserved either way.
+      if (mode !== 'BUSINESS') setTab(resolveTab('Orders'));
+      push(`/order/${n.entityId}`);
     } else if (n.entityType === 'Review') {
       setAppMode('BUSINESS');
       push('/owner');
@@ -266,12 +269,10 @@ export function App() {
         setTab(resolveTab('Bookings'));
         push(link);
       } else if (link.startsWith('/order/')) {
-        if (mode === 'BUSINESS') {
-          push('/owner');
-        } else {
-          setTab(resolveTab('Orders'));
-          push(link);
-        }
+        // Context-aware order route: business detail in business mode,
+        // customer detail otherwise. The id is never dropped.
+        if (modeRef.current !== 'BUSINESS') setTab(resolveTab('Orders'));
+        push(link);
       } else if (link.startsWith('/business/')) {
         setAppMode('BUSINESS');
         push('/owner');
@@ -283,9 +284,12 @@ export function App() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [push],
   );
-  usePushRegistration(handlePushDeepLink);
+  const { permission: pushPermission, requestPermission: requestPushPermission } = usePushRegistration({
+    onDeepLink: handlePushDeepLink,
+    onForegroundNotification: (push) => enqueueForegroundPush(push),
+  });
 
   const goExplore = (seed: { category?: string; query?: string }) => {
     setTab('Explore');
@@ -331,9 +335,16 @@ export function App() {
       />
     ) : null;
   } else if (route.name === 'order') {
-    // Both roles open order detail here: a customer sees their order; the
-    // owning business is authorized server-side for the same endpoint.
-    content = session ? <OrderDetailScreen orderId={route.orderId} onBack={back} /> : null;
+    // Context-aware: business mode renders the business detail (actions,
+    // payment verification) while customer mode renders the customer
+    // detail. The same endpoint authorizes both roles server-side.
+    content = session ? (
+      businessMode ? (
+        <OwnerOrderDetailScreen orderId={route.orderId} onBack={back} />
+      ) : (
+        <OrderDetailScreen orderId={route.orderId} onBack={back} />
+      )
+    ) : null;
   } else if (route.name === 'search') {
     content = <SearchScreen initialQuery={route.initialQuery} onBack={back} onOpenBusiness={openBusiness} />;
   } else if (route.name === 'notifications') {
@@ -342,6 +353,8 @@ export function App() {
         onOpenNotification={openNotification}
         onReadStateChange={unread.refresh}
         onOpenPreferences={() => push('/notification-preferences')}
+        pushPermission={pushPermission}
+        onEnablePush={requestPushPermission}
       />
     ) : null;
   } else if (route.name === 'notification-preferences') {
@@ -560,6 +573,8 @@ export function App() {
     <ToastProvider>
     <main className={authFlow ? 'auth-mode' : undefined}>
       <StatusbarGutter />
+      {/* Foreground push banner: alerts that arrive while the app is open. */}
+      <ForegroundPushBanner onOpen={handlePushDeepLink} />
       {/* Phase 3I: keyboard / screen-reader users can jump past the header. */}
       {/* Skip link: jumps keyboard users past the header/nav to the main
           content. tabIndex={-1} lets the target receive programmatic focus so

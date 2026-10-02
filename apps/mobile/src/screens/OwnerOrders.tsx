@@ -4,6 +4,7 @@ import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, Loading, Money } from '../components/ui.js';
 import { AlertIcon, OrdersIcon } from '../components/icons.js';
 import { AssignRiderModal } from './AssignRiderModal.js';
+import { OwnerOrderDetailBody } from './OwnerOrderDetail.js';
 
 /** Board columns: which statuses belong where. */
 const BOARD_COLUMNS = [
@@ -19,7 +20,7 @@ type ColumnKey = (typeof BOARD_COLUMNS)[number]['key'];
 const columnFor = (status: OrderStatus): ColumnKey =>
   BOARD_COLUMNS.find((c) => (c.statuses as readonly OrderStatus[]).includes(status))?.key ?? 'COMPLETED';
 
-const STATUS_LABEL: Record<OrderStatus, string> = {
+export const STATUS_LABEL: Record<OrderStatus, string> = {
   PENDING: 'Pending',
   ACCEPTED: 'Accepted',
   REJECTED: 'Rejected',
@@ -31,7 +32,7 @@ const STATUS_LABEL: Record<OrderStatus, string> = {
   CANCELLED: 'Cancelled',
 };
 
-const STATUS_CLASS: Record<OrderStatus, string> = {
+export const STATUS_CLASS: Record<OrderStatus, string> = {
   PENDING: 'status-pending',
   ACCEPTED: 'status-accepted',
   REJECTED: 'status-cancelled',
@@ -48,11 +49,11 @@ export const orderNo = (o: Order) => `#${o.id.replace(/-/g, '').slice(-6).toUppe
 
 const itemCount = (o: Order) => o.items.reduce((sum, i) => sum + i.quantity, 0);
 
-const customerName = (o: Order) => [o.customer?.firstName, o.customer?.lastName].filter(Boolean).join(' ') || 'Customer';
+export const customerName = (o: Order) => [o.customer?.firstName, o.customer?.lastName].filter(Boolean).join(' ') || 'Customer';
 
-const isDelivery = (o: Order) => o.fulfillmentType === 'DELIVERY';
+export const isDelivery = (o: Order) => o.fulfillmentType === 'DELIVERY';
 
-const formatWhen = (iso: string) =>
+export const formatWhen = (iso: string) =>
   new Date(iso).toLocaleString('en-PK', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 
 type NextAction =
@@ -166,83 +167,13 @@ export function OwnerOrders(props: { businessId: string; orders?: Order[] }) {
         </section>
       );
     }
-    const action = nextAction(o);
     return (
-      <section className="card" aria-label="Order detail">
-        <button className="back-link" onClick={() => setSelectedId(null)}>
-          ‹ All orders
-        </button>
-        {error ? <ErrorState message={error} /> : null}
-        <div className="owner-head">
-          <h2>Order {orderNo(o)}</h2>
-          <span className={`badge ${STATUS_CLASS[o.status]}`}>{STATUS_LABEL[o.status]}</span>
-        </div>
-        <p className="order-meta">
-          {customerName(o)} · {formatWhen(o.createdAt)} · {isDelivery(o) ? 'Delivery' : 'Pickup'}
-        </p>
-        {isDelivery(o) && o.deliveryAddressText ? (
-          <div className="order-address-block">
-            {o.deliveryAddressLabel ? <strong>{o.deliveryAddressLabel}</strong> : null}
-            <p className="order-meta">Deliver to: {o.deliveryAddressText}</p>
-          </div>
-        ) : null}
-        {o.assignedRider ? (
-          <p className="order-meta">Rider: {o.assignedRider.name}</p>
-        ) : null}
-        <ul className="item-list">
-          {o.items.map((i) => (
-            <li key={i.id}>
-              <div className="item-row">
-                <span className="item-name">{i.name}</span>
-                <Money minor={i.lineTotalMinor} currency={o.currency} />
-              </div>
-              <p className="item-desc">
-                {i.quantity} × <Money minor={i.unitPriceMinor} currency={o.currency} />
-              </p>
-            </li>
-          ))}
-        </ul>
-        <div className="cart-summary">
-          <div className="cart-line">
-            <span>Subtotal</span>
-            <Money minor={o.subtotalMinor} currency={o.currency} />
-          </div>
-          {isDelivery(o) ? (
-            <div className="cart-line">
-              <span>Delivery fee</span>
-              <Money minor={o.deliveryFeeMinor ?? 0} currency={o.currency} />
-            </div>
-          ) : null}
-          <div className="cart-line">
-            <span>{isDelivery(o) ? 'Delivery' : 'Pickup'} · total</span>
-            <Money minor={o.totalMinor ?? o.subtotalMinor} currency={o.currency} />
-          </div>
-        </div>
-
-        <OrderPaymentBlock order={o} onChanged={orders.reload} />
-
-        {action ? (
-          <div className="btn-row">
-            {action.kind === 'assign-rider' ? (
-              <Button sm variant="primary" disabled={busyId === o.id} onClick={() => setAssignOrderId(o.id)}>
-                {action.label}
-              </Button>
-            ) : (
-              <Button sm variant={action.variant} disabled={busyId === o.id} onClick={() => void act(o, action.status)}>
-                {busyId === o.id ? 'Working…' : action.label}
-              </Button>
-            )}
-            {o.status === 'PENDING' ? (
-              <Button sm variant="danger" disabled={busyId === o.id} onClick={() => void act(o, 'REJECTED')}>
-                Reject
-              </Button>
-            ) : null}
-          </div>
-        ) : (
-          <p className="hint">No further actions: this order is {STATUS_LABEL[o.status].toLowerCase()}.</p>
-        )}
-        {assignModal}
-      </section>
+      <OwnerOrderDetailBody
+        order={o}
+        backLabel="‹ All orders"
+        onBack={() => setSelectedId(null)}
+        onChanged={orders.reload}
+      />
     );
   }
 
