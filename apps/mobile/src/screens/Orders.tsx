@@ -318,6 +318,7 @@ export function OrderDetailScreen(props: { orderId: string; onBack: () => void }
       {o.fulfillmentType === 'DELIVERY' && o.deliveryAddressText ? (
         <section className="detail-section" aria-label="Delivery address">
           <h2 className="detail-section-title">Deliver to</h2>
+          {o.deliveryAddressLabel ? <p className="item-desc">{o.deliveryAddressLabel}</p> : null}
           <p className="order-addr">{o.deliveryAddressText}</p>
         </section>
       ) : null}
@@ -368,49 +369,86 @@ const ORDER_PAYMENT_BADGE: Record<CustomerPayment['status'], string> = {
 };
 
 /**
- * Payment section for one order: cash flows show a simple state line, manual
- * digital channels show instructions + reference + receipt upload, and every
- * proof stays "waiting for verification" until the business verifies it.
+ * Payment UI is driven by the payment method frozen on the ORDER.
+ * Business payment methods are used only to display that selected method's
+ * instructions; their availability never decides whether an order is payable.
  */
 export function OrderPaymentPanel(props: { order: Order; onChanged: () => void }) {
   const { order } = props;
   const payments = useAsyncData<CustomerPayment[]>(() => listOrderPayments(order.id), [order.id]);
-  const methods = useAsyncData<BusinessPayInMethod[]>(() => listBusinessPayInMethods(order.business.id), [order.business.id]);
+  const methods = useAsyncData<BusinessPayInMethod[]>(
+    () => (order.paymentMethodId ? listBusinessPayInMethods(order.business.id) : Promise.resolve([])),
+    [order.business.id, order.paymentMethodId],
+  );
 
   const total = order.totalMinor ?? order.subtotalMinor;
-  const paid = (payments.data ?? []).filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amountMinor, 0);
-  const pending = (payments.data ?? []).filter((p) => p.status === 'PENDING_VERIFICATION').reduce((s, p) => s + p.amountMinor, 0);
+  const allPayments = payments.data ?? [];
+  const paid = allPayments.filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amountMinor, 0);
+  const pending = allPayments.filter((p) => p.status === 'PENDING_VERIFICATION').reduce((s, p) => s + p.amountMinor, 0);
   const due = Math.max(total - paid - pending, 0);
-  // All hooks run unconditionally, before any early return (rules of hooks).
+
   const [formOpen, setFormOpen] = useState(false);
-  const [methodId, setMethodId] = useState<string | null>(null);
   const [reference, setReference] = useState('');
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (payments.loading) return <Loading label="Loading payment…" />;
-  if (payments.error) return null; // Non-critical panel; order details still load.
+  if (payments.error) return null;
 
-  const hasDue = due > 0;
-  const digitalMethods = (methods.data ?? []).filter((m) => m.type !== 'CASH');
-  const selected = digitalMethods.find((m) => m.id === methodId) ?? null;
+  const isCash = order.paymentMethodId == null;
+  const selectedMethod = order.paymentMethodId
+    ? (methods.data ?? []).find((m) => m.id === order.paymentMethodId) ?? null
+    : null;
+  const latestPayment = [...allPayments].sort(
+    (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime(),
+  )[0] ?? null;
+  const hasPending = pending > 0;
+  const isPaid = paid >= total;
+  const isTerminal = ['COMPLETED', 'CANCELLED', 'REJECTED', 'DELIVERED'].includes(order.status);
+  const canSubmitOnlineProof =
+    !isCash &&
+    !isTerminal &&
+    due > 0 &&
+    !hasPending &&
+    selectedMethod != null &&
+    latestPayment?.status !== 'PENDING_VERIFICATION';
 
-  // Nothing due, nothing pending, no history: pure cash flow state line.
-  // With any payment record we still show the summary + history below.
-  if (!hasDue && !pending && !(payments.data ?? []).length)
+  if (isCash) {
     return (
       <section className="detail-section" aria-label="Payment">
         <h2 className="detail-section-title">Payment</h2>
-        <p className="hint">{paid >= total ? 'Paid in full.' : 'Pay cash when you receive the order.'}</p>
+        <div className="cart-summary">
+          <div className="cart-line">
+            <span>Payment method</span>
+            <span>Cash</span>
+          </div>
+          <div className="cart-line cart-total">
+            <span>{isPaid ? 'Collected' : 'Due on arrival'}</span>
+            <Money minor={Math.max(total - paid, 0)} currency={order.currency} />
+          </div>
+        </div>
+        <p className="hint">
+          {isPaid
+            ? 'Cash payment was collected.'
+            : order.fulfillmentType === 'PICKUP'
+              ? 'Pay cash when you pick up your order.'
+              : 'Pay cash when your order arrives.'}
+        </p>
       </section>
     );
+  }
 
   return (
     <section className="detail-section" aria-label="Payment">
       <h2 className="detail-section-title">Payment</h2>
       {error ? <ErrorState message={error} /> : null}
+
       <div className="cart-summary">
+        <div className="cart-line">
+          <span>Payment method</span>
+          <span>{selectedMethod?.displayName ?? latestPayment?.paymentMethod?.displayName ?? 'Online payment'}</span>
+        </div>
         <div className="cart-line">
           <span>Total</span>
           <Money minor={total} currency={order.currency} />
@@ -423,23 +461,23 @@ export function OrderPaymentPanel(props: { order: Order; onChanged: () => void }
         ) : null}
         {pending > 0 ? (
           <div className="cart-line">
-            <span>Submitted, awaiting verification</span>
+            <span>Submitted</span>
             <Money minor={pending} currency={order.currency} />
           </div>
         ) : null}
         <div className="cart-line cart-total">
-          <span>Due</span>
-          <Money minor={due} currency={order.currency} />
+          <span>{isPaid ? 'Paid in full' : 'Due'}</span>
+          {!isPaid ? <Money minor={due} currency={order.currency} /> : null}
         </div>
       </div>
 
       <ul className="manage-list">
-        {(payments.data ?? []).map((p) => (
+        {allPayments.map((p) => (
           <li key={p.id} className="manage-item">
             <div className="item-row">
               <span className="item-name">
-                {p.paymentMethod?.displayName ?? 'Cash'} · <Money minor={p.amountMinor} currency={p.currency} />
-                </span>
+                {p.paymentMethod?.displayName ?? 'Online payment'} · <Money minor={p.amountMinor} currency={p.currency} />
+              </span>
               <span className={`badge ${ORDER_PAYMENT_BADGE[p.status]}`}>{ORDER_PAYMENT_LABEL[p.status]}</span>
             </div>
             {p.transactionReference ? <p className="item-desc pay-ref">Ref {p.transactionReference}</p> : null}
@@ -448,98 +486,74 @@ export function OrderPaymentPanel(props: { order: Order; onChanged: () => void }
         ))}
       </ul>
 
-      {hasDue && digitalMethods.length > 0 ? (
+      {pending > 0 ? (
+        <p className="hint">Payment proof submitted. Waiting for the business to verify it.</p>
+      ) : isPaid ? (
+        <p className="hint">Payment received and verified.</p>
+      ) : latestPayment?.status === 'FAILED' && !isTerminal ? (
+        <p className="hint">Payment proof was rejected. Submit a new proof using the same payment method.</p>
+      ) : null}
+
+      {canSubmitOnlineProof ? (
         formOpen ? (
           <div className="pay-details">
-            <div className="pay-methods" role="radiogroup" aria-label="Payment method">
-              {digitalMethods.map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={methodId === m.id}
-                  className={`pay-chip${methodId === m.id ? ' pay-chip-active' : ''}`}
-                  onClick={() => setMethodId(m.id)}
-                >
-                  {m.displayName}
-                </button>
-              ))}
-            </div>
-            {selected ? (
-              <div className="pay-details">
-                <p className="pay-instructions">{selected.instructions ?? 'Pay the business directly, then submit your proof below.'}</p>
-                {selected.accountTitle || selected.accountNumber || selected.iban ? (
-                  <dl className="pay-account">
-                    {selected.accountTitle ? (
-                      <div>
-                        <dt>Account title</dt>
-                        <dd>{selected.accountTitle}</dd>
-                      </div>
-                    ) : null}
-                    {selected.accountNumber ? (
-                      <div>
-                        <dt>Account number</dt>
-                        <dd>{selected.accountNumber}</dd>
-                      </div>
-                    ) : null}
-                    {selected.iban ? (
-                      <div>
-                        <dt>IBAN</dt>
-                        <dd className="pay-iban">{selected.iban}</dd>
-                      </div>
-                    ) : null}
-                  </dl>
-                ) : null}
-                <label className="field">
-                  <span className="label">Transaction reference (required)</span>
-                  <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. TX-123456" maxLength={80} />
-                </label>
-                <label className="field">
-                  <span className="label">Receipt image</span>
-                  <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)} />
-                </label>
-                <p className="hint">Your payment stays “submitted” until the business verifies it.</p>
-                <div className="btn-row">
-                  <Button
-                    sm
-                    disabled={busy || !methodId || !reference.trim() || !receiptFile}
-                    onClick={() => {
-                      if (!methodId) return;
-                      setBusy(true);
-                      setError(null);
-                      uploadPaymentReceipt(receiptFile!)
-                        .then((receiptStorageKey) =>
-                          submitOrderPayment(order.id, {
-                            amountMinor: due,
-                            paymentMethodId: methodId,
-                            transactionReference: reference.trim(),
-                            receiptStorageKey,
-                          }),
-                        )
-                        .then(() => {
-                          setFormOpen(false);
-                          setReference('');
-                          setReceiptFile(null);
-                          setMethodId(null);
-                          props.onChanged();
-                          payments.reload();
-                        })
-                        .catch((e) => setError(e instanceof Error ? e.message : 'Could not submit payment'))
-                        .finally(() => setBusy(false));
-                    }}
-                  >
-                    {busy ? 'Submitting…' : 'Submit for verification'}
-                  </Button>
-                  <Button sm variant="ghost" disabled={busy} onClick={() => setFormOpen(false)}>
-                    Cancel
-                  </Button>
-                </div>
-              </div>
+            <p className="pay-instructions">
+              {selectedMethod?.instructions ?? 'Pay the business directly, then submit your proof below.'}
+            </p>
+            {selectedMethod?.accountTitle || selectedMethod?.accountNumber || selectedMethod?.iban ? (
+              <dl className="pay-account">
+                {selectedMethod.accountTitle ? <div><dt>Account title</dt><dd>{selectedMethod.accountTitle}</dd></div> : null}
+                {selectedMethod.accountNumber ? <div><dt>Account number</dt><dd>{selectedMethod.accountNumber}</dd></div> : null}
+                {selectedMethod.iban ? <div><dt>IBAN</dt><dd className="pay-iban">{selectedMethod.iban}</dd></div> : null}
+              </dl>
             ) : null}
+            <label className="field">
+              <span className="label">Transaction reference (required)</span>
+              <input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. TX-123456" maxLength={80} />
+            </label>
+            <label className="field">
+              <span className="label">Receipt image</span>
+              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)} />
+            </label>
+            <p className="hint">Your proof stays pending until the business verifies it.</p>
+            <div className="btn-row">
+              <Button
+                sm
+                disabled={busy || !reference.trim() || !receiptFile}
+                onClick={() => {
+                  if (!selectedMethod) return;
+                  setBusy(true);
+                  setError(null);
+                  uploadPaymentReceipt(receiptFile!)
+                    .then((receiptStorageKey) =>
+                      submitOrderPayment(order.id, {
+                        amountMinor: due,
+                        paymentMethodId: selectedMethod.id,
+                        transactionReference: reference.trim(),
+                        receiptStorageKey,
+                      }),
+                    )
+                    .then(() => {
+                      setFormOpen(false);
+                      setReference('');
+                      setReceiptFile(null);
+                      props.onChanged();
+                      payments.reload();
+                    })
+                    .catch((e) => setError(e instanceof Error ? e.message : 'Could not submit payment'))
+                    .finally(() => setBusy(false));
+                }}
+              >
+                {busy ? 'Submitting…' : 'Submit payment proof'}
+              </Button>
+              <Button sm variant="ghost" disabled={busy} onClick={() => setFormOpen(false)}>
+                Cancel
+              </Button>
+            </div>
           </div>
         ) : (
           <Button full variant="secondary" onClick={() => setFormOpen(true)}>
-            Pay Rs {due / 100} online: submit proof
+            Pay Rs {due / 100} online · Submit proof
           </Button>
         )
       ) : null}
