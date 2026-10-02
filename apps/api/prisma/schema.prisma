@@ -390,6 +390,9 @@ model Order {
   // (Phase 17). Stored per-order — later address edits/corrections on the
   // customer's address book never rewrite history on placed orders.
   deliveryAddressText String?
+  // DELIVERY snapshot of the customer's address-book label at placement time.
+  // Stored per-order so later address-book edits never rewrite order history.
+  deliveryAddressLabel String?
   // Rider assignment (delivery orders). SetNull on rider delete preserves
   // historical orders; the assignment timestamp records when it happened.
   assignedRiderId String?
