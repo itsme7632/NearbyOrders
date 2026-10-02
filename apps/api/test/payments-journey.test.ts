@@ -15,6 +15,15 @@ import { authed, makeApp, registerAndLogin, registerAdminAndLogin } from './help
 
 const app = await makeApp();
 
+async function waitForNotification(where: { userId: string; type: string; entityId: string }) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const notification = await prisma.notification.findFirst({ where });
+    if (notification) return notification;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return null;
+}
+
 const submit = (token: string, businessId: string, body: Record<string, unknown>) =>
   app.inject({
     method: 'POST',
@@ -100,7 +109,7 @@ describe('manual payment → admin verification → activation journey', () => {
     expect(sub.planPriceMinorSnapshot).toBe(299900);
 
     /* 8. Owner receives the approval notification. */
-    const notif = await prisma.notification.findFirst({ where: { userId: owner.userId, type: 'SUBSCRIPTION_PAYMENT_APPROVED', entityId: payment.id } });
+    const notif = await waitForNotification({ userId: owner.userId, type: 'SUBSCRIPTION_PAYMENT_APPROVED', entityId: payment.id });
     expect(notif?.title).toBe('Subscription payment approved');
 
     /* 9. Duplicate approval is blocked. */
@@ -158,7 +167,7 @@ describe('manual payment → admin verification → activation journey', () => {
     const rejected = history.find((p) => p.id === first.id);
     expect(rejected?.status).toBe('REJECTED');
     expect(rejected?.rejectionReason).toBe('Receipt does not match transaction reference.');
-    const notif = await prisma.notification.findFirst({ where: { userId: owner.userId, type: 'SUBSCRIPTION_PAYMENT_REJECTED', entityId: first.id } });
+    const notif = await waitForNotification({ userId: owner.userId, type: 'SUBSCRIPTION_PAYMENT_REJECTED', entityId: first.id });
     expect(notif?.message).toContain('Receipt does not match transaction reference.');
 
     /* Corrected resubmission → approval → ACTIVE. */
