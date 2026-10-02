@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { collectOrderCash, listBusinessOrders, listOrderPayments, setOrderStatus, verifyOwnerPayment, rejectOwnerPayment, ApiError, type CustomerPayment, type Order, type OrderStatus } from '../api.js';
+import { collectOrderCash, listBusinessOrders, listOrderPayments, listOwnerPayInMethods, setOrderStatus, verifyOwnerPayment, rejectOwnerPayment, ApiError, type CustomerPayment, type Order, type OrderStatus } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, Loading, Money } from '../components/ui.js';
 import { AlertIcon, OrdersIcon } from '../components/icons.js';
@@ -401,12 +401,13 @@ const OWNER_ORDER_PAYMENT_LABEL: Record<CustomerPayment['status'], string> = {
 export function OrderPaymentBlock(props: { order: Order; onChanged: () => void }) {
   const { order } = props;
   const payments = useAsyncData<CustomerPayment[]>(() => listOrderPayments(order.id), [order.id]);
+  const methods = useAsyncData(() => order.paymentMethodId ? listOwnerPayInMethods(order.business.id) : Promise.resolve([]), [order.business.id, order.paymentMethodId]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
-  if (payments.loading) return <Loading label="Loading payment…" />;
+  if (payments.loading || methods.loading) return <Loading label="Loading payment…" />;
   if (payments.error || !payments.data) return null;
 
   const allPayments = payments.data;
@@ -475,7 +476,7 @@ export function OrderPaymentBlock(props: { order: Order; onChanged: () => void }
       <div className="cart-summary">
         <div className="cart-line">
           <span>Payment method</span>
-          <span>{isCash ? 'Cash' : latest?.paymentMethod?.displayName ?? 'Online payment'}</span>
+          <span>{isCash ? 'Cash' : latest?.paymentMethod?.displayName ?? methods.data?.find((m) => m.id === order.paymentMethodId)?.displayName ?? 'Online payment'}</span>
         </div>
         <div className="cart-line cart-total">
           <span>{paid >= total ? 'Paid' : isCash ? 'Cash due' : 'Due'}</span>
