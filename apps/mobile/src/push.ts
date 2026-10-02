@@ -20,6 +20,27 @@ export type PushRegistrationOutcome =
   | { status: 'unavailable' }
   | { status: 'error'; message: string };
 
+/** Foreground notification payload (normalized from the native event). */
+export type ForegroundPush = {
+  title: string;
+  body: string;
+  deepLink?: string;
+};
+
+const normalizeForeground = (notification: unknown): ForegroundPush => {
+  const n = (notification ?? {}) as {
+    title?: unknown;
+    body?: unknown;
+    data?: { deepLink?: unknown };
+  };
+  const deepLink = n.data?.deepLink;
+  return {
+    title: typeof n.title === 'string' && n.title ? n.title : 'NearbyOrders',
+    body: typeof n.body === 'string' ? n.body : '',
+    ...(typeof deepLink === 'string' && deepLink.startsWith('/') ? { deepLink } : {}),
+  };
+};
+
 /** Registration is a pure side-effect seam for tests. */
 type PushPluginLike = {
   checkPermissions(): Promise<{ receive: 'granted' | 'denied' | 'prompt' | 'prompt-with-rationale' }>;
@@ -95,6 +116,52 @@ export const registerForPush = async (onReceived?: (notification: unknown) => vo
     return { status: 'registered', token, platform };
   } catch (e) {
     return { status: 'error', message: e instanceof Error ? e.message : 'Push registration failed' };
+  }
+};
+
+/**
+ * Checks the current notification permission WITHOUT prompting. Use this on
+ * session start: when already granted we can register silently; otherwise we
+ * wait for a contextual moment instead of ambushing the user.
+ */
+export const checkPushPermission = async (): Promise<'granted' | 'denied' | 'prompt'> => {
+  if (pushPlatform() === 'web') return 'denied';
+  try {
+    const { PushNotifications } = await loadPlugin();
+    const check = await PushNotifications.checkPermissions();
+    return check.receive === 'granted' ? 'granted' : check.receive === 'denied' ? 'denied' : 'prompt';
+  } catch {
+    return 'denied';
+  }
+};
+
+/**
+ * Asks the OS for notification permission. Call only from a contextual
+ * moment (the user tapped "Enable notifications"), never on a timer.
+ */
+export const requestPushPermission = async (): Promise<'granted' | 'denied'> => {
+  if (pushPlatform() === 'web') return 'denied';
+  try {
+    const { PushNotifications } = await loadPlugin();
+    const request = await PushNotifications.requestPermissions();
+    return request.receive === 'granted' ? 'granted' : 'denied';
+  } catch {
+    return 'denied';
+  }
+};
+
+/** Notification received while the app is in the FOREGROUND: show an in-app banner. */
+export const onForegroundPush = async (handler: (push: ForegroundPush) => void): Promise<() => void> => {
+  const platform = pushPlatform();
+  if (platform === 'web') return () => undefined;
+  try {
+    const { PushNotifications } = await loadPlugin();
+    const handle = (await PushNotifications.addListener('pushNotificationReceived', (notification) =>
+      handler(normalizeForeground(notification)),
+    )) as PluginListenerHandleLike;
+    return () => void handle.remove();
+  } catch {
+    return () => undefined;
   }
 };
 

@@ -1,24 +1,68 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSession, registerPushDevice, type Session } from './api.js';
-import { onPushTap, registerForPush } from './push.js';
+import {
+  checkPushPermission,
+  onForegroundPush,
+  onPushTap,
+  registerForPush,
+  requestPushPermission,
+  type ForegroundPush,
+} from './push.js';
+
+/** localStorage key for this device's server-side PushDevice id (per user). */
+export const PUSH_DEVICE_ID_KEY = 'no_push_device_id';
+
+export type PushPermissionState = 'unknown' | 'granted' | 'denied' | 'prompt' | 'unavailable';
 
 /**
- * Phase 13: push registration lifecycle for the signed-in user.
+ * Push registration lifecycle for the signed-in user.
  *
- * - Runs only for authenticated sessions (an appropriate, non-first-screen
- *   moment: the user has already chosen to use the product).
- * - Never blocks and never navigates: a denied permission or a missing native
- *   runtime leaves the app fully functional (in-app notifications unaffected).
- * - Registers once per session; FCM tokens are stable per app install, and
- *   the API deduplicates by token.
- * - Logout deactivates this device's registration server-side, so a shared
- *   device stops receiving the previous user's pushes.
+ * - Session start does a SILENT permission check: when already granted we
+ *   register in the background; otherwise we do NOT prompt. The app waits
+ *   for a contextual moment (see PushPermissionCard) instead of ambushing.
+ * - `requestPermission()` is for that contextual moment: it explains first
+ *   (the caller's UI), asks the OS once, and registers on grant.
+ * - Denial is graceful: in-app notifications keep working; nothing retries
+ *   on a timer.
+ * - Registers once per session; the API deduplicates by token, and a fresh
+ *   FCM token is re-registered automatically via the registration listener.
+ * - Logout deactivates this device's registration server-side (see api.ts
+ *   logout()), so a shared device stops receiving the previous user's pushes.
  */
-export function usePushRegistration(onDeepLink: (link: string) => void): void {
+export function usePushRegistration(opts: {
+  onDeepLink: (link: string) => void;
+  onForegroundNotification: (push: ForegroundPush) => void;
+}): { permission: PushPermissionState; requestPermission: () => Promise<boolean> } {
+  const [permission, setPermission] = useState<PushPermissionState>('unknown');
   const registeredFor = useRef<string | null>(null);
   const sessionRef = useRef<Session | null>(getSession());
   sessionRef.current = getSession();
+  const deepLinkRef = useRef(opts.onDeepLink);
+  deepLinkRef.current = opts.onDeepLink;
+  const foregroundRef = useRef(opts.onForegroundNotification);
+  foregroundRef.current = opts.onForegroundNotification;
 
+  const registerToken = useCallback(async (session: Session) => {
+    const outcome = await registerForPush();
+    if (outcome.status === 'registered') {
+      try {
+        const device = await registerPushDevice({ platform: outcome.platform, pushToken: outcome.token });
+        // Remember which server-side device belongs to THIS app install so
+        // logout can deactivate exactly it (best effort, never fatal).
+        if (device && typeof device.id === 'string') {
+          try {
+            localStorage.setItem(PUSH_DEVICE_ID_KEY, device.id);
+          } catch {
+            /* storage unavailable: logout simply skips deactivation */
+          }
+        }
+      } catch {
+        /* network failure: token stays server-side from a previous register */
+      }
+    }
+  }, []);
+
+  // Silent session-start check: register only when permission is already granted.
   useEffect(() => {
     const session = sessionRef.current;
     if (!session) return;
@@ -27,26 +71,50 @@ export function usePushRegistration(onDeepLink: (link: string) => void): void {
 
     let cancelled = false;
     void (async () => {
-      const outcome = await registerForPush();
+      const state = await checkPushPermission();
       if (cancelled) return;
-      if (outcome.status === 'registered') {
-        await registerPushDevice({ platform: outcome.platform, pushToken: outcome.token }).catch(() => undefined);
+      setPermission(state);
+      if (state === 'granted') {
+        await registerToken(session);
       }
-      // denied / unavailable / error: silent. In-app notifications keep working.
+      // prompt/denied/unavailable: silent. The contextual prompt handles it.
     })();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [registerToken]);
 
-  // Notification tap → deep link (background/terminated launches included).
+  // Contextual permission request (user tapped "Enable notifications").
+  const requestPermission = useCallback(async (): Promise<boolean> => {
+    const session = sessionRef.current;
+    const result = await requestPushPermission();
+    setPermission(result);
+    if (result === 'granted' && session) {
+      await registerToken(session);
+      return true;
+    }
+    return false;
+  }, [registerToken]);
+
+  // Notification tap: deep link (background/terminated launches included).
   useEffect(() => {
     let off: (() => void) | undefined;
-    void onPushTap((link) => onDeepLink(link)).then((unsub) => {
+    void onPushTap((link) => deepLinkRef.current(link)).then((unsub) => {
       off = unsub;
     });
     return () => off?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Foreground notification: in-app banner (the OS shows nothing when the
+  // app is open, so we surface it ourselves).
+  useEffect(() => {
+    let off: (() => void) | undefined;
+    void onForegroundPush((push) => foregroundRef.current(push)).then((unsub) => {
+      off = unsub;
+    });
+    return () => off?.();
+  }, []);
+
+  return { permission, requestPermission };
 }
