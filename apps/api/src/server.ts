@@ -4698,7 +4698,7 @@ export async function buildApp(): Promise<FastifyInstance> {
    * later product edits or deletion of the underlying product.
    */
   const publicOrder = (
-    o: Prisma.OrderGetPayload<{ include: typeof ORDER_INCLUDE }> & { deliveryFeeMinor?: number; totalMinor?: number; paymentMethodId?: string | null },
+    o: Prisma.OrderGetPayload<{ include: typeof ORDER_INCLUDE }> & { deliveryFeeMinor?: number; totalMinor?: number; paymentMethodId?: string | null; deliveryAddressLabel?: string | null },
     opts?: { includeRiderPhone?: boolean },
   ) => {
     // Rider privacy: phone is only exposed when the viewer is authorized
@@ -4725,6 +4725,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     // DELIVERY snapshot captured at placement (Phase 17); null for pickup
     // orders or delivery orders placed before addresses existed.
     deliveryAddressText: o.deliveryAddressText ?? null,
+    deliveryAddressLabel: o.deliveryAddressLabel ?? null,
     // Assigned rider (delivery orders). Phone only when viewer is authorized.
     assignedRider: rider,
     riderAssignedAt: o.riderAssignedAt ?? null,
@@ -4807,23 +4808,26 @@ export async function buildApp(): Promise<FastifyInstance> {
     // from the client is never trusted, and PICKUP/COLLECTION orders never
     // carry a delivery address.
     let deliveryAddressText: string | null = null;
+    let deliveryAddressLabel: string | null = null;
     if (d.deliveryAddressId !== undefined) {
       if (d.fulfillmentType !== 'DELIVERY')
         return r.status(400).send({ error: { code: 'INVALID_ADDRESS', message: 'A delivery address applies only to delivery orders' } });
       const address = await prisma.customerAddress.findFirst({
         where: { id: d.deliveryAddressId, customerId: customer.id },
-        select: { addressText: true },
+        select: { addressText: true, label: true },
       });
       if (!address)
         return r.status(404).send({ error: { code: 'NOT_FOUND', message: 'Delivery address not found' } });
       deliveryAddressText = address.addressText;
+      deliveryAddressLabel = address.label;
     } else if (d.fulfillmentType === 'DELIVERY') {
       // Convenience default: the customer's default address, when they have one.
       const fallback = await prisma.customerAddress.findFirst({
         where: { customerId: customer.id, isDefault: true },
-        select: { addressText: true },
+        select: { addressText: true, label: true },
       });
       deliveryAddressText = fallback?.addressText ?? null;
+      deliveryAddressLabel = fallback?.label ?? null;
     }
     let pushNotice: NotificationInput | null = null;
     const created = await prisma.$transaction(async (tx) => {
@@ -4838,6 +4842,7 @@ export async function buildApp(): Promise<FastifyInstance> {
           notes: d.notes,
           fulfillmentType: d.fulfillmentType,
           deliveryAddressText,
+          deliveryAddressLabel,
           items: {
             create: d.items.map((i) => {
               const p = products.find((x) => x.id === i.productId)!;
