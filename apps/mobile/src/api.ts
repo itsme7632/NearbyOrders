@@ -242,6 +242,10 @@ export type Order = {
   totalMinor?: number;
   /** Phase 17: DELIVERY snapshot captured at placement; null for pickup. */
   deliveryAddressText?: string | null;
+  /** DELIVERY snapshot of the address-book label at placement; null for pickup. */
+  deliveryAddressLabel?: string | null;
+  /** Chosen manual digital channel (null = cash on delivery/pickup). */
+  paymentMethodId?: string | null;
   /** Rider assignment (delivery orders). Phone included for owner viewers only. */
   assignedRider?: AssignedRider | null;
   riderAssignedAt?: string | null;
