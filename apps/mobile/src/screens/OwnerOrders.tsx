@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { collectOrderCash, listBusinessOrders, listOrderPayments, setOrderStatus, ApiError, type CustomerPayment, type Order, type OrderStatus } from '../api.js';
+import { collectOrderCash, listBusinessOrders, listOrderPayments, setOrderStatus, verifyOwnerPayment, rejectOwnerPayment, ApiError, type CustomerPayment, type Order, type OrderStatus } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, Loading, Money } from '../components/ui.js';
 import { AlertIcon, OrdersIcon } from '../components/icons.js';
@@ -181,7 +181,10 @@ export function OwnerOrders(props: { businessId: string; orders?: Order[] }) {
           {customerName(o)} · {formatWhen(o.createdAt)} · {isDelivery(o) ? 'Delivery' : 'Pickup'}
         </p>
         {isDelivery(o) && o.deliveryAddressText ? (
-          <p className="order-meta">Deliver to: {o.deliveryAddressText}</p>
+          <div className="order-address-block">
+            {o.deliveryAddressLabel ? <strong>{o.deliveryAddressLabel}</strong> : null}
+            <p className="order-meta">Deliver to: {o.deliveryAddressText}</p>
+          </div>
         ) : null}
         {o.assignedRider ? (
           <p className="order-meta">Rider: {o.assignedRider.name}</p>
@@ -216,7 +219,7 @@ export function OwnerOrders(props: { businessId: string; orders?: Order[] }) {
           </div>
         </div>
 
-        <OrderPaymentBlock orderId={o.id} onChanged={orders.reload} />
+        <OrderPaymentBlock order={o} onChanged={orders.reload} />
 
         {action ? (
           <div className="btn-row">
@@ -395,20 +398,33 @@ const OWNER_ORDER_PAYMENT_LABEL: Record<CustomerPayment['status'], string> = {
  * with money still due — a Collect cash action. COD stays UNPAID until the
  * owner confirms the cash was received in person; NearbyOrders never holds it.
  */
-export function OrderPaymentBlock(props: { orderId: string; onChanged: () => void }) {
-  const payments = useAsyncData<CustomerPayment[]>(() => listOrderPayments(props.orderId), [props.orderId]);
+export function OrderPaymentBlock(props: { order: Order; onChanged: () => void }) {
+  const { order } = props;
+  const payments = useAsyncData<CustomerPayment[]>(() => listOrderPayments(order.id), [order.id]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   if (payments.loading) return <Loading label="Loading payment…" />;
-  if (payments.error || !payments.data) return null; // Non-critical; order still shows.
+  if (payments.error || !payments.data) return null;
+
+  const allPayments = payments.data;
+  const paid = allPayments.filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amountMinor, 0);
+  const pending = allPayments.filter((p) => p.status === 'PENDING_VERIFICATION');
+  const isCash = order.paymentMethodId == null;
+  const total = order.totalMinor ?? order.subtotalMinor;
+  const remaining = Math.max(total - paid, 0);
+  const latest = [...allPayments].sort(
+    (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime(),
+  )[0] ?? null;
 
   const collect = async () => {
-    if (busy) return;
+    if (busy || !isCash || remaining <= 0) return;
     setBusy(true);
     setError(null);
     try {
-      await collectOrderCash(props.orderId);
+      await collectOrderCash(order.id);
       payments.reload();
       props.onChanged();
     } catch (e) {
@@ -418,42 +434,127 @@ export function OrderPaymentBlock(props: { orderId: string; onChanged: () => voi
     }
   };
 
-  const paid = payments.data.filter((p) => p.status === 'PAID').reduce((s, p) => s + p.amountMinor, 0);
-  const pending = payments.data.filter((p) => p.status === 'PENDING_VERIFICATION').reduce((s, p) => s + p.amountMinor, 0);
+  const verify = async (paymentId: string) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await verifyOwnerPayment(paymentId, 'order');
+      payments.reload();
+      props.onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not verify the payment');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reject = async (paymentId: string) => {
+    const reason = rejectReason.trim();
+    if (busy || !reason) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await rejectOwnerPayment(paymentId, 'order', reason);
+      setRejectingId(null);
+      setRejectReason('');
+      payments.reload();
+      props.onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not reject the payment');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="pay-details">
       <h3 className="pay-section-title">Payment</h3>
       {error ? <ErrorState message={error} /> : null}
-      {payments.data.length === 0 ? (
-        <p className="hint">No payment proof yet: the customer will pay cash or submit proof for verification.</p>
+
+      <div className="cart-summary">
+        <div className="cart-line">
+          <span>Payment method</span>
+          <span>{isCash ? 'Cash' : latest?.paymentMethod?.displayName ?? 'Online payment'}</span>
+        </div>
+        <div className="cart-line cart-total">
+          <span>{paid >= total ? 'Paid' : isCash ? 'Cash due' : 'Due'}</span>
+          <Money minor={Math.max(total - paid, 0)} currency={order.currency} />
+        </div>
+      </div>
+
+      {isCash ? (
+        <p className="hint">
+          {paid >= total
+            ? 'Cash payment was collected.'
+            : order.fulfillmentType === 'PICKUP'
+              ? 'Collect cash when the customer picks up the order.'
+              : 'Collect cash when the order is handed over.'}
+        </p>
       ) : (
-        <ul className="manage-list">
-          {payments.data.map((p) => (
-            <li key={p.id} className="manage-item">
-              <div className="item-row">
-                <span className="item-name">
-                  {p.paymentMethod?.displayName ?? 'Cash'} · <Money minor={p.amountMinor} currency={p.currency} />
-                </span>
-                <span className={`pay-status pay-status-${p.status === 'PAID' ? 'paid' : p.status === 'FAILED' ? 'failed' : 'pending'}`}>
-                  {OWNER_ORDER_PAYMENT_LABEL[p.status]}
-                </span>
-              </div>
-              {p.transactionReference ? <p className="item-desc pay-ref">Ref {p.transactionReference}</p> : null}
-              {p.status === 'FAILED' && p.rejectionReason ? (
-                <p className="item-desc">
-                  <AlertIcon size={12} /> Reason: {p.rejectionReason}
-                </p>
-              ) : null}
-            </li>
-          ))}
-        </ul>
+        <>
+          {!allPayments.length ? (
+            <p className="hint">Online payment selected. Waiting for the customer to submit payment proof.</p>
+          ) : (
+            <ul className="manage-list">
+              {allPayments.map((p) => (
+                <li key={p.id} className="manage-item">
+                  <div className="item-row">
+                    <span className="item-name">
+                      {p.paymentMethod?.displayName ?? 'Online payment'} · <Money minor={p.amountMinor} currency={p.currency} />
+                    </span>
+                    <span className={`pay-status pay-status-${p.status === 'PAID' ? 'paid' : p.status === 'FAILED' ? 'failed' : 'pending'}`}>
+                      {OWNER_ORDER_PAYMENT_LABEL[p.status]}
+                    </span>
+                  </div>
+                  {p.transactionReference ? <p className="item-desc pay-ref">Ref {p.transactionReference}</p> : null}
+                  {p.status === 'FAILED' && p.rejectionReason ? (
+                    <p className="item-desc"><AlertIcon size={12} /> Reason: {p.rejectionReason}</p>
+                  ) : null}
+                  {p.status === 'PENDING_VERIFICATION' ? (
+                    <div className="btn-row">
+                      <Button sm variant="primary" disabled={busy} onClick={() => void verify(p.id)}>
+                        {busy ? 'Working…' : 'Verify payment'}
+                      </Button>
+                      {rejectingId === p.id ? (
+                        <div className="pay-reject-form">
+                          <input
+                            value={rejectReason}
+                            onChange={(e) => setRejectReason(e.target.value)}
+                            placeholder="Reason for rejection"
+                            maxLength={200}
+                          />
+                          <Button sm variant="danger" disabled={busy || !rejectReason.trim()} onClick={() => void reject(p.id)}>
+                            Reject proof
+                          </Button>
+                          <Button sm variant="ghost" disabled={busy} onClick={() => { setRejectingId(null); setRejectReason(''); }}>
+                            Cancel
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button sm variant="danger" disabled={busy} onClick={() => setRejectingId(p.id)}>
+                          Reject
+                        </Button>
+                      )}
+                    </div>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {latest?.status === 'PAID' ? <p className="hint">Payment verified and received.</p> : null}
+          {latest?.status === 'FAILED' ? <p className="hint">Payment proof was rejected. The customer can submit new proof.</p> : null}
+        </>
       )}
-      {paid + pending === 0 ? (
+
+      {isCash && paid < total ? (
         <Button sm variant="secondary" disabled={busy} onClick={() => void collect()}>
           {busy ? 'Recording…' : 'Collect cash'}
         </Button>
       ) : null}
+
+      {pending.length > 1 ? <p className="hint">Multiple payment proofs are pending. Review each proof before verifying.</p> : null}
     </div>
   );
 }
