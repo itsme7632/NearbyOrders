@@ -36,6 +36,7 @@ const order = (patch: Partial<Order> = {}): Order => ({
   createdAt: '2026-09-12T10:00:00.000Z',
   deliveryFeeMinor: 20000,
   totalMinor: 220000,
+  paymentMethodId: 'pm-1',
   business: { id: 'biz-1', name: 'Butt Spices', slug: 'butt-spices' },
   customer: { firstName: 'Ayesha', lastName: 'Khan' },
   items: [{ id: 'i1', productId: 'p1', name: 'Biryani', unitPriceMinor: 200000, quantity: 1, lineTotalMinor: 200000 }],
@@ -101,6 +102,18 @@ describe('OrderPaymentPanel (Phase 7C order payment)', () => {
     expect(screen.getByText('Total')).toBeTruthy();
   });
 
+
+  it('shows cash-only state for COD orders and never exposes online proof controls', async () => {
+    vi.spyOn(api, 'listOrderPayments').mockResolvedValue([]);
+    vi.spyOn(api, 'listBusinessPayInMethods').mockResolvedValue([
+      { id: 'pm-1', type: 'EASYPAISA', displayName: 'Easypaisa', accountTitle: 'Butt Spices', accountNumber: '0300-1234567', iban: null, instructions: 'Send then submit proof.' },
+    ]);
+    render(<OrderPaymentPanel order={order({ paymentMethodId: null })} onChanged={() => {}} />);
+    expect(await screen.findByText('Due on arrival')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /submit proof/i })).toBeNull();
+    expect(screen.queryByText(/online/i)).toBeNull();
+  });
+
   it('summarises pending verification without claiming payment success', async () => {
     vi.spyOn(api, 'listOrderPayments').mockResolvedValue([payment({ status: 'PENDING_VERIFICATION', amountMinor: 220000 })]);
     vi.spyOn(api, 'listBusinessPayInMethods').mockResolvedValue([]);
@@ -116,7 +129,8 @@ describe('OrderPaymentPanel (Phase 7C order payment)', () => {
     render(<OrderPaymentPanel order={order()} onChanged={() => {}} />);
     // "Paid" appears both in the summary line and the status badge.
     expect((await screen.findAllByText('Paid')).length).toBeGreaterThan(0);
-    expect(screen.getByText('Due')).toBeTruthy();
+    expect(screen.getByText('Paid in full')).toBeTruthy();
+    expect(screen.queryByText('Due')).toBeNull();
   });
 
   it('shows the rejection reason for failed payments', async () => {
