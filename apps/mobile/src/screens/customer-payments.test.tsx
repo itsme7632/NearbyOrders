@@ -119,7 +119,7 @@ describe('OrderPaymentPanel (Phase 7C order payment)', () => {
     vi.spyOn(api, 'listBusinessPayInMethods').mockResolvedValue([]);
     render(<OrderPaymentPanel order={order()} onChanged={() => {}} />);
     expect(await screen.findByText('Waiting for verification')).toBeTruthy();
-    expect(screen.getByText('Submitted, awaiting verification')).toBeTruthy();
+    expect(screen.getByText('Submitted')).toBeTruthy();
     expect(screen.queryByText('Paid in full.')).toBeNull();
   });
 
