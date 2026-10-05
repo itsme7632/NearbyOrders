@@ -378,21 +378,42 @@ export const register = (email: string, password: string, role: 'CUSTOMER' | 'BU
  * Logs out everywhere this device knows about: clears the in-memory session
  * synchronously (the UI drops it at once), then revokes the stored refresh
  * token server-side and wipes it from the secure store. Revocation failures
- * never block logout — the local secret is gone either way.
+ * never block logout: the local secret is gone either way.
+ *
+ * Also deactivates this device's push registration (best effort): a shared
+ * device must stop receiving the previous user's order alerts.
  */
 export const logout = (): Promise<void> => {
+  // Capture the outgoing session first: the deactivation call below needs
+  // its access token, and setSession(null) drops it immediately.
+  const outgoing = getSession();
   setSession(null);
   return (async () => {
     let refreshToken: string | null = null;
     try {
       refreshToken = await getRefreshTokenStorage().getRefreshToken();
     } catch {
-      // Storage unreachable — local state is already cleared above.
+      // Storage unreachable: local state is already cleared above.
     }
     try {
       await getRefreshTokenStorage().clearRefreshToken();
     } catch {
       // Clearing is idempotent.
+    }
+    // Deactivate this install's push device with the outgoing token.
+    // The id was stored at registration time; absence just means this
+    // install never registered for push.
+    try {
+      const deviceId = localStorage.getItem('no_push_device_id');
+      if (deviceId && outgoing) {
+        await fetch(`${API_BASE}/push/devices/${encodeURIComponent(deviceId)}`, {
+          method: 'DELETE',
+          headers: { authorization: `Bearer ${outgoing.accessToken}` },
+        }).catch(() => undefined);
+      }
+      localStorage.removeItem('no_push_device_id');
+    } catch {
+      // Never fail a logout over push bookkeeping.
     }
     if (refreshToken) {
       try {

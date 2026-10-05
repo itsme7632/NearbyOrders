@@ -70,25 +70,37 @@ known-safe route shapes and falls back to `/notifications`.
 
 - `apps/mobile/src/push.ts`: permission check → (request) → FCM register →
   token; dynamic plugin import keeps it out of the web bundle; web reports
-  `unavailable` honestly.
-- `usePushRegistration`: runs once per signed-in session (never on the first
-  anonymous screen), silent on denied/unavailable/error — the app stays fully
-  usable without notifications.
-- Foreground: the existing in-app notification UI + unread badge remain the
-  surface; no duplicate native banner spam.
+  `unavailable` honestly. `checkPushPermission()` never prompts;
+  `requestPushPermission()` is only called from a user-initiated moment.
+- `usePushRegistration`: on session start it does a SILENT permission check
+  and registers only when already granted — no login-time ambush. The
+  returned `{ permission, requestPermission }` drives the contextual
+  `PushPermissionCard` on the Notifications screen (explains the value first,
+  denial is graceful, dismissal sticks). Foreground pushes are enqueued to
+  `ForegroundPushBanner` (tappable, auto-dismissing, queued). The registered
+  PushDevice id is stored locally so `logout()` can deactivate exactly this
+  install's registration server-side.
+- Foreground: the banner is the surface for pushes that arrive while the app
+  is open (the OS shows nothing then); the existing in-app notification UI +
+  unread badge remain the history. No duplicate native banner spam.
 - Tap (`pushNotificationActionPerformed`) → `handlePushDeepLink` → the same
   routes as in-app notifications; stale ids land on the standard 404-safe
-  detail screens, never a crash.
+  detail screens, never a crash. The `/order/:id` route is context-aware:
+  business mode renders `OwnerOrderDetailScreen` (never the customer
+  surface); the order id is preserved through every deep-link path.
 
 ## Android
 
 - `POST_NOTIFICATIONS` permission added (Android 13+ runtime permission; the
   plugin's permission request covers it).
-- `google-services.json` is **not committed**. The Gradle config already
-  applies the google-services plugin only when the file exists; drop the
-  Firebase console file at `apps/mobile/android/app/google-services.json`
-  before building a push-enabled APK. Without it the app builds and runs,
-  with in-app notifications only.
+- `google-services.json` is **never committed**. The `android-debug` CI
+  workflow decodes it from the `FIREBASE_GOOGLE_SERVICES_JSON_B64` repo
+  secret into `android/app/google-services.json` (base64 of the Firebase
+  console file) and applies the Google Services Gradle plugin to the
+  generated project. The step fails loudly when the secret is missing — a
+  build without it would silently produce an app that can never receive push.
+  Without the secret the app still builds and runs, with in-app
+  notifications only.
 
 ## iOS (honest status)
 

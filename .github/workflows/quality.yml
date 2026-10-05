@@ -2,7 +2,7 @@ name: Quality
 on: [push, pull_request]
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16-alpine

@@ -66,6 +66,13 @@ jobs:
         working-directory: apps/mobile
         run: pnpm exec cap add android
 
+      - name: Configure Firebase Android
+        working-directory: apps/mobile
+        env:
+          FIREBASE_GOOGLE_SERVICES_JSON_B64: ${{ secrets.FIREBASE_GOOGLE_SERVICES_JSON_B64 }}
+        run: |
+          printf '%s' "$FIREBASE_GOOGLE_SERVICES_JSON_B64" | base64 --decode > android/app/google-services.json
+
       - name: Sync Capacitor Android
         working-directory: apps/mobile
         run: pnpm exec cap sync android

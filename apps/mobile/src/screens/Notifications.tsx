@@ -8,6 +8,8 @@ import {
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, ListSkeleton, Loading } from '../components/ui.js';
 import { BookingsIcon, OrdersIcon, AlertIcon } from '../components/icons.js';
+import { PushPermissionCard } from '../components/PushPermissionCard.js';
+import type { PushPermissionState } from '../usePushRegistration.js';
 
 type NotifIcon = 'booking' | 'order' | 'generic';
 
@@ -69,6 +71,10 @@ export function NotificationsScreen(props: {
   onReadStateChange?: () => void;
   /** Opens the push-notification preferences screen. */
   onOpenPreferences?: () => void;
+  /** Current OS push-permission state (drives the contextual enable card). */
+  pushPermission?: PushPermissionState;
+  /** Requests OS permission from the contextual card; resolves true when granted. */
+  onEnablePush?: () => Promise<boolean>;
 }) {
   const [state, setState] = useState<{ items: Notification[]; cursor: string | null } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -152,6 +158,10 @@ export function NotificationsScreen(props: {
           ) : null}
         </div>
       </header>
+
+      {props.pushPermission && props.onEnablePush ? (
+        <PushPermissionCard permission={props.pushPermission} onEnable={props.onEnablePush} />
+      ) : null}
 
       {actionError ? (
         <div className="error-state" role="alert">
