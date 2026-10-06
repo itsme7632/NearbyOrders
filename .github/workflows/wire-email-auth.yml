@@ -61,7 +61,36 @@ jobs:
               raise SystemExit('password block not found')
           s = s.replace(password_old, password_new, 1)
           server.write_text(s)
+
+          compose = Path('docker-compose.prod.yml')
+          c = compose.read_text()
+          needle = '      FCM_SERVICE_ACCOUNT_B64: ${FCM_SERVICE_ACCOUNT_B64:-}\n'
+          replacement = needle + '      RESEND_API_KEY: ${RESEND_API_KEY:-}\n      EMAIL_FROM: ${EMAIL_FROM:-NearbyOrders <hello@nearbyorders.com>}\n      EMAIL_LOGO_URL: ${EMAIL_LOGO_URL:-https://nearbyorders.com/assets/nearbyorders-email-logo.png}\n'
+          if 'RESEND_API_KEY:' not in c:
+              if needle not in c:
+                  raise SystemExit('production compose FCM block not found')
+              c = c.replace(needle, replacement, 1)
+              compose.write_text(c)
+
+          env = Path('.env.example')
+          e = env.read_text()
+          if 'RESEND_API_KEY=' not in e:
+              needle = 'FCM_SERVICE_ACCOUNT_B64=""\n'
+              replacement = needle + '\n# Transactional/auth email delivery via Resend. Keep the API key server-side only.\nRESEND_API_KEY=""\nEMAIL_FROM="NearbyOrders <hello@nearbyorders.com>"\nEMAIL_LOGO_URL="https://nearbyorders.com/assets/nearbyorders-email-logo.png"\n'
+              if needle not in e:
+                  raise SystemExit('env example FCM block not found')
+              e = e.replace(needle, replacement, 1)
+              env.write_text(e)
           PY
+
+      - name: Generate email-safe PNG logo
+        shell: bash
+        run: |
+          if ! command -v rsvg-convert >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y librsvg2-bin
+          fi
+          rsvg-convert -w 176 -h 176 apps/website/assets/nearbyorders-email-logo.svg -o apps/website/assets/nearbyorders-email-logo.png
 
       - name: Update lockfile and generate Prisma client
         run: |
@@ -77,6 +106,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/api/prisma/schema.prisma apps/api/src/server.ts pnpm-lock.yaml
+          git add apps/api/prisma/schema.prisma apps/api/src/server.ts pnpm-lock.yaml docker-compose.prod.yml .env.example apps/website/assets/nearbyorders-email-logo.png
           git commit -m "chore: wire email auth foundation" || exit 0
           git push origin HEAD:feat/email-brand-asset
