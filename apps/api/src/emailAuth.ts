@@ -16,17 +16,30 @@ type AuthCodeType = 'EMAIL_VERIFICATION' | 'PASSWORD_RESET';
 
 async function issueCode(type: AuthCodeType, userId: string): Promise<string> {
   const now = new Date();
-  const recent = await prisma.authCode.findFirst({ where: { userId, type, createdAt: { gt: new Date(now.getTime() - MIN_RESEND_INTERVAL_MS) }, consumedAt: null }, orderBy: { createdAt: 'desc' } });
-  if (recent) throw Object.assign(new Error('Please wait before requesting another code'), { statusCode: 429, publicMessage: 'Please wait a minute before requesting another code.' });
+  const recent = await prisma.authCode.findFirst({
+    where: { userId, type, createdAt: { gt: new Date(now.getTime() - MIN_RESEND_INTERVAL_MS) }, consumedAt: null },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (recent) {
+    throw Object.assign(new Error('Please wait before requesting another code'), {
+      statusCode: 429,
+      publicMessage: 'Please wait a minute before requesting another code.',
+    });
+  }
 
   await prisma.authCode.updateMany({ where: { userId, type, consumedAt: null }, data: { consumedAt: now } });
   const code = generateCode();
-  await prisma.authCode.create({ data: { id: randomUUID(), userId, type, codeHash: hashCode(code), expiresAt: new Date(now.getTime() + CODE_TTL_MS) } });
+  await prisma.authCode.create({
+    data: { id: randomUUID(), userId, type, codeHash: hashCode(code), expiresAt: new Date(now.getTime() + CODE_TTL_MS) },
+  });
   return code;
 }
 
 async function findValidCode(type: AuthCodeType, userId: string, code: string) {
-  return prisma.authCode.findFirst({ where: { userId, type, codeHash: hashCode(code), consumedAt: null, expiresAt: { gt: new Date() } }, orderBy: { createdAt: 'desc' } });
+  return prisma.authCode.findFirst({
+    where: { userId, type, codeHash: hashCode(code), consumedAt: null, expiresAt: { gt: new Date() } },
+    orderBy: { createdAt: 'desc' },
+  });
 }
 
 export async function registerEmailAuthRoutes(app: FastifyInstance): Promise<void> {
@@ -39,10 +52,17 @@ export async function registerEmailAuthRoutes(app: FastifyInstance): Promise<voi
     const row = await findValidCode('EMAIL_VERIFICATION', user.id, code);
     if (!row) return r.status(400).send({ error: { code: 'INVALID_CODE', message: 'Invalid or expired verification code' } });
 
-    await prisma.$transaction(async (tx) => {
-      await tx.authCode.update({ where: { id: row.id }, data: { consumedAt: new Date() } });
+    const verified = await prisma.$transaction(async (tx) => {
+      const consumed = await tx.authCode.updateMany({
+        where: { id: row.id, consumedAt: null, expiresAt: { gt: new Date() } },
+        data: { consumedAt: new Date() },
+      });
+      if (consumed.count !== 1) return false;
       await tx.user.update({ where: { id: user.id }, data: { emailVerifiedAt: new Date() } });
+      return true;
     });
+    if (!verified) return r.status(400).send({ error: { code: 'INVALID_CODE', message: 'Invalid or expired verification code' } });
+
     await sendWelcomeEmail({ to: user.email, firstName: user.firstName }).catch((error) => app.log.error(error, 'welcome email delivery failed'));
     return { data: { verified: true } };
   });
@@ -78,12 +98,19 @@ export async function registerEmailAuthRoutes(app: FastifyInstance): Promise<voi
     if (!row) return r.status(400).send({ error: { code: 'INVALID_CODE', message: 'Invalid or expired reset code' } });
 
     const passwordHash = await argon2.hash(newPassword, { type: argon2.argon2id });
-    await prisma.$transaction(async (tx) => {
-      await tx.authCode.update({ where: { id: row.id }, data: { consumedAt: new Date() } });
+    const reset = await prisma.$transaction(async (tx) => {
+      const consumed = await tx.authCode.updateMany({
+        where: { id: row.id, consumedAt: null, expiresAt: { gt: new Date() } },
+        data: { consumedAt: new Date() },
+      });
+      if (consumed.count !== 1) return false;
       await tx.authCode.updateMany({ where: { userId: user.id, type: 'PASSWORD_RESET', consumedAt: null }, data: { consumedAt: new Date() } });
-      await tx.user.update({ where: { id: user.id }, data: { passwordHash, emailVerifiedAt: user.emailVerifiedAt ?? new Date() } });
+      await tx.user.update({ where: { id: user.id }, data: { passwordHash } });
       await tx.refreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
+      return true;
     });
+    if (!reset) return r.status(400).send({ error: { code: 'INVALID_CODE', message: 'Invalid or expired reset code' } });
+
     await sendPasswordChangedEmail({ to: user.email, firstName: user.firstName }).catch((error) => app.log.error(error, 'password-changed email delivery failed'));
     return { data: { reset: true } };
   });
