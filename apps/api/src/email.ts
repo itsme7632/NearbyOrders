@@ -1,7 +1,7 @@
 import { createHash, randomInt } from 'node:crypto';
 import { Resend } from 'resend';
 
-const LOGO_URL = process.env.EMAIL_LOGO_URL ?? 'https://nearbyorders.com/assets/nearbyorders-email-logo.svg';
+const LOGO_URL = process.env.EMAIL_LOGO_URL ?? 'https://nearbyorders.com/assets/nearbyorders-email-logo.png';
 const FROM = process.env.EMAIL_FROM ?? 'NearbyOrders <hello@nearbyorders.com>';
 const APP_NAME = 'NearbyOrders';
 
