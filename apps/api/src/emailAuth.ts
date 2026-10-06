@@ -1,0 +1,93 @@
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import argon2 from 'argon2';
+import { z } from 'zod';
+import { prisma } from './lib.js';
+import { generateCode, hashCode, sendPasswordChangedEmail, sendPasswordResetEmail, sendVerificationEmail, sendWelcomeEmail } from './email.js';
+
+const CODE_TTL_MS = 10 * 60 * 1000;
+const MIN_RESEND_INTERVAL_MS = 60 * 1000;
+
+const emailBody = z.object({ email: z.string().email().max(120) });
+const codeBody = z.object({ email: z.string().email().max(120), code: z.string().regex(/^\d{6}$/) });
+const resetBody = codeBody.extend({ newPassword: z.string().min(12).max(128) });
+
+type AuthCodeType = 'EMAIL_VERIFICATION' | 'PASSWORD_RESET';
+
+async function issueCode(type: AuthCodeType, userId: string): Promise<string> {
+  const now = new Date();
+  const recent = await prisma.authCode.findFirst({ where: { userId, type, createdAt: { gt: new Date(now.getTime() - MIN_RESEND_INTERVAL_MS) }, consumedAt: null }, orderBy: { createdAt: 'desc' } });
+  if (recent) throw Object.assign(new Error('Please wait before requesting another code'), { statusCode: 429, publicMessage: 'Please wait a minute before requesting another code.' });
+
+  await prisma.authCode.updateMany({ where: { userId, type, consumedAt: null }, data: { consumedAt: now } });
+  const code = generateCode();
+  await prisma.authCode.create({ data: { id: crypto.randomUUID(), userId, type, codeHash: hashCode(code), expiresAt: new Date(now.getTime() + CODE_TTL_MS) } });
+  return code;
+}
+
+async function findValidCode(type: AuthCodeType, userId: string, code: string) {
+  const row = await prisma.authCode.findFirst({ where: { userId, type, codeHash: hashCode(code), consumedAt: null, expiresAt: { gt: new Date() } }, orderBy: { createdAt: 'desc' } });
+  return row;
+}
+
+export async function registerEmailAuthRoutes(app: FastifyInstance): Promise<void> {
+  app.post('/api/v1/auth/verify-email', { config: { rateLimit: { max: 10, timeWindow: '15 minutes' } } }, async (q, r) => {
+    const { email, code } = codeBody.parse(q.body);
+    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    if (!user) return r.status(400).send({ error: { code: 'INVALID_CODE', message: 'Invalid or expired verification code' } });
+    if (user.emailVerifiedAt) return { data: { verified: true } };
+
+    const row = await findValidCode('EMAIL_VERIFICATION', user.id, code);
+    if (!row) return r.status(400).send({ error: { code: 'INVALID_CODE', message: 'Invalid or expired verification code' } });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.authCode.update({ where: { id: row.id }, data: { consumedAt: new Date() } });
+      await tx.user.update({ where: { id: user.id }, data: { emailVerifiedAt: new Date() } });
+    });
+    await sendWelcomeEmail({ to: user.email, firstName: user.firstName }).catch((error) => app.log.error(error, 'welcome email delivery failed'));
+    return { data: { verified: true } };
+  });
+
+  app.post('/api/v1/auth/resend-verification', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (q, r) => {
+    const { email } = emailBody.parse(q.body);
+    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    // Do not disclose whether the account exists.
+    if (!user || user.emailVerifiedAt) return { data: { accepted: true } };
+    const code = await issueCode('EMAIL_VERIFICATION', user.id);
+    await sendVerificationEmail({ to: user.email, firstName: user.firstName, code, idempotencyKey: `verify/${user.id}/${code}` });
+    return { data: { accepted: true } };
+  });
+
+  app.post('/api/v1/auth/password-reset/request', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (q) => {
+    const { email } = emailBody.parse(q.body);
+    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    // Always return the same response to prevent account enumeration.
+    if (user) {
+      try {
+        const code = await issueCode('PASSWORD_RESET', user.id);
+        await sendPasswordResetEmail({ to: user.email, firstName: user.firstName, code, idempotencyKey: `reset/${user.id}/${code}` });
+      } catch (error) {
+        // Do not turn a valid email address into an account-existence oracle.
+        if ((error as { statusCode?: number }).statusCode !== 429) throw error;
+      }
+    }
+    return { data: { accepted: true } };
+  });
+
+  app.post('/api/v1/auth/password-reset/complete', { config: { rateLimit: { max: 10, timeWindow: '15 minutes' } } }, async (q, r) => {
+    const { email, code, newPassword } = resetBody.parse(q.body);
+    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    if (!user) return r.status(400).send({ error: { code: 'INVALID_CODE', message: 'Invalid or expired reset code' } });
+    const row = await findValidCode('PASSWORD_RESET', user.id, code);
+    if (!row) return r.status(400).send({ error: { code: 'INVALID_CODE', message: 'Invalid or expired reset code' } });
+
+    const passwordHash = await argon2.hash(newPassword, { type: argon2.argon2id });
+    await prisma.$transaction(async (tx) => {
+      await tx.authCode.update({ where: { id: row.id }, data: { consumedAt: new Date() } });
+      await tx.authCode.updateMany({ where: { userId: user.id, type: 'PASSWORD_RESET', consumedAt: null }, data: { consumedAt: new Date() } });
+      await tx.user.update({ where: { id: user.id }, data: { passwordHash, emailVerifiedAt: user.emailVerifiedAt ?? new Date() } });
+      await tx.refreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
+    });
+    await sendPasswordChangedEmail({ to: user.email, firstName: user.firstName }).catch((error) => app.log.error(error, 'password-changed email delivery failed'));
+    return { data: { reset: true } };
+  });
+}
