@@ -12,7 +12,9 @@
  *  2. Rewrites the AppTheme.NoActionBarLaunch style to the Android 12+
  *     SplashScreen API (warm-cream background, brand splash icon), replacing
  *     the legacy Capacitor `android:background @drawable/splash` approach.
- *  3. Removes obsolete default-Capacitor resources the brand replaces:
+ *  3. Configures Firebase to use the NearbyOrders monochrome mark as the
+ *     default Android notification icon.
+ *  4. Removes obsolete default-Capacitor resources the brand replaces:
  *     splash.png files, the white ic_launcher_background vector, the old
  *     robot ic_launcher_foreground vector/PNGs.
  *
@@ -61,7 +63,24 @@ if (!launchStyle.test(styles)) {
 writeFileSync(stylesPath, styles.replace(launchStyle, replacement));
 console.log('rewrote AppTheme.NoActionBarLaunch to the Android 12+ SplashScreen API');
 
-// 3. Remove obsolete default-Capacitor resources.
+// 3. Tell Firebase Messaging which monochrome resource to use for
+// notifications received while the app is backgrounded or closed.
+const manifestPath = join(androidDir, 'app', 'src', 'main', 'AndroidManifest.xml');
+let manifest = readFileSync(manifestPath, 'utf8');
+const notificationIconMeta =
+  '<meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_nearbyorders" />';
+if (!manifest.includes('com.google.firebase.messaging.default_notification_icon')) {
+  if (!/<application\b[^>]*>/.test(manifest)) {
+    fail(`could not find <application> in ${manifestPath}; refusing to guess`);
+  }
+  manifest = manifest.replace(/(<application\b[^>]*>)/, `$1\n        ${notificationIconMeta}`);
+  writeFileSync(manifestPath, manifest);
+  console.log('configured Firebase default notification icon: ic_stat_nearbyorders');
+} else {
+  console.log('Firebase default notification icon already configured');
+}
+
+// 4. Remove obsolete default-Capacitor resources.
 const obsolete = [
   'drawable/splash.png',
   'drawable/ic_launcher_background.xml',
