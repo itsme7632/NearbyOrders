@@ -339,13 +339,20 @@ export function OrderPaymentBlock(props: { order: Order; onChanged: () => void }
   const [rejectReason, setRejectReason] = useState('');
 
   if (payments.loading || methods.loading) return <Loading label="Loading payment…" />;
-  // Never vanish silently on a money screen: a failed fetch must say so,
-  // with a retry, rather than hiding the payment state.
-  if (payments.error)
+  // Never vanish silently on a money screen, and never interpret a fetch
+  // failure as "method removed": a failed fetch must say so, with a retry,
+  // rather than hiding the payment state or misreading missing method data.
+  if (payments.error || methods.error)
     return (
       <div className="pay-details">
         <h3 className="pay-section-title">Payment</h3>
-        <ErrorState message="Payment information could not be loaded." onRetry={payments.reload} />
+        <ErrorState
+          message="Payment information could not be loaded."
+          onRetry={() => {
+            if (payments.error) payments.reload();
+            if (methods.error) methods.reload();
+          }}
+        />
       </div>
     );
   if (!payments.data) return null;

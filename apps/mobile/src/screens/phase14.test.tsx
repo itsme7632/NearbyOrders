@@ -171,6 +171,30 @@ describe('P0-2 owner payment error state', () => {
     // Retry is offered.
     expect(screen.getByRole('button', { name: /try again/i })).toBeTruthy();
   });
+
+  it('treats a business-method fetch failure as a payment error, never as method removal', async () => {
+    const api = await import('../api.js');
+    const { OrderPaymentBlock } = await import('./OwnerOrders.js');
+    vi.spyOn(api, 'listOrderPayments').mockResolvedValue([]);
+    const methodsSpy = vi.spyOn(api, 'listOwnerPayInMethods').mockRejectedValue(new Error('network down'));
+
+    const order = {
+      id: 'order-1',
+      businessId: 'biz-1',
+      business: { id: 'biz-1' },
+      paymentMethodId: 'pm-1',
+      status: 'PENDING',
+    };
+    render(<OrderPaymentBlock order={order as never} onChanged={() => {}} />);
+    // Visible payment-information error, not a silent null and not a
+    // "method removed" misreading.
+    expect(await screen.findByText(/could not be loaded/i)).toBeTruthy();
+    expect(screen.queryByText(/no longer available/i)).toBeNull();
+
+    // Retry re-issues the failed methods request.
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+    await waitFor(() => expect(methodsSpy).toHaveBeenCalledTimes(2));
+  });
 });
 
 /* ------------------------------------------------------------------ */
