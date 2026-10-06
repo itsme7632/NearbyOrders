@@ -79,7 +79,7 @@ describe('DeliverySettingsSection (Phase 7C)', () => {
   it('renders saved settings and shows the fee input when delivery is on', async () => {
     vi.spyOn(api, 'getDeliverySettings').mockResolvedValue({ deliveryEnabled: true, codEnabled: true, deliveryFeeMinor: 20000 });
     render(<DeliverySettingsSection businessId="biz-1" />);
-    expect(await screen.findByRole('checkbox', { name: /offer delivery/i })).toBeTruthy();
+    expect(await screen.findByRole('switch', { name: /offer delivery/i })).toBeTruthy();
     expect(screen.getByText('Delivery fee (PKR)')).toBeTruthy();
     // The saved fee is shown as the placeholder; empty input = keep it.
     expect(screen.getByPlaceholderText('200')).toBeTruthy();
@@ -88,7 +88,7 @@ describe('DeliverySettingsSection (Phase 7C)', () => {
   it('hides fee/COD controls while delivery is disabled', async () => {
     vi.spyOn(api, 'getDeliverySettings').mockResolvedValue({ deliveryEnabled: false, codEnabled: false, deliveryFeeMinor: 0 });
     render(<DeliverySettingsSection businessId="biz-1" />);
-    await screen.findByRole('checkbox', { name: /offer delivery/i });
+    await screen.findByRole('switch', { name: /offer delivery/i });
     expect(screen.queryByText('Delivery fee (PKR)')).toBeNull();
   });
 });

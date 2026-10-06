@@ -12,7 +12,7 @@ import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/re
 import { OwnerSubscription } from './OwnerSubscriptionScreen.js';
 import { OwnerVerification } from './OwnerVerificationScreen.js';
 import { OwnerPlanCard, SubscriptionBadge } from './subscription-badge.js';
-import { OwnerAttentionItems } from './OwnerDashboard.js';
+import { OwnerAttentionItems } from './OwnerAttentionItems.js';
 import * as api from '../api.js';
 import type {
   BusinessSubscriptionState,

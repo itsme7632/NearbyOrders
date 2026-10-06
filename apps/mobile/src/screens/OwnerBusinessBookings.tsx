@@ -79,10 +79,10 @@ function BookingsForBusiness(props: { businessId: string; switcher?: React.React
       ) : (
         <>
           {pending.length ? (
-            <BookingGroup label="Incoming" hint="Waiting for your response" bookings={pending} onOpenBooking={props.onOpenBooking} />
+            <BookingGroup label="Incoming" hint="Waiting for your response" bookings={pending} onOpenBooking={props.onOpenBooking} onChanged={bookings.reload} />
           ) : null}
-          {upcoming.length ? <BookingGroup label="Upcoming" bookings={upcoming} onOpenBooking={props.onOpenBooking} /> : null}
-          {past.length ? <BookingGroup label="History" bookings={past} onOpenBooking={props.onOpenBooking} /> : null}
+          {upcoming.length ? <BookingGroup label="Upcoming" bookings={upcoming} onOpenBooking={props.onOpenBooking} onChanged={bookings.reload} /> : null}
+          {past.length ? <BookingGroup label="History" bookings={past} onOpenBooking={props.onOpenBooking} onChanged={bookings.reload} /> : null}
         </>
       )}
     </div>

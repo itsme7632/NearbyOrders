@@ -23,28 +23,79 @@ export const customerName = (customer?: Booking['customer']): string => {
 };
 
 /** Owner list entry: customer + service + when + price + status. */
-function OwnerBookingCard(props: { booking: Booking; onOpen: () => void }) {
+function OwnerBookingCard(props: { booking: Booking; onOpen: () => void; onChanged: () => void }) {
   const b = props.booking;
+  const [busy, setBusy] = useState(false);
+  const [confirmingReject, setConfirmingReject] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const apply = async (status: 'CONFIRMED' | 'REJECTED') => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await setBookingStatus(b.id, status);
+      setConfirmingReject(false);
+      props.onChanged();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        setError('This booking was already updated. Refreshing…');
+        props.onChanged();
+      } else {
+        setError(e instanceof Error ? e.message : 'Could not update the booking');
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <button type="button" className="booking-card" onClick={props.onOpen}>
-      <span className="booking-card-main">
-        <span className="booking-card-biz">{customerName(b.customer)}</span>
-        {b.serviceName ? <span className="booking-card-service">{b.serviceName}</span> : null}
-        <span className="booking-card-when">
-          {longDateLabel(b.bookingDate)} · {formatSlotTime(b.startTime)}
-          {b.endTime ? ` – ${formatSlotTime(b.endTime)}` : ''}
+    <div className="booking-card">
+      <button type="button" className="booking-card-open" onClick={props.onOpen} aria-label={`Open booking for ${customerName(b.customer)}`}>
+        <span className="booking-card-main">
+          <span className="booking-card-biz">{customerName(b.customer)}</span>
+          {b.serviceName ? <span className="booking-card-service">{b.serviceName}</span> : null}
+          <span className="booking-card-when">
+            {longDateLabel(b.bookingDate)} · {formatSlotTime(b.startTime)}
+            {b.endTime ? ` – ${formatSlotTime(b.endTime)}` : ''}
+          </span>
         </span>
-      </span>
-      <span className="booking-card-side">
-        {b.priceMinor !== null ? <Money minor={b.priceMinor} currency={b.currency} /> : null}
-        <BookingStatusBadge status={b.status} />
-      </span>
-    </button>
+        <span className="booking-card-side">
+          {b.priceMinor !== null ? <Money minor={b.priceMinor} currency={b.currency} /> : null}
+          <BookingStatusBadge status={b.status} />
+        </span>
+      </button>
+      {b.status === 'PENDING' ? (
+        <div className="booking-card-actions">
+          {error ? <p className="form-error" role="alert">{error}</p> : null}
+          {confirmingReject ? (
+            <>
+              <span className="confirm-delete-text" role="alert">Reject this booking? This cannot be undone.</span>
+              <Button sm variant="danger" disabled={busy} onClick={() => void apply('REJECTED')}>
+                {busy ? 'Rejecting…' : 'Yes, reject'}
+              </Button>
+              <Button sm variant="ghost" disabled={busy} onClick={() => setConfirmingReject(false)}>
+                Keep
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button sm disabled={busy} onClick={() => void apply('CONFIRMED')}>
+                {busy ? 'Accepting…' : 'Accept'}
+              </Button>
+              <Button sm variant="ghost" disabled={busy} onClick={() => setConfirmingReject(true)}>
+                Reject
+              </Button>
+            </>
+          )}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
 /** Exported for the dedicated Business Bookings dashboard screen. */
-export function BookingGroup(props: { label: string; hint?: string; bookings: Booking[]; onOpenBooking: (id: string) => void }) {
+export function BookingGroup(props: { label: string; hint?: string; bookings: Booking[]; onOpenBooking: (id: string) => void; onChanged: () => void }) {
   return (
     <section aria-label={`${props.label} section`}>
       <div className="section-head">
@@ -56,7 +107,7 @@ export function BookingGroup(props: { label: string; hint?: string; bookings: Bo
       {props.hint ? <p className="section-hint">{props.hint}</p> : null}
       <div className="booking-list">
         {props.bookings.map((b) => (
-          <OwnerBookingCard key={b.id} booking={b} onOpen={() => props.onOpenBooking(b.id)} />
+          <OwnerBookingCard key={b.id} booking={b} onOpen={() => props.onOpenBooking(b.id)} onChanged={props.onChanged} />
         ))}
       </div>
     </section>
@@ -129,10 +180,10 @@ function OwnerBookingList(props: { businessId: string; switcher: React.ReactNode
       ) : (
         <>
           {pending?.length ? (
-            <BookingGroup label="Incoming" hint="Waiting for your response" bookings={pending} onOpenBooking={props.onOpenBooking} />
+            <BookingGroup label="Incoming" hint="Waiting for your response" bookings={pending} onOpenBooking={props.onOpenBooking} onChanged={bookings.reload} />
           ) : null}
-          {upcoming?.length ? <BookingGroup label="Upcoming" bookings={upcoming} onOpenBooking={props.onOpenBooking} /> : null}
-          {past?.length ? <BookingGroup label="History" bookings={past} onOpenBooking={props.onOpenBooking} /> : null}
+          {upcoming?.length ? <BookingGroup label="Upcoming" bookings={upcoming} onOpenBooking={props.onOpenBooking} onChanged={bookings.reload} /> : null}
+          {past?.length ? <BookingGroup label="History" bookings={past} onOpenBooking={props.onOpenBooking} onChanged={bookings.reload} /> : null}
         </>
       )}
     </div>

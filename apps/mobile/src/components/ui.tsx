@@ -173,21 +173,6 @@ export function ListSkeleton({ count = 4 }: { count?: number }) {
   );
 }
 
-export function Toggle(props: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
-  return (
-    <label className="toggle">
-      <input
-        type="checkbox"
-        checked={props.checked}
-        onChange={(e) => props.onChange(e.target.checked)}
-        disabled={props.disabled}
-      />
-      <span className="toggle-track" aria-hidden />
-      <span className="toggle-label">{props.label}</span>
-    </label>
-  );
-}
-
 /**
  * Editorial business row: the primary scanning unit across discovery screens
  * (Home lists, Explore results, map sheet). Media thumbnail left; name, rating,

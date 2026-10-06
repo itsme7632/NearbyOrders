@@ -122,7 +122,7 @@ describe('OwnerProducts', () => {
   it('toggles availability via the API and reloads', async () => {
     render(<OwnerProducts businessId="biz-1" />);
 
-    const toggle = await screen.findByRole('checkbox');
+    const toggle = await screen.findByRole('switch');
     fireEvent.click(toggle);
 
     await waitFor(() => expect(api.updateProduct).toHaveBeenCalledWith('prod-1', { isActive: false }));
@@ -134,7 +134,7 @@ describe('OwnerProducts', () => {
     );
     render(<OwnerProducts businessId="biz-1" />);
 
-    const toggle = await screen.findByRole('checkbox');
+    const toggle = await screen.findByRole('switch');
     fireEvent.click(toggle);
     expect(await screen.findByText(/Disable it instead/)).toBeTruthy();
     expect(api.deleteProduct).not.toHaveBeenCalled();

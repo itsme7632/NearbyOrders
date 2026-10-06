@@ -230,7 +230,7 @@ export function OwnerCustomerPayments(props: { businessId: string }) {
               <li key={m.id} className="manage-item">
                 <div className="item-row">
                   <span className="item-name">{m.displayName}</span>
-                  <span className={`badge ${m.isActive ? 'badge-open' : 'badge-closed'}`}>{m.isActive ? 'Active' : 'Inactive'}</span>
+                  <span className={`badge ${m.isActive ? 'badge-open' : 'badge-neutral'}`}>{m.isActive ? 'Active' : 'Inactive'}</span>
                 </div>
                 <p className="hint">
                   {m.accountTitle ? `${m.accountTitle} · ` : ''}

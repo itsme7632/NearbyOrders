@@ -77,7 +77,6 @@ beforeEach(() => {
   cancelRequestSpy = vi.spyOn(api, 'cancelPromotionRequest').mockResolvedValue({ ...baseRequest, status: 'CANCELLED', lifecycleState: 'CANCELLED' });
   cancelPaymentSpy = vi.spyOn(api, 'cancelPromotionPayment').mockResolvedValue({ ...pendingPayment, status: 'CANCELLED' });
   vi.spyOn(api, 'listPaymentMethods').mockResolvedValue([]);
-  vi.spyOn(window, 'confirm').mockReturnValue(true);
 });
 
 describe('Promotion request cancellation', () => {
@@ -115,27 +114,29 @@ describe('Promotion request cancellation', () => {
     },
   );
 
-  it('calls cancelPromotionRequest and reloads after confirmation', async () => {
+  it('calls cancelPromotionRequest and reloads after inline confirmation', async () => {
     requestsSpy.mockResolvedValue([withLifecycle('PENDING_REVIEW', 'PENDING')]);
     render(<OwnerPromotions businessId="biz-1" />);
     const tab = await screen.findByRole('radio', { name: /my requests/i });
     fireEvent.click(tab);
     const btn = await screen.findByRole('button', { name: /cancel request/i });
     fireEvent.click(btn);
+    // Inline confirmation appears; nothing fires until confirmed.
+    expect(cancelRequestSpy).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: /yes, cancel/i }));
     await waitFor(() => expect(cancelRequestSpy).toHaveBeenCalledWith('biz-1', 'req-1'));
     // The list reloads so the cancelled state renders.
     await waitFor(() => expect(requestsSpy).toHaveBeenCalledTimes(2));
   });
 
-  it('does not call the API when the owner dismisses the confirm dialog', async () => {
-    vi.mocked(window.confirm).mockReturnValue(false);
+  it('does not call the API when the owner keeps the request', async () => {
     requestsSpy.mockResolvedValue([withLifecycle('PENDING_REVIEW', 'PENDING')]);
     render(<OwnerPromotions businessId="biz-1" />);
     const tab = await screen.findByRole('radio', { name: /my requests/i });
     fireEvent.click(tab);
     const btn = await screen.findByRole('button', { name: /cancel request/i });
     fireEvent.click(btn);
-    await waitFor(() => expect(window.confirm).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('button', { name: /^keep$/i }));
     expect(cancelRequestSpy).not.toHaveBeenCalled();
   });
 });
@@ -159,11 +160,13 @@ describe('Promotion payment cancellation', () => {
     expect(screen.queryByRole('button', { name: /cancel payment/i })).toBeNull();
   });
 
-  it('calls cancelPromotionPayment and reloads the history', async () => {
+  it('calls cancelPromotionPayment and reloads the history after inline confirmation', async () => {
     const listSpy = vi.spyOn(api, 'listPromotionPayments').mockResolvedValue([pendingPayment]);
     render(<PromotionPaymentFlow businessId="biz-1" request={approvedRequest} onBack={() => {}} />);
     const btn = await screen.findByRole('button', { name: /cancel payment/i });
     fireEvent.click(btn);
+    expect(cancelPaymentSpy).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: /yes, cancel/i }));
     await waitFor(() => expect(cancelPaymentSpy).toHaveBeenCalledWith('biz-1', 'req-1', 'pay-1'));
     await waitFor(() => expect(listSpy).toHaveBeenCalledTimes(2));
   });

@@ -93,7 +93,7 @@ export function OwnerRiders(props: { businessId: string; onBack: () => void }) {
           ) : null}
           {r.name}
         </span>
-        <span className={`badge ${r.isActive ? 'badge-open' : 'badge-closed'}`}>
+        <span className={`badge ${r.isActive ? 'badge-open' : 'badge-neutral'}`}>
           {r.isActive ? 'Active' : 'Inactive'}
         </span>
       </div>

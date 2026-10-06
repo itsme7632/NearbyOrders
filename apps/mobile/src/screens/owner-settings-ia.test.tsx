@@ -60,7 +60,7 @@ describe('catalog item layouts (Worker B)', () => {
     for (const item of items) {
       const controls = item.querySelector('.item-controls');
       expect(controls).toBeTruthy();
-      expect(controls!.querySelector('input[type="checkbox"]')).toBeTruthy();
+      expect(controls!.querySelector('button[role="switch"]')).toBeTruthy();
       const names = Array.from(controls!.querySelectorAll('button'), (b) => b.textContent);
       expect(names).toContain('Edit');
       expect(names).toContain('Delete');
@@ -87,7 +87,7 @@ describe('catalog item layouts (Worker B)', () => {
     const item = container.querySelector('.manage-item');
     const controls = item!.querySelector('.item-controls');
     expect(controls).toBeTruthy();
-    expect(controls!.querySelector('input[type="checkbox"]')).toBeTruthy();
+    expect(controls!.querySelector('button[role="switch"]')).toBeTruthy();
     const names = Array.from(controls!.querySelectorAll('button')).map((b) => b.textContent);
     expect(names).toContain('Edit');
     expect(names).toContain('Delete');
@@ -104,7 +104,7 @@ describe('BusinessSettingsScreen (settings IA)', () => {
     const onOpen = vi.fn();
     render(<BusinessSettingsScreen businessId="biz-1" onOpen={onOpen} />);
     // Delivery section present; the switch keeps its accessible name.
-    expect(await screen.findByRole('checkbox', { name: /offer delivery/i })).toBeTruthy();
+    expect(await screen.findByRole('switch', { name: /offer delivery/i })).toBeTruthy();
     expect(screen.getByText('More settings')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /business payment methods/i }));
     expect(onOpen).toHaveBeenCalledWith('/owner/biz-1/payment-methods');
@@ -120,13 +120,13 @@ describe('BusinessSettingsScreen (settings IA)', () => {
     cleanup();
 
     render(<OwnerScreen screen="delivery" businessId="biz-1" onBack={() => {}} onOpenBooking={() => {}} />);
-    await screen.findByRole('checkbox', { name: /offer delivery/i });
+    await screen.findByRole('switch', { name: /offer delivery/i });
     expect(screen.queryByText('More settings')).toBeNull();
     cleanup();
 
     // Without a router, the settings route degrades to the delivery section alone.
     render(<OwnerScreen screen="settings" businessId="biz-1" onBack={() => {}} onOpenBooking={() => {}} />);
-    await screen.findByRole('checkbox', { name: /offer delivery/i });
+    await screen.findByRole('switch', { name: /offer delivery/i });
     expect(screen.queryByText('More settings')).toBeNull();
   });
 });
