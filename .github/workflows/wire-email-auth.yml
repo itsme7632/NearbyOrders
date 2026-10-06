@@ -27,7 +27,9 @@ jobs:
           if 'enum AuthCodeType' not in s:
               s = s.replace('enum Role {\n  CUSTOMER\n  BUSINESS_OWNER\n  ADMIN\n}\n', 'enum Role {\n  CUSTOMER\n  BUSINESS_OWNER\n  ADMIN\n}\n\nenum AuthCodeType {\n  EMAIL_VERIFICATION\n  PASSWORD_RESET\n}\n')
           if 'emailVerifiedAt' not in s:
-              s = s.replace('  isSuspended               Boolean                      @default(false)\n', '  isSuspended               Boolean                      @default(false)\n  emailVerifiedAt           DateTime?\n')
+              s = s.replace('  isSuspended               Boolean                      @default(false)\n', '  isSuspended               Boolean                      @default(false)\n  emailVerifiedAt           DateTime?                    @default(now())\n')
+          elif 'emailVerifiedAt           DateTime?                    @default(now())' not in s:
+              s = s.replace('  emailVerifiedAt           DateTime?\n', '  emailVerifiedAt           DateTime?                    @default(now())\n')
           if 'authCodes                 AuthCode[]' not in s:
               s = s.replace('  addresses                 CustomerAddress[]\n', '  addresses                 CustomerAddress[]\n  authCodes                 AuthCode[]\n')
           if 'model AuthCode {' not in s:
@@ -40,7 +42,7 @@ jobs:
               s = s.replace("import { dispatchPushNotifications } from './push.js';", "import { dispatchPushNotifications } from './push.js';\nimport { registerEmailAuthRoutes } from './emailAuth.js';\nimport { generateCode, hashCode, sendPasswordChangedEmail, sendVerificationEmail } from './email.js';")
           if 'const verificationCode = generateCode();' not in s:
               old = '''      const user = await prisma.user.create({\n        data: {\n          email: d.email.toLowerCase(),\n          passwordHash: await argon2.hash(d.password, { type: argon2.argon2id }),\n          firstName: d.firstName,\n          lastName: d.lastName,\n          role: d.role ?? 'CUSTOMER',\n        },\n      });\n      return r.status(201).send({ data: { id: user.id, email: user.email, role: user.role } });'''
-              new = '''      const user = await prisma.user.create({\n        data: {\n          email: d.email.toLowerCase(),\n          passwordHash: await argon2.hash(d.password, { type: argon2.argon2id }),\n          firstName: d.firstName,\n          lastName: d.lastName,\n          role: d.role ?? 'CUSTOMER',\n        },\n      });\n      const verificationCode = generateCode();\n      await prisma.authCode.create({\n        data: { id: randomBytes(16).toString('hex'), userId: user.id, type: 'EMAIL_VERIFICATION', codeHash: hashCode(verificationCode), expiresAt: new Date(Date.now() + 10 * 60 * 1000) },\n      });\n      try {\n        await sendVerificationEmail({ to: user.email, firstName: user.firstName, code: verificationCode, idempotencyKey: `verify/${user.id}/${verificationCode}` });\n      } catch (error) {\n        await prisma.user.delete({ where: { id: user.id } });\n        throw error;\n      }\n      return r.status(201).send({ data: { id: user.id, email: user.email, role: user.role, emailVerificationRequired: true } });'''
+              new = '''      const user = await prisma.user.create({\n        data: {\n          email: d.email.toLowerCase(),\n          passwordHash: await argon2.hash(d.password, { type: argon2.argon2id }),\n          firstName: d.firstName,\n          lastName: d.lastName,\n          role: d.role ?? 'CUSTOMER',\n          emailVerifiedAt: null,\n        },\n      });\n      const verificationCode = generateCode();\n      await prisma.authCode.create({\n        data: { id: randomBytes(16).toString('hex'), userId: user.id, type: 'EMAIL_VERIFICATION', codeHash: hashCode(verificationCode), expiresAt: new Date(Date.now() + 10 * 60 * 1000) },\n      });\n      try {\n        await sendVerificationEmail({ to: user.email, firstName: user.firstName, code: verificationCode, idempotencyKey: `verify/${user.id}/${verificationCode}` });\n      } catch (error) {\n        await prisma.user.delete({ where: { id: user.id } });\n        throw error;\n      }\n      return r.status(201).send({ data: { id: user.id, email: user.email, role: user.role, emailVerificationRequired: true } });'''
               if old not in s: raise SystemExit('register block not found')
               s = s.replace(old, new, 1)
           if 'EMAIL_NOT_VERIFIED' not in s:
@@ -79,15 +81,9 @@ jobs:
       - name: Generate email-safe PNG logo
         shell: bash
         run: |
-          python3 - <<'PY'
-          try:
-              import cairosvg
-          except ImportError:
-              import subprocess, sys
-              subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet', 'cairosvg'])
-          import cairosvg
-          cairosvg.svg2png(url='apps/website/assets/nearbyorders-email-logo.svg', write_to='apps/website/assets/nearbyorders-email-logo.png', output_width=176, output_height=176)
-          PY
+          sudo apt-get update
+          sudo apt-get install -y librsvg2-bin
+          rsvg-convert --width=176 --height=176 --output=apps/website/assets/nearbyorders-email-logo.png apps/website/assets/nearbyorders-email-logo.svg
 
       - name: Update lockfile and generate Prisma client
         run: |
