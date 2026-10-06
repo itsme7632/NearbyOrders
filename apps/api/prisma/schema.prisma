@@ -1,1 +1,803 @@
-// placeholder
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  BUSINESS_OWNER
+  ADMIN
+}
+
+enum AuthCodeType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+enum BusinessStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+  ARCHIVED
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+  CANCELLED
+  COMPLETED
+}
+
+enum OrderStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  PREPARING
+  READY
+  OUT_FOR_DELIVERY
+  DELIVERED
+  COMPLETED
+  CANCELLED
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  SUSPENDED
+}
+
+enum TrialStatus {
+  NOT_ELIGIBLE
+  ELIGIBLE
+  PENDING_REVIEW
+  ACTIVE
+  EXPIRED
+  CONVERTED
+}
+
+enum VerificationStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+}
+
+enum BusinessVerificationState {
+  NOT_SUBMITTED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum VerificationDocumentStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum ServiceAdvanceType {
+  NONE
+  FIXED
+  PERCENTAGE
+}
+
+enum CustomerPaymentMethodType {
+  CASH
+  EASYPAISA
+  JAZZCASH
+  BANK_TRANSFER
+  OTHER
+}
+
+enum CustomerPaymentStatus {
+  UNPAID
+  PENDING_VERIFICATION
+  PAID
+  FAILED
+}
+
+model User {
+  id                        String                       @id @default(uuid())
+  email                     String                       @unique
+  passwordHash              String
+  role                      Role                         @default(CUSTOMER)
+  firstName                 String?
+  lastName                  String?
+  phone                     String?
+  isSuspended               Boolean                      @default(false)
+  emailVerifiedAt           DateTime?
+  createdAt                 DateTime                     @default(now())
+  updatedAt                 DateTime                     @updatedAt
+  businesses                Business[]                   @relation("BusinessOwner")
+  bookings                  Booking[]
+  orders                    Order[]
+  sessions                  RefreshToken[]
+  auditActions              AuditLog[]                   @relation("AuditActor")
+  notifications             Notification[]
+  pushDevices               PushDevice[]
+  notificationPrefs         NotificationPreference?
+  reviews                   Review[]                     @relation("ReviewCustomer")
+  reviewedPayments          SubscriptionPaymentRequest[] @relation("PaymentReviewer")
+  reviewedPromotionPayments PromotionPaymentRequest[]  @relation("PromotionPaymentReviewer")
+  reviewedVerifications     VerificationApplication[]    @relation("VerificationReviewer")
+  reviewedPromotionRequests PromotionRequest[]           @relation("PromotionReviewer")
+  createdEditorialFeatures EditorialFeature[]           @relation("EditorialFeatureCreator")
+  bookingPayments           BookingPayment[]             @relation("BookingPaymentCustomer")
+  orderPayments             OrderPayment[]               @relation("OrderPaymentCustomer")
+  verifiedBookingPays       BookingPayment[]             @relation("BookingPaymentVerifier")
+  verifiedOrderPays         OrderPayment[]               @relation("OrderPaymentVerifier")
+  savedBy                   FavoriteBusiness[]
+  addresses                 CustomerAddress[]
+  authCodes                 AuthCode[]
+  @@index([role, isSuspended])
+}
+
+model Category {
+  id                       String                    @id @default(uuid())
+  name                     String                    @unique
+  slug                     String                    @unique
+  isActive                 Boolean                   @default(true)
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  businesses               BusinessCategory[]
+  verificationApplications VerificationApplication[]
+}
+
+model Business {
+  id                      String                       @id @default(uuid())
+  ownerId                 String
+  name                    String
+  slug                    String                       @unique
+  description             String?
+  phone                   String?
+  email                   String?
+  imageUrl                String?
+  isVerified              Boolean                      @default(false)
+  status                  BusinessStatus               @default(PENDING)
+  address                 String
+  city                    String
+  locality                String?
+  latitude                Decimal?                     @db.Decimal(10, 7)
+  longitude               Decimal?                     @db.Decimal(10, 7)
+  currency                String                       @default("PKR")
+  createdAt               DateTime                     @default(now())
+  updatedAt               DateTime                     @updatedAt
+  archivedAt              DateTime?
+  owner                   User                         @relation("BusinessOwner", fields: [ownerId], references: [id])
+  categories              BusinessCategory[]
+  hours                   BusinessHour[]
+  services                Service[]
+  products                Product[]
+  bookings                Booking[]
+  orders                  Order[]
+  riders                  Rider[]
+  reviews                 Review[]
+  subscriptions           BusinessSubscription[]
+  paymentRequests         SubscriptionPaymentRequest[]
+  promotionPaymentRequests PromotionPaymentRequest[]
+  payInMethods            BusinessPaymentMethod[]
+  bookingPayments         BookingPayment[]
+  orderPayments           OrderPayment[]
+  savedBy                 FavoriteBusiness[]
+  verificationApplication VerificationApplication?
+  promotionRequests       PromotionRequest[]
+  editorialFeatures       EditorialFeature[]
+  trialEligible           Boolean                      @default(false)
+  trialStatus             TrialStatus                  @default(NOT_ELIGIBLE)
+  trialAppliedAt          DateTime?
+  trialStartedAt          DateTime?
+  trialEndsAt             DateTime?
+  verificationStatus      BusinessVerificationState    @default(NOT_SUBMITTED)
+  verifiedAt              DateTime?
+  deliveryEnabled         Boolean                      @default(false)
+  codEnabled              Boolean                      @default(false)
+  deliveryFeeMinor        Int                          @default(0)
+  @@index([ownerId])
+  @@index([status, city])
+  @@index([latitude, longitude])
+}
+
+model BusinessCategory {
+  businessId String
+  categoryId String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [categoryId], references: [id])
+  @@id([businessId, categoryId])
+  @@index([categoryId])
+}
+
+model BusinessHour {
+  id         String   @id @default(uuid())
+  businessId String
+  dayOfWeek  Int
+  opensAt    String?
+  closesAt   String?
+  isClosed   Boolean  @default(false)
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  @@unique([businessId, dayOfWeek])
+}
+
+model Service {
+  id                 String             @id @default(uuid())
+  businessId         String
+  name               String
+  description        String?
+  priceMinor         Int
+  currency           String             @default("PKR")
+  durationMinutes    Int?
+  isActive            Boolean            @default(true)
+  advanceType         ServiceAdvanceType @default(NONE)
+  advanceAmountMinor  Int?
+  advancePercent      Int?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  business            Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  bookings            Booking[]
+  serviceItems        BookingServiceItem[]
+  @@index([businessId, isActive])
+}
+
+model Product {
+  id          String      @id @default(uuid())
+  businessId  String
+  name        String
+  description String?
+  priceMinor  Int
+  currency    String      @default("PKR")
+  imageUrl    String?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  business    Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  items       OrderItem[]
+  @@index([businessId, isActive])
+}
+
+model Booking {
+  id                   String           @id @default(uuid())
+  customerId           String
+  businessId           String
+  serviceId            String?
+  bookingDate          DateTime         @db.Date
+  startAt              DateTime
+  endAt                DateTime
+  status               BookingStatus    @default(PENDING)
+  notes                String?
+  servicePriceMinor    Int              @default(0)
+  advanceRequiredMinor Int              @default(0)
+  amountPaidMinor      Int              @default(0)
+  totalDurationMinutes Int?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  completedAt           DateTime?
+  customer              User             @relation(fields: [customerId], references: [id])
+  business              Business         @relation(fields: [businessId], references: [id])
+  service               Service?         @relation(fields: [serviceId], references: [id])
+  serviceItems          BookingServiceItem[]
+  payments              BookingPayment[]
+  review                Review?
+  @@index([businessId, status])
+  @@index([customerId, status])
+  @@index([businessId, bookingDate])
+  @@index([businessId, completedAt])
+}
+
+model BookingServiceItem {
+  id              String   @id @default(uuid())
+  bookingId       String
+  serviceId       String?
+  name            String
+  priceMinor      Int
+  durationMinutes Int
+  createdAt       DateTime @default(now())
+  booking Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  service Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  @@index([bookingId])
+}
+
+model Order {
+  id                  String                 @id @default(uuid())
+  customerId          String
+  businessId          String
+  status              OrderStatus            @default(PENDING)
+  subtotalMinor       Int
+  deliveryFeeMinor    Int                    @default(0)
+  totalMinor          Int                    @default(0)
+  currency            String                 @default("PKR")
+  fulfillmentType     String                 @default("PICKUP")
+  paymentMethodId     String?
+  notes               String?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  completedAt         DateTime?
+  deliveryAddressText String?
+  deliveryAddressLabel String?
+  assignedRiderId String?
+  riderAssignedAt DateTime?
+  customer            User                   @relation(fields: [customerId], references: [id])
+  business            Business               @relation(fields: [businessId], references: [id])
+  paymentMethod       BusinessPaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  assignedRider       Rider?                 @relation("RiderAssignments", fields: [assignedRiderId], references: [id], onDelete: SetNull)
+  items               OrderItem[]
+  payments            OrderPayment[]
+  review              Review?
+  @@index([businessId, status])
+  @@index([customerId, status])
+  @@index([businessId, completedAt])
+}
+
+model OrderItem {
+  id             String  @id @default(uuid())
+  orderId        String
+  productId      String
+  name           String
+  unitPriceMinor Int
+  quantity       Int
+  order          Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product        Product @relation(fields: [productId], references: [id])
+  @@index([orderId])
+}
+
+model Rider {
+  id         String   @id @default(uuid())
+  businessId String
+  name       String
+  phone      String
+  photoUrl   String?
+  note       String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  assignments Order[]  @relation("RiderAssignments")
+  @@index([businessId, isActive])
+}
+
+model Notification {
+  id         String    @id @default(uuid())
+  userId     String
+  type       String
+  title      String
+  message    String
+  entityType String
+  entityId   String
+  isRead     Boolean   @default(false)
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, type, entityId])
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+}
+
+model PushDevice {
+  id         String   @id @default(uuid())
+  userId     String
+  platform   String
+  pushToken  String   @unique
+  deviceId   String?
+  isActive   Boolean  @default(true)
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, isActive])
+}
+
+model NotificationPreference {
+  userId           String   @id
+  bookings         Boolean  @default(true)
+  orders           Boolean  @default(true)
+  payments         Boolean  @default(true)
+  reviews          Boolean  @default(true)
+  businessActivity Boolean  @default(true)
+  account          Boolean  @default(true)
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, expiresAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id])
+  @@index([entityType, entityId])
+}
+
+model Plan {
+  id                String                 @id @default(uuid())
+  slug              String                 @unique
+  name              String                 @unique
+  description       String?
+  monthlyPriceMinor Int
+  currency          String                 @default("PKR")
+  trialDays         Int                    @default(0)
+  benefits          String[]               @default([])
+  maxBusinesses     Int                    @default(1)
+  displayOrder      Int                    @default(0)
+  isHighlighted     Boolean                @default(false)
+  billingInterval   String                 @default("monthly")
+  isActive          Boolean                @default(true)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  subscriptions     BusinessSubscription[]
+  @@index([isActive])
+  @@index([isActive, displayOrder])
+}
+
+model BusinessSubscription {
+  id                     String                       @id @default(uuid())
+  businessId             String
+  planId                 String
+  status                 SubscriptionStatus           @default(TRIAL)
+  trialStartAt           DateTime?
+  trialEndAt             DateTime?
+  currentPeriodStartAt   DateTime
+  currentPeriodEndAt     DateTime
+  cancelledAt            DateTime?
+  planNameSnapshot       String?
+  planPriceMinorSnapshot Int?
+  trialEndingNotifiedAt  DateTime?
+  createdAt              DateTime                     @default(now())
+  updatedAt              DateTime                     @updatedAt
+  business               Business                     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  plan                   Plan                         @relation(fields: [planId], references: [id])
+  paymentRequests        SubscriptionPaymentRequest[]
+  @@index([businessId, status])
+  @@index([planId])
+  @@index([status, currentPeriodEndAt])
+}
+
+model Review {
+  id         String    @id @default(uuid())
+  businessId String
+  customerId String
+  bookingId  String?   @unique
+  orderId    String?   @unique
+  rating     Int
+  comment    String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  isHiddenAt DateTime?
+  business   Business  @relation(fields: [businessId], references: [id])
+  customer   User      @relation("ReviewCustomer", fields: [customerId], references: [id])
+  booking    Booking?  @relation(fields: [bookingId], references: [id])
+  order      Order?    @relation(fields: [orderId], references: [id])
+  @@index([businessId, createdAt])
+  @@index([customerId, createdAt])
+  @@index([businessId, isHiddenAt])
+}
+
+model FavoriteBusiness {
+  customerId String
+  businessId String
+  createdAt  DateTime @default(now())
+  customer   User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  @@id([customerId, businessId])
+  @@index([customerId, createdAt])
+}
+
+model CustomerAddress {
+  id            String   @id @default(uuid())
+  customerId    String
+  label         String
+  recipientName String
+  phone         String?
+  addressText   String
+  latitude      Float?
+  longitude     Float?
+  isDefault     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  customer      User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  @@index([customerId, isDefault])
+}
+
+enum PaymentMethodType {
+  EASYPAISA
+  JAZZCASH
+  BANK_TRANSFER
+  OTHER
+}
+
+enum PaymentRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model PaymentMethod {
+  id              String                       @id @default(uuid())
+  name            String
+  type            PaymentMethodType
+  accountTitle    String
+  accountNumber   String
+  iban            String?
+  instructions    String?
+  qrImageUrl      String?
+  isActive        Boolean                      @default(true)
+  displayOrder    Int                          @default(0)
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+  paymentRequests SubscriptionPaymentRequest[]
+  promotionPaymentRequests PromotionPaymentRequest[]
+  @@index([isActive, displayOrder])
+}
+
+model SubscriptionPaymentRequest {
+  id                   String                @id @default(uuid())
+  businessId           String
+  subscriptionId       String?
+  paymentMethodId      String
+  amountMinor          Int
+  currency             String                @default("PKR")
+  transactionReference String
+  receiptStorageKey    String
+  status               PaymentRequestStatus  @default(PENDING)
+  rejectionReason      String?
+  paidAt               DateTime?
+  note                 String?
+  submittedAt          DateTime              @default(now())
+  reviewedAt           DateTime?
+  reviewedByUserId     String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  business             Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  subscription         BusinessSubscription? @relation(fields: [subscriptionId], references: [id])
+  paymentMethod        PaymentMethod         @relation(fields: [paymentMethodId], references: [id])
+  reviewedBy           User?                 @relation("PaymentReviewer", fields: [reviewedByUserId], references: [id])
+  @@index([businessId, submittedAt])
+  @@index([status, submittedAt])
+  @@index([transactionReference])
+  @@index([subscriptionId])
+}
+
+enum PromotionRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+model PromotionRequest {
+  id               String                 @id @default(uuid())
+  businessId       String
+  promotionId      String
+  status           PromotionRequestStatus @default(PENDING)
+  note             String?
+  reviewerMessage  String?
+  reviewedAt       DateTime?
+  reviewedByUserId String?
+  activatedAt      DateTime?
+  expiresAt        DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  business         Business               @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  promotion        Promotion              @relation(fields: [promotionId], references: [id])
+  reviewer         User?                  @relation("PromotionReviewer", fields: [reviewedByUserId], references: [id])
+  payments         PromotionPaymentRequest[]
+  @@index([businessId, createdAt])
+  @@index([status, createdAt])
+  @@index([status, expiresAt])
+}
+
+model Promotion {
+  id           String             @id @default(uuid())
+  name         String
+  slug         String             @unique
+  description  String?
+  benefits     String[]           @default([])
+  priceMinor   Int?
+  currency     String             @default("PKR")
+  durationDays Int?
+  requirements String?
+  isActive     Boolean            @default(true)
+  displayOrder Int                @default(0)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  requests     PromotionRequest[]
+  @@index([isActive, displayOrder])
+}
+
+model PromotionPaymentRequest {
+  id                   String               @id @default(uuid())
+  promotionRequestId   String
+  businessId           String
+  paymentMethodId      String
+  amountMinor          Int
+  currency             String               @default("PKR")
+  transactionReference String
+  receiptStorageKey    String
+  status               PaymentRequestStatus @default(PENDING)
+  rejectionReason      String?
+  paidAt               DateTime?
+  note                 String?
+  submittedAt          DateTime             @default(now())
+  reviewedAt           DateTime?
+  reviewedByUserId     String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  promotionRequest     PromotionRequest     @relation(fields: [promotionRequestId], references: [id], onDelete: Cascade)
+  business             Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  paymentMethod        PaymentMethod        @relation(fields: [paymentMethodId], references: [id])
+  reviewedBy           User?                @relation("PromotionPaymentReviewer", fields: [reviewedByUserId], references: [id])
+  @@index([promotionRequestId, submittedAt])
+  @@index([businessId, submittedAt])
+  @@index([status, submittedAt])
+  @@index([transactionReference])
+}
+
+model EditorialFeature {
+  id              String   @id @default(uuid())
+  businessId      String
+  placementType   String
+  label           String
+  startAt         DateTime @default(now())
+  endAt           DateTime
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  business        Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdBy       User     @relation("EditorialFeatureCreator", fields: [createdByUserId], references: [id])
+  @@index([businessId, endAt])
+  @@index([endAt, startAt])
+}
+
+model BusinessPaymentMethod {
+  id            String                    @id @default(uuid())
+  businessId    String
+  type          CustomerPaymentMethodType
+  displayName   String
+  accountTitle  String
+  accountNumber String?
+  iban          String?
+  instructions  String?
+  isActive      Boolean                   @default(true)
+  displayOrder  Int                       @default(0)
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+  business      Business                  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  bookings      BookingPayment[]
+  orders        Order[]
+  orderPayments OrderPayment[]            @relation("OrderPaymentMethod")
+  @@index([businessId, isActive, displayOrder])
+}
+
+model BookingPayment {
+  id                   String                 @id @default(uuid())
+  bookingId            String
+  businessId           String
+  customerId           String
+  amountMinor          Int
+  currency             String                 @default("PKR")
+  paymentMethodId      String?
+  status               CustomerPaymentStatus  @default(PENDING_VERIFICATION)
+  transactionReference String?
+  receiptStorageKey    String?
+  rejectionReason      String?
+  submittedAt          DateTime               @default(now())
+  verifiedAt           DateTime?
+  verifiedByUserId     String?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  booking              Booking                @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  business             Business               @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer             User                   @relation("BookingPaymentCustomer", fields: [customerId], references: [id])
+  paymentMethod        BusinessPaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  verifiedBy           User?                  @relation("BookingPaymentVerifier", fields: [verifiedByUserId], references: [id])
+  @@index([businessId, status, submittedAt])
+  @@index([bookingId, submittedAt])
+  @@index([customerId, createdAt])
+}
+
+model OrderPayment {
+  id                   String                    @id @default(uuid())
+  orderId              String
+  businessId           String
+  customerId           String
+  amountMinor          Int
+  currency             String                    @default("PKR")
+  method               CustomerPaymentMethodType
+  paymentMethodId      String?
+  status               CustomerPaymentStatus     @default(PENDING_VERIFICATION)
+  transactionReference String?
+  receiptStorageKey    String?
+  rejectionReason      String?
+  submittedAt          DateTime                  @default(now())
+  verifiedAt           DateTime?
+  verifiedByUserId     String?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  order                Order                     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  business             Business                  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer             User                      @relation("OrderPaymentCustomer", fields: [customerId], references: [id])
+  paymentMethod        BusinessPaymentMethod?    @relation("OrderPaymentMethod", fields: [paymentMethodId], references: [id])
+  verifiedBy           User?                     @relation("OrderPaymentVerifier", fields: [verifiedByUserId], references: [id])
+  @@index([businessId, status, submittedAt])
+  @@index([orderId, submittedAt])
+  @@index([customerId, createdAt])
+}
+
+model VerificationApplication {
+  id               String                 @id @default(uuid())
+  businessId       String                 @unique
+  status           VerificationStatus     @default(DRAFT)
+  legalName        String?
+  publicName       String?
+  ownerName        String?
+  phone            String?
+  address          String?
+  city             String?
+  categoryId       String?
+  description      String?
+  latitude         Float?
+  longitude        Float?
+  registrationInfo String?
+  submittedAt      DateTime?
+  reviewedAt       DateTime?
+  reviewedByUserId String?
+  adminNotes       String?
+  reviewerMessage  String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  business         Business               @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  reviewer         User?                  @relation("VerificationReviewer", fields: [reviewedByUserId], references: [id])
+  category         Category?              @relation(fields: [categoryId], references: [id])
+  documents        VerificationDocument[]
+  @@index([status, submittedAt])
+}
+
+model VerificationDocument {
+  id            String                     @id @default(uuid())
+  applicationId String
+  docType       String
+  storageKey    String
+  status        VerificationDocumentStatus @default(PENDING)
+  uploadedAt    DateTime                   @default(now())
+  reviewedAt    DateTime?
+  note          String?
+  application   VerificationApplication    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  @@index([applicationId, status])
+}
+
+model AuthCode {
+  id         String       @id @default(uuid())
+  userId     String
+  type       AuthCodeType
+  codeHash   String
+  expiresAt  DateTime
+  createdAt  DateTime     @default(now())
+  consumedAt DateTime?
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, type, createdAt])
+  @@index([expiresAt])
+}
