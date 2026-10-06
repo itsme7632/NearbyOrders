@@ -27,8 +27,10 @@ jobs:
           s = schema.read_text()
           if 'enum AuthCodeType' not in s:
               s = s.replace('enum Role {\n  CUSTOMER\n  BUSINESS_OWNER\n  ADMIN\n}\n', 'enum Role {\n  CUSTOMER\n  BUSINESS_OWNER\n  ADMIN\n}\n\nenum AuthCodeType {\n  EMAIL_VERIFICATION\n  PASSWORD_RESET\n}\n')
-          s = s.replace('  isSuspended               Boolean                      @default(false)\n', '  isSuspended               Boolean                      @default(false)\n  emailVerifiedAt           DateTime?\n')
-          s = s.replace('  addresses                 CustomerAddress[]\n', '  addresses                 CustomerAddress[]\n  authCodes                 AuthCode[]\n')
+          if 'emailVerifiedAt' not in s:
+              s = s.replace('  isSuspended               Boolean                      @default(false)\n', '  isSuspended               Boolean                      @default(false)\n  emailVerifiedAt           DateTime?\n')
+          if 'authCodes                 AuthCode[]' not in s:
+              s = s.replace('  addresses                 CustomerAddress[]\n', '  addresses                 CustomerAddress[]\n  authCodes                 AuthCode[]\n')
           if 'model AuthCode {' not in s:
               s += '''\n\nmodel AuthCode {\n  id         String       @id @default(uuid())\n  userId     String\n  type       AuthCodeType\n  codeHash   String\n  expiresAt  DateTime\n  createdAt  DateTime     @default(now())\n  consumedAt DateTime?\n  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)\n\n  @@index([userId, type, createdAt])\n  @@index([expiresAt])\n}\n'''
           schema.write_text(s)
@@ -38,28 +40,31 @@ jobs:
           if "from './emailAuth.js'" not in s:
               s = s.replace("import { dispatchPushNotifications } from './push.js';", "import { dispatchPushNotifications } from './push.js';\nimport { registerEmailAuthRoutes } from './emailAuth.js';\nimport { generateCode, hashCode, sendPasswordChangedEmail, sendVerificationEmail } from './email.js';")
 
-          old = '''      const user = await prisma.user.create({\n        data: {\n          email: d.email.toLowerCase(),\n          passwordHash: await argon2.hash(d.password, { type: argon2.argon2id }),\n          firstName: d.firstName,\n          lastName: d.lastName,\n          role: d.role ?? 'CUSTOMER',\n        },\n      });\n      return r.status(201).send({ data: { id: user.id, email: user.email, role: user.role } });'''
-          new = '''      const user = await prisma.user.create({\n        data: {\n          email: d.email.toLowerCase(),\n          passwordHash: await argon2.hash(d.password, { type: argon2.argon2id }),\n          firstName: d.firstName,\n          lastName: d.lastName,\n          role: d.role ?? 'CUSTOMER',\n        },\n      });\n      const verificationCode = generateCode();\n      await prisma.authCode.create({\n        data: { id: randomBytes(16).toString('hex'), userId: user.id, type: 'EMAIL_VERIFICATION', codeHash: hashCode(verificationCode), expiresAt: new Date(Date.now() + 10 * 60 * 1000) },\n      });\n      try {\n        await sendVerificationEmail({ to: user.email, firstName: user.firstName, code: verificationCode, idempotencyKey: `verify/${user.id}/${verificationCode}` });\n      } catch (error) {\n        await prisma.user.delete({ where: { id: user.id } });\n        throw error;\n      }\n      return r.status(201).send({ data: { id: user.id, email: user.email, role: user.role, emailVerificationRequired: true } });'''
-          if old not in s:
-              raise SystemExit('register block not found')
-          s = s.replace(old, new, 1)
+          if 'const verificationCode = generateCode();' not in s:
+              old = '''      const user = await prisma.user.create({\n        data: {\n          email: d.email.toLowerCase(),\n          passwordHash: await argon2.hash(d.password, { type: argon2.argon2id }),\n          firstName: d.firstName,\n          lastName: d.lastName,\n          role: d.role ?? 'CUSTOMER',\n        },\n      });\n      return r.status(201).send({ data: { id: user.id, email: user.email, role: user.role } });'''
+              new = '''      const user = await prisma.user.create({\n        data: {\n          email: d.email.toLowerCase(),\n          passwordHash: await argon2.hash(d.password, { type: argon2.argon2id }),\n          firstName: d.firstName,\n          lastName: d.lastName,\n          role: d.role ?? 'CUSTOMER',\n        },\n      });\n      const verificationCode = generateCode();\n      await prisma.authCode.create({\n        data: { id: randomBytes(16).toString('hex'), userId: user.id, type: 'EMAIL_VERIFICATION', codeHash: hashCode(verificationCode), expiresAt: new Date(Date.now() + 10 * 60 * 1000) },\n      });\n      try {\n        await sendVerificationEmail({ to: user.email, firstName: user.firstName, code: verificationCode, idempotencyKey: `verify/${user.id}/${verificationCode}` });\n      } catch (error) {\n        await prisma.user.delete({ where: { id: user.id } });\n        throw error;\n      }\n      return r.status(201).send({ data: { id: user.id, email: user.email, role: user.role, emailVerificationRequired: true } });'''
+              if old not in s:
+                  raise SystemExit('register block not found')
+              s = s.replace(old, new, 1)
 
-          login_old = '''    if (!user || user.isSuspended || !(await argon2.verify(user.passwordHash, b.password ?? '')))\n      return r.status(401).send({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' } });\n    const accessToken = app.jwt.sign({ id: user.id, role: user.role }, { expiresIn: '15m' });'''
-          login_new = '''    if (!user || user.isSuspended || !(await argon2.verify(user.passwordHash, b.password ?? '')))\n      return r.status(401).send({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' } });\n    if (!user.emailVerifiedAt)\n      return r.status(403).send({ error: { code: 'EMAIL_NOT_VERIFIED', message: 'Please verify your email before signing in' } });\n    const accessToken = app.jwt.sign({ id: user.id, role: user.role }, { expiresIn: '15m' });'''
-          if login_old not in s:
-              raise SystemExit('login block not found')
-          s = s.replace(login_old, login_new, 1)
+          if "EMAIL_NOT_VERIFIED" not in s:
+              login_old = '''    if (!user || user.isSuspended || !(await argon2.verify(user.passwordHash, b.password ?? '')))\n      return r.status(401).send({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' } });\n    const accessToken = app.jwt.sign({ id: user.id, role: user.role }, { expiresIn: '15m' });'''
+              login_new = '''    if (!user || user.isSuspended || !(await argon2.verify(user.passwordHash, b.password ?? '')))\n      return r.status(401).send({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' } });\n    if (!user.emailVerifiedAt)\n      return r.status(403).send({ error: { code: 'EMAIL_NOT_VERIFIED', message: 'Please verify your email before signing in' } });\n    const accessToken = app.jwt.sign({ id: user.id, role: user.role }, { expiresIn: '15m' });'''
+              if login_old not in s:
+                  raise SystemExit('login block not found')
+              s = s.replace(login_old, login_new, 1)
 
-          marker = "  app.post('/api/v1/auth/login'"
           if 'await registerEmailAuthRoutes(app);' not in s:
+              marker = "  app.post('/api/v1/auth/login'"
               idx = s.index(marker)
               s = s[:idx] + "  await registerEmailAuthRoutes(app);\n\n" + s[idx:]
 
-          password_old = '''    await prisma.auditLog.create({\n      data: { actorId: u.id, action: 'PASSWORD_CHANGED', entityType: 'User', entityId: u.id },\n    });\n    return r.status(204).send();'''
-          password_new = '''    await prisma.auditLog.create({\n      data: { actorId: u.id, action: 'PASSWORD_CHANGED', entityType: 'User', entityId: u.id },\n    });\n    await sendPasswordChangedEmail({ to: u.email, firstName: u.firstName }).catch((error) => app.log.error(error, 'password-changed email delivery failed'));\n    return r.status(204).send();'''
-          if password_old not in s:
-              raise SystemExit('password block not found')
-          s = s.replace(password_old, password_new, 1)
+          if "sendPasswordChangedEmail({ to: u.email" not in s:
+              password_old = '''    await prisma.auditLog.create({\n      data: { actorId: u.id, action: 'PASSWORD_CHANGED', entityType: 'User', entityId: u.id },\n    });\n    return r.status(204).send();'''
+              password_new = '''    await prisma.auditLog.create({\n      data: { actorId: u.id, action: 'PASSWORD_CHANGED', entityType: 'User', entityId: u.id },\n    });\n    await sendPasswordChangedEmail({ to: u.email, firstName: u.firstName }).catch((error) => app.log.error(error, 'password-changed email delivery failed'));\n    return r.status(204).send();'''
+              if password_old not in s:
+                  raise SystemExit('password block not found')
+              s = s.replace(password_old, password_new, 1)
           server.write_text(s)
 
           compose = Path('docker-compose.prod.yml')
