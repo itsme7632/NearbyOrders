@@ -18,7 +18,8 @@ import {
 import { setImageStorageProvider, getImageStorageProvider } from '../upload.js';
 import { ImageUploader, type ImageUploaderState, type PendingImage } from '../components/ImageUploader.js';
 import { useAsyncData } from '../hooks.js';
-import { Button, EmptyState, ErrorState, Field, Loading, Money, Toggle } from '../components/ui.js';
+import { Button, EmptyState, ErrorState, Field, Loading, Money } from '../components/ui.js';
+import { Toggle } from '../components/primitives.js';
 import { AlertIcon, OrdersIcon, StoreIcon } from '../components/icons.js';
 
 export function OwnerServices(props: { businessId: string }) {
@@ -107,6 +108,7 @@ function ServiceRow(props: { service: Service; onSaved: () => void }) {
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const save = async () => {
     if (busy) return;
@@ -158,6 +160,7 @@ function ServiceRow(props: { service: Service; onSaved: () => void }) {
       setError(e instanceof Error ? e.message : 'Delete failed');
     } finally {
       setBusy(false);
+      setConfirmingDelete(false);
     }
   };
 
@@ -196,14 +199,29 @@ function ServiceRow(props: { service: Service; onSaved: () => void }) {
     <div>
       {error && !editing ? <ErrorState message={error} /> : null}
       <div className="item-controls">
-        <Toggle checked={props.service.isActive} onChange={(v) => toggle(v)} label={props.service.isActive ? 'Active' : 'Inactive'} disabled={busy} />
+        <span className="toggle-inline">
+          <Toggle checked={props.service.isActive} onChange={(v) => toggle(v)} label={props.service.isActive ? 'Active' : 'Inactive'} disabled={busy} />
+          <span className="toggle-label">{props.service.isActive ? 'Active' : 'Inactive'}</span>
+        </span>
         <span className="item-controls-actions">
           <Button sm variant="secondary" onClick={() => setEditing(true)}>
             Edit
           </Button>
-          <Button sm variant="danger" onClick={remove} disabled={busy}>
-            Delete
-          </Button>
+          {confirmingDelete ? (
+            <>
+              <span className="confirm-delete-text" role="alert">Delete this service?</span>
+              <Button sm variant="danger" onClick={() => void remove()} disabled={busy}>
+                {busy ? 'Deleting…' : 'Yes, delete'}
+              </Button>
+              <Button sm variant="ghost" onClick={() => setConfirmingDelete(false)} disabled={busy}>
+                Keep
+              </Button>
+            </>
+          ) : (
+            <Button sm variant="danger" onClick={() => setConfirmingDelete(true)} disabled={busy}>
+              Delete
+            </Button>
+          )}
         </span>
       </div>
     </div>
@@ -608,7 +626,10 @@ function ProductRow(props: { product: Product; onSaved: () => void }) {
         </Field>
         {fieldErrors.price ? <p className="auth-error" role="alert"><AlertIcon size={14} /> {fieldErrors.price}</p> : null}
         <Field label="Availability">
+          <span className="toggle-inline">
           <Toggle checked={props.product.isActive} onChange={(v) => void toggle(v)} label={props.product.isActive ? 'Available' : 'Unavailable'} disabled={busy} />
+          <span className="toggle-label">{props.product.isActive ? 'Available' : 'Unavailable'}</span>
+        </span>
         </Field>
         {pendingImage && !getImageStorageProvider() ? (
           <p className="hint" role="note">
@@ -631,7 +652,10 @@ function ProductRow(props: { product: Product; onSaved: () => void }) {
     <div>
       {error && !editing ? <p className="auth-error" role="alert"><AlertIcon size={14} /> {error}</p> : null}
       <div className="item-controls">
-        <Toggle checked={props.product.isActive} onChange={(v) => void toggle(v)} label={props.product.isActive ? 'Available' : 'Unavailable'} disabled={busy} />
+        <span className="toggle-inline">
+          <Toggle checked={props.product.isActive} onChange={(v) => void toggle(v)} label={props.product.isActive ? 'Available' : 'Unavailable'} disabled={busy} />
+          <span className="toggle-label">{props.product.isActive ? 'Available' : 'Unavailable'}</span>
+        </span>
         <span className="item-controls-actions">
           <Button sm variant="secondary" onClick={() => setEditing(true)}>
             Edit

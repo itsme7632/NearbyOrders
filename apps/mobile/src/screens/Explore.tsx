@@ -198,10 +198,10 @@ export function ExploreScreen(props: {
         </div>
       </div>
 
-      {/* Category band: secondary filters, compact. */}
+      {/* Category band: horizontally scrollable so every category stays reachable. */}
       <section aria-label="Category filters" style={{ marginTop: 10 }}>
         <div className="filter-row">
-          {categories.data?.slice(0, 8).map((c) => (
+          {categories.data?.map((c) => (
             <button
               key={c.id}
               className={`chip${selectedCategory === c.slug ? ' chip-active' : ''}`}

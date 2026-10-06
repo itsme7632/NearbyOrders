@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { getDeliverySettings, putDeliverySettings, type DeliverySettings } from '../api.js';
 import { useAsyncData } from '../hooks.js';
-import { Button, ErrorState, Loading, Toggle } from '../components/ui.js';
+import { Button, ErrorState, Loading } from '../components/ui.js';
+import { Toggle } from '../components/primitives.js';
 import { OwnerHubRow } from './owner-ui.js';
 import { AlertIcon, BookingsIcon, CheckIcon, InfoIcon, StoreIcon } from '../components/icons.js';
 import { parsePriceToMinor } from './OwnerCatalog.js';

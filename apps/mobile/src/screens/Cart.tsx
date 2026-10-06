@@ -311,7 +311,7 @@ export function CartScreen(props: { onBack: () => void; onBrowse: () => void; on
               ) : selectedAddress ? (
                 <>
                   <strong>{selectedAddress.label}</strong>
-                  <span>Saved address selected for delivery</span>
+                  <span>{selectedAddress.addressText}</span>
                 </>
               ) : (
                 <>

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { getOwnerHours, putHours, type BusinessHour, type HourInput } from '../api.js';
 import { useAsyncData } from '../hooks.js';
-import { Button, ErrorState, Loading, Toggle } from '../components/ui.js';
+import { Button, ErrorState, Loading } from '../components/ui.js';
+import { Toggle } from '../components/primitives.js';
 import { AlertIcon } from '../components/icons.js';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;

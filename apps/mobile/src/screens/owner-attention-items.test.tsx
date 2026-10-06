@@ -3,7 +3,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import * as api from '../api.js';
 import type { BusinessSubscriptionState, VerificationState } from '../api.js';
-import { OwnerAttentionItems } from './OwnerDashboard.js';
+import { OwnerAttentionItems } from './OwnerAttentionItems.js';
 
 afterEach(cleanup);
 

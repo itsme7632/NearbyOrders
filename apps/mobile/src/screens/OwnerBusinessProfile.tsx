@@ -82,7 +82,7 @@ export function OwnerBusinessProfile(props: {
           <h2 className="profile-hero-name">{active.name}</h2>
           <p className="profile-hero-email">{place || active.address}</p>
           <span className="badge-badge-row">
-            <span className={`badge ${active.status === 'APPROVED' ? 'badge-open' : 'badge-closed'}`}>
+            <span className={`badge ${active.status === 'APPROVED' ? 'badge-open' : active.status === 'PENDING' ? 'badge-warn' : 'badge-closed'}`}>
               {active.status ?? 'PENDING'}
             </span>
             {active.isVerified ? <span className="badge badge-verified">✓ Verified</span> : null}

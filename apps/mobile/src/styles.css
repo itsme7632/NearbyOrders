@@ -833,7 +833,7 @@ p { overflow-wrap: break-word; }
   .notif-icon { width: 30px; height: 30px; }
 }
 .badge-open { background: rgba(22, 163, 74, 0.14); color: var(--success); }
-.badge-closed { background: rgba(239, 68, 68, 0.12); color: var(--error); }
+.badge-closed { background: rgba(226, 58, 46, 0.12); color: var(--error); }
 .badge-warn { background: var(--warning-soft); color: var(--warning); }
 
 /* Business subscription pricing page. */
@@ -1035,10 +1035,12 @@ p { overflow-wrap: break-word; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   padding: 12px 18px;
   font-weight: 700;
   font-size: 14px;
+  letter-spacing: 0.01em;
+  min-height: 44px;
   transition: transform 0.06s ease, opacity 0.06s ease;
 }
 .btn:active { transform: scale(0.98); }
@@ -1046,7 +1048,7 @@ p { overflow-wrap: break-word; }
 .btn-sm { padding: 10px 14px; font-size: 13px; border-radius: 10px; }
 .btn-primary { background: var(--primary); color: #fff; }
 .btn-secondary { background: var(--light); color: var(--primary); }
-.btn-danger { background: rgba(239, 68, 68, 0.12); color: var(--error); }
+.btn-danger { background: rgba(226, 58, 46, 0.12); color: var(--error); }
 .btn-ghost { background: transparent; color: var(--muted); }
 .btn-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 .field { display: block; margin-top: 12px; }
@@ -1110,7 +1112,7 @@ p { overflow-wrap: break-word; }
 /* (Phase 1: .empty-icon removed — EmptyState now uses .empty-state-icon) */
 .empty-state h3 { margin: 4px 0; }
 .empty-state p { color: var(--muted); margin: 4px 0 10px; }
-.error-state { border-color: rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.05); }
+.error-state { border-color: rgba(226, 58, 46, 0.35); background: rgba(226, 58, 46, 0.05); }
 .error-state p { margin: 0 0 10px; color: var(--error); font-weight: 600; }
 .loading { color: var(--muted); }
 .spinner {
@@ -1695,8 +1697,8 @@ nav.business-nav .nav-item.active {
   margin-top: 12px;
   padding: 11px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(239, 68, 68, 0.35);
-  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(226, 58, 46, 0.35);
+  background: rgba(226, 58, 46, 0.06);
   color: var(--error);
   font-size: 13.5px;
   font-weight: 600;
@@ -1806,32 +1808,7 @@ button.hub-row:active { background: var(--bg); }
 }
 
 /* ---------------- toggle ---------------- */
-.toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 0; }
-.toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
-.toggle-track {
-  width: 40px;
-  height: 24px;
-  background: var(--border);
-  border-radius: 999px;
-  position: relative;
-  transition: background 0.12s ease;
-  flex: 0 0 auto;
-}
-.toggle-track::after {
-  content: '';
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  background: #fff;
-  border-radius: 999px;
-  transition: left 0.12s ease;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-}
-.toggle input:checked + .toggle-track { background: var(--success); }
-.toggle input:checked + .toggle-track::after { left: 19px; }
-.toggle input:focus-visible + .toggle-track { outline: 2px solid var(--primary); }
+.toggle-inline { display: inline-flex; align-items: center; gap: 8px; }
 .toggle-label { font-size: 13px; font-weight: 600; }
 
 /* ---------------- hours editor ---------------- */
@@ -1861,7 +1838,7 @@ button.hub-row:active { background: var(--bg); }
   .hours-times { margin-left: 0; width: 100%; }
   .hours-times input { flex: 1; width: auto; min-width: 0; }
 }
-.hours-row-invalid { background: rgba(239, 68, 68, 0.04); border-radius: 8px; }
+.hours-row-invalid { background: rgba(226, 58, 46, 0.04); border-radius: 8px; }
 .hours-row-invalid input { border-color: var(--error); }
 .hours-error-summary {
   display: flex;
@@ -1987,7 +1964,7 @@ button.hub-row:active { background: var(--bg); }
   font-size: 11px;
   font-weight: 700;
   color: var(--error);
-  background: rgba(239, 68, 68, 0.1);
+  background: rgba(226, 58, 46, 0.1);
   border-radius: 999px;
   padding: 2px 8px;
 }
@@ -2093,23 +2070,46 @@ button.hub-row:active { background: var(--bg); }
 .booking-status-confirmed { background: rgba(22, 163, 74, 0.14); color: var(--success); }
 .booking-status-completed { background: var(--light); color: var(--primary); }
 .booking-status-cancelled,
-.booking-status-rejected { background: rgba(239, 68, 68, 0.1); color: var(--error); }
+.booking-status-rejected { background: rgba(226, 58, 46, 0.1); color: var(--error); }
 
 /* Bookings list */
 .booking-list { display: flex; flex-direction: column; gap: 10px; }
 .booking-card {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 0;
   width: 100%;
   text-align: left;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 13px 14px;
+  padding: 0;
   box-shadow: var(--shadow);
+  overflow: hidden;
 }
-.booking-card:active { border-color: var(--primary); }
+.booking-card-open {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 13px 14px;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.booking-card-open:active { background: var(--wash); }
+.booking-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 14px;
+  padding: 10px 0 13px;
+  border-top: 1px dashed var(--border);
+}
 .booking-card-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .booking-card-biz { font-weight: 700; font-size: 14.5px; overflow-wrap: anywhere; }
 .booking-card-service { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
@@ -2130,7 +2130,7 @@ button.hub-row:active { background: var(--bg); }
   font-weight: 600;
   margin: 12px 0 0;
 }
-.confirm-cancel { margin-top: 12px; background: rgba(239, 68, 68, 0.05); border: 1px dashed rgba(239, 68, 68, 0.4); border-radius: 12px; padding: 12px; }
+.confirm-cancel { margin-top: 12px; background: rgba(226, 58, 46, 0.05); border: 1px dashed rgba(226, 58, 46, 0.4); border-radius: 12px; padding: 12px; }
 .confirm-cancel p { margin: 0 0 4px; font-weight: 600; font-size: 13.5px; }
 .pill-action { border: 1px solid rgba(22, 34, 46, 0.35); color: var(--primary); font-weight: 700; padding: 3px 12px; }
 
@@ -2204,9 +2204,9 @@ button.hub-row:active { background: var(--bg); }
 .pay-section h3 { font-size: 15px; margin: 0 0 8px; }
 .pay-section h4 { font-size: 13.5px; margin: 14px 0 6px; color: var(--muted); }
 .pay-pending {
-  background: rgba(37, 99, 235, 0.08);
-  border: 1px solid rgba(37, 99, 235, 0.3);
-  color: var(--secondary);
+  background: var(--warning-soft);
+  border: 1px solid var(--warning);
+  color: var(--warning);
   border-radius: 12px;
   padding: 10px 12px;
   font-size: 13.5px;
@@ -2882,7 +2882,6 @@ h2, .section-title { font-size: var(--font-h2); letter-spacing: -0.01em; }
 .screen > header h1 { font-size: var(--font-display); }
 
 /* ---- Buttons: filled brand, soft secondary, clear states ---- */
-.btn { border-radius: 13px; letter-spacing: 0.01em; }
 .btn-primary { background: var(--brand); box-shadow: 0 2px 8px rgba(22, 34, 46, 0.2); }
 .btn-primary:hover { background: var(--brand-strong); }
 .btn-primary:active { background: var(--brand-pressed); transform: scale(0.98); }
@@ -3787,7 +3786,7 @@ nav.business-nav-v3 .nav-item.active {
 .me-band {
   margin-top: 8px;
   border-radius: 18px;
-  background: linear-gradient(135deg, var(--brand-strong) 0%, var(--brand-pressed) 100%);
+  background: var(--brand);
   color: #fff;
   padding: 16px;
   box-shadow: var(--shadow-lg);
@@ -4064,7 +4063,6 @@ nav.business-nav-v3 .nav-item.active {
 .profile-hero-v4 { box-shadow: none; border-radius: var(--radius-md); }
 
 /* ---- Buttons: tighter radius, restrained primary elevation ---------- */
-.btn { border-radius: var(--radius-md); }
 .btn-primary { box-shadow: none; }
 .btn-primary:hover { background: var(--brand-strong); }
 .chip { box-shadow: none; }
@@ -4967,11 +4965,11 @@ nav.nav-v3, nav.business-nav-v3 {
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--brand-strong);
-  background: var(--brand-soft);
-  border: 1px solid var(--brand-soft);
-  padding: 4px 10px;
+  letter-spacing: 0.08em;
+  color: #fff;
+  background: var(--brand);
+  border: 1px solid var(--brand);
+  padding: 5px 12px;
   border-radius: 999px;
 }
 
@@ -5618,9 +5616,6 @@ nav.nav-v3, nav.business-nav-v3 {
   justify-content: center;
 }
 .seg-tab {
-  min-height: 44px;
-}
-.btn {
   min-height: 44px;
 }
 

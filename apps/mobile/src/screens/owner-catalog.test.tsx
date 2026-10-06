@@ -144,8 +144,8 @@ describe('OwnerProducts catalog UX (Phase 3F)', () => {
     vi.mocked(api.updateProduct).mockRejectedValue(new Error('Network down'));
     render(<OwnerProducts businessId="biz-1" />);
     await screen.findByText('Biryani');
-    // Toggle is a labeled checkbox; flip it off and the failure must be visible.
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Available' }));
+    // Toggle is a labeled switch; flip it off and the failure must be visible.
+    fireEvent.click(screen.getByRole('switch', { name: 'Available' }));
     expect(await screen.findByText('Network down')).toBeTruthy();
   });
 });

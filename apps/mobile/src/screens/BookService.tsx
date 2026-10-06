@@ -185,8 +185,15 @@ export function BookServiceScreen(props: {
 
   return (
     <div className="screen booking-screen">
-      <button className="back-link" onClick={step === 'summary' ? backToSlots : props.onBack}>
-        ‹ {step === 'summary' ? 'Back to times' : 'Back'}
+      <button
+        className="back-link"
+        onClick={() => {
+          if (step === 'summary') backToSlots();
+          else if (step === 'time' && !props.preselectedServiceId) setStep('service');
+          else props.onBack();
+        }}
+      >
+        ‹ {step === 'summary' ? 'Back to times' : step === 'time' && !props.preselectedServiceId ? 'Back to services' : 'Back'}
       </button>
 
       {/* Editorial identity header: on the service step the business is the

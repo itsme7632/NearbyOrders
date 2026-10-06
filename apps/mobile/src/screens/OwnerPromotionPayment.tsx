@@ -68,6 +68,7 @@ export function PromotionPaymentFlow(props: {
   const [pendingReceipt, setPendingReceipt] = useState<PendingImage | null>(null);
   const [busy, setBusy] = useState(false);
   const [cancellingPaymentId, setCancellingPaymentId] = useState<string | null>(null);
+  const [confirmingPaymentId, setConfirmingPaymentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [viewingReceiptId, setViewingReceiptId] = useState<string | null>(null);
@@ -130,7 +131,6 @@ export function PromotionPaymentFlow(props: {
   /** Cancels the owner's own pending payment (e.g. wrong reference typed). */
   const cancelPayment = async (payment: PromotionPaymentRequest) => {
     if (busy || cancellingPaymentId) return;
-    if (!window.confirm('Cancel this payment submission? You can submit a corrected payment afterwards.')) return;
     setCancellingPaymentId(payment.id);
     setError(null);
     try {
@@ -140,6 +140,7 @@ export function PromotionPaymentFlow(props: {
       setError(e instanceof Error ? e.message : 'Could not cancel the payment');
     } finally {
       setCancellingPaymentId(null);
+      setConfirmingPaymentId(null);
     }
   };
 
@@ -342,14 +343,23 @@ export function PromotionPaymentFlow(props: {
                       {viewingReceiptId === p.id ? 'Opening…' : 'View receipt'}
                     </Button>
                     {p.status === 'PENDING' ? (
-                      <Button
-                        sm
-                        variant="ghost"
-                        disabled={cancellingPaymentId === p.id}
-                        onClick={() => void cancelPayment(p)}
-                      >
-                        {cancellingPaymentId === p.id ? 'Cancelling…' : 'Cancel payment'}
-                      </Button>
+                      confirmingPaymentId === p.id ? (
+                        <>
+                          <span className="confirm-delete-text" role="alert">
+                            Cancel this payment? You can submit a corrected payment afterwards.
+                          </span>
+                          <Button sm variant="danger" disabled={cancellingPaymentId === p.id} onClick={() => void cancelPayment(p)}>
+                            {cancellingPaymentId === p.id ? 'Cancelling…' : 'Yes, cancel'}
+                          </Button>
+                          <Button sm variant="ghost" disabled={cancellingPaymentId === p.id} onClick={() => setConfirmingPaymentId(null)}>
+                            Keep
+                          </Button>
+                        </>
+                      ) : (
+                        <Button sm variant="ghost" onClick={() => setConfirmingPaymentId(p.id)}>
+                          Cancel payment
+                        </Button>
+                      )
                     ) : null}
                   </div>
                 </li>

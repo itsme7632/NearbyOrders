@@ -27,7 +27,7 @@ import {
 } from '../components/icons.js';
 import { OwnerHubRow } from './owner-ui.js';
 import { OwnerPlanCard } from './subscription-badge.js';
-import { OwnerAttentionItems } from './OwnerDashboard.js';
+import { OwnerAttentionItems } from './OwnerAttentionItems.js';
 import { formatSlotTime, longDateLabel } from '../time.js';
 import type { OrderStatus } from '../api.js';
 

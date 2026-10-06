@@ -35,13 +35,13 @@ const LIFECYCLE_LABEL: Record<PromotionLifecycleState, string> = {
 };
 
 const LIFECYCLE_BADGE_CLASS: Record<PromotionLifecycleState, string> = {
-  PENDING_REVIEW: 'badge-neutral',
-  PAYMENT_REQUIRED: 'badge-open',
-  PAYMENT_UNDER_REVIEW: 'badge-neutral',
+  PENDING_REVIEW: 'badge-warn',
+  PAYMENT_REQUIRED: 'badge-warn',
+  PAYMENT_UNDER_REVIEW: 'badge-warn',
   ACTIVE: 'badge-open',
   REJECTED: 'badge-closed',
-  EXPIRED: 'badge-closed',
-  CANCELLED: 'badge-closed',
+  EXPIRED: 'badge-neutral',
+  CANCELLED: 'badge-neutral',
 };
 
 type Tab = 'available' | 'requests';
@@ -300,11 +300,11 @@ function MyPromotionRequests(props: {
 }) {
   const { businessId, requests, onPay } = props;
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<{ id: string; message: string } | null>(null);
 
   const cancel = async (r: PromotionRequest) => {
     if (cancellingId) return;
-    if (!window.confirm(`Cancel your request for "${r.promotionName ?? 'this promotion'}"? This cannot be undone.`)) return;
     setCancellingId(r.id);
     setCancelError(null);
     try {
@@ -314,6 +314,7 @@ function MyPromotionRequests(props: {
       setCancelError({ id: r.id, message: e instanceof Error ? e.message : 'Could not cancel the request' });
     } finally {
       setCancellingId(null);
+      setConfirmingId(null);
     }
   };
 
@@ -416,14 +417,23 @@ function MyPromotionRequests(props: {
 
             {r.lifecycleState === 'PENDING_REVIEW' || r.lifecycleState === 'PAYMENT_REQUIRED' ? (
               <div className="btn-row" style={{ marginTop: 8 }}>
-                <Button
-                  variant="ghost"
-                  sm
-                  disabled={cancellingId === r.id}
-                  onClick={() => cancel(r)}
-                >
-                  {cancellingId === r.id ? 'Cancelling…' : 'Cancel request'}
-                </Button>
+                {confirmingId === r.id ? (
+                  <>
+                    <span className="confirm-delete-text" role="alert">
+                      Cancel your request for "{r.promotionName ?? 'this promotion'}"? This cannot be undone.
+                    </span>
+                    <Button sm variant="danger" disabled={cancellingId === r.id} onClick={() => void cancel(r)}>
+                      {cancellingId === r.id ? 'Cancelling…' : 'Yes, cancel'}
+                    </Button>
+                    <Button sm variant="ghost" disabled={cancellingId === r.id} onClick={() => setConfirmingId(null)}>
+                      Keep
+                    </Button>
+                  </>
+                ) : (
+                  <Button variant="ghost" sm onClick={() => setConfirmingId(r.id)}>
+                    Cancel request
+                  </Button>
+                )}
               </div>
             ) : null}
             {cancelError && cancelError.id === r.id ? (

@@ -16,7 +16,6 @@ import { BusinessDetailScreen } from './screens/BusinessDetail.js';
 import { BookServiceScreen } from './screens/BookService.js';
 import { BookingDetailScreen, BookingsScreen } from './screens/Bookings.js';
 import { ProfileScreen, EditProfileScreen, ChangePasswordScreen } from './screens/Profile.js';
-// (OwnerDashboardScreen intentionally not imported: /owner renders OwnerBusinessHome.)
 import { OwnerScreen } from './screens/OwnerScreen.js';
 import { OwnerBookingDetailScreen } from './screens/OwnerBookings.js';
 import { OwnerOrderDetailScreen } from './screens/OwnerOrderDetail.js';
@@ -253,8 +252,14 @@ export function App() {
       if (mode !== 'BUSINESS') setTab(resolveTab('Orders'));
       push(`/order/${n.entityId}`);
     } else if (n.entityType === 'Review') {
-      setAppMode('BUSINESS');
-      push('/owner');
+      // Context from the user's authorized role, never from the payload
+      // alone: owners see business reviews, customers see their own reviews.
+      if (isOwner) {
+        setAppMode('BUSINESS');
+        push('/owner');
+      } else {
+        push('/my-reviews');
+      }
     } else {
       push('/notifications');
     }

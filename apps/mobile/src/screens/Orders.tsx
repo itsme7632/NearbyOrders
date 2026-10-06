@@ -392,6 +392,9 @@ export function OrderPaymentPanel(props: { order: Order; onChanged: () => void }
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // When the frozen method was removed, the customer explicitly picks a
+  // current method for the replacement proof. Never auto-substituted.
+  const [replacementMethodId, setReplacementMethodId] = useState<string | null>(null);
 
   if (payments.loading) return <Loading label="Loading payment…" />;
   if (payments.error) return null;
@@ -406,13 +409,17 @@ export function OrderPaymentPanel(props: { order: Order; onChanged: () => void }
   const hasPending = pending > 0;
   const isPaid = paid >= total;
   const isTerminal = ['COMPLETED', 'CANCELLED', 'REJECTED', 'DELIVERED'].includes(order.status);
-  const canSubmitOnlineProof =
-    !isCash &&
-    !isTerminal &&
-    due > 0 &&
-    !hasPending &&
-    selectedMethod != null &&
-    latestPayment?.status !== 'PENDING_VERIFICATION';
+  const methodRemoved = !isCash && order.paymentMethodId != null && selectedMethod == null;
+  const replacementMethod = methodRemoved
+    ? (methods.data ?? []).find((m) => m.id === replacementMethodId) ?? null
+    : null;
+  // The method used for a (re)submission: the frozen method when it is still
+  // listed, otherwise the explicitly chosen replacement. The order's frozen
+  // paymentMethodId is never rewritten by the client.
+  const submitMethod = selectedMethod ?? replacementMethod;
+  const needsSubmission =
+    !isCash && !isTerminal && due > 0 && !hasPending && !isPaid && latestPayment?.status !== 'PENDING_VERIFICATION';
+  const canSubmitOnlineProof = needsSubmission && submitMethod != null;
 
   if (isCash) {
     return (
@@ -490,21 +497,47 @@ export function OrderPaymentPanel(props: { order: Order; onChanged: () => void }
         <p className="hint">Payment proof submitted. Waiting for the business to verify it.</p>
       ) : isPaid ? (
         <p className="hint">Payment received and verified.</p>
-      ) : latestPayment?.status === 'FAILED' && !isTerminal ? (
+      ) : latestPayment?.status === 'FAILED' && !isTerminal && !methodRemoved ? (
         <p className="hint">Payment proof was rejected. Submit a new proof using the same payment method.</p>
+      ) : null}
+
+      {methodRemoved && needsSubmission ? (
+        <div className="pay-details">
+          <p className="hint" role="alert">
+            The original payment method
+            {latestPayment?.paymentMethod?.displayName ? ` (${latestPayment.paymentMethod.displayName})` : ''} is
+            no longer available. Choose one of the business's current payment methods to submit your proof.
+            The order's payment method stays unchanged.
+          </p>
+          <label className="field">
+            <span className="label">Payment method for the new proof</span>
+            <select
+              value={replacementMethodId ?? ''}
+              onChange={(e) => setReplacementMethodId(e.target.value || null)}
+            >
+              <option value="">Choose a payment method…</option>
+              {(methods.data ?? []).map((m) => (
+                <option key={m.id} value={m.id}>{m.displayName}</option>
+              ))}
+            </select>
+          </label>
+          {!(methods.data ?? []).length && !methods.loading ? (
+            <p className="hint">The business has no online payment methods right now. Contact the business to arrange payment.</p>
+          ) : null}
+        </div>
       ) : null}
 
       {canSubmitOnlineProof ? (
         formOpen ? (
           <div className="pay-details">
             <p className="pay-instructions">
-              {selectedMethod?.instructions ?? 'Pay the business directly, then submit your proof below.'}
+              {submitMethod?.instructions ?? 'Pay the business directly, then submit your proof below.'}
             </p>
-            {selectedMethod?.accountTitle || selectedMethod?.accountNumber || selectedMethod?.iban ? (
+            {submitMethod?.accountTitle || submitMethod?.accountNumber || submitMethod?.iban ? (
               <dl className="pay-account">
-                {selectedMethod.accountTitle ? <div><dt>Account title</dt><dd>{selectedMethod.accountTitle}</dd></div> : null}
-                {selectedMethod.accountNumber ? <div><dt>Account number</dt><dd>{selectedMethod.accountNumber}</dd></div> : null}
-                {selectedMethod.iban ? <div><dt>IBAN</dt><dd className="pay-iban">{selectedMethod.iban}</dd></div> : null}
+                {submitMethod.accountTitle ? <div><dt>Account title</dt><dd>{submitMethod.accountTitle}</dd></div> : null}
+                {submitMethod.accountNumber ? <div><dt>Account number</dt><dd>{submitMethod.accountNumber}</dd></div> : null}
+                {submitMethod.iban ? <div><dt>IBAN</dt><dd className="pay-iban">{submitMethod.iban}</dd></div> : null}
               </dl>
             ) : null}
             <label className="field">
@@ -521,14 +554,14 @@ export function OrderPaymentPanel(props: { order: Order; onChanged: () => void }
                 sm
                 disabled={busy || !reference.trim() || !receiptFile}
                 onClick={() => {
-                  if (!selectedMethod) return;
+                  if (!submitMethod) return;
                   setBusy(true);
                   setError(null);
                   uploadPaymentReceipt(receiptFile!)
                     .then((receiptStorageKey) =>
                       submitOrderPayment(order.id, {
                         amountMinor: due,
-                        paymentMethodId: selectedMethod.id,
+                        paymentMethodId: submitMethod.id,
                         transactionReference: reference.trim(),
                         receiptStorageKey,
                       }),
