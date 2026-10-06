@@ -22,7 +22,6 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
           schema = Path('apps/api/prisma/schema.prisma')
           s = schema.read_text()
           if 'enum AuthCodeType' not in s:
@@ -39,63 +38,56 @@ jobs:
           s = server.read_text()
           if "from './emailAuth.js'" not in s:
               s = s.replace("import { dispatchPushNotifications } from './push.js';", "import { dispatchPushNotifications } from './push.js';\nimport { registerEmailAuthRoutes } from './emailAuth.js';\nimport { generateCode, hashCode, sendPasswordChangedEmail, sendVerificationEmail } from './email.js';")
-
           if 'const verificationCode = generateCode();' not in s:
               old = '''      const user = await prisma.user.create({\n        data: {\n          email: d.email.toLowerCase(),\n          passwordHash: await argon2.hash(d.password, { type: argon2.argon2id }),\n          firstName: d.firstName,\n          lastName: d.lastName,\n          role: d.role ?? 'CUSTOMER',\n        },\n      });\n      return r.status(201).send({ data: { id: user.id, email: user.email, role: user.role } });'''
               new = '''      const user = await prisma.user.create({\n        data: {\n          email: d.email.toLowerCase(),\n          passwordHash: await argon2.hash(d.password, { type: argon2.argon2id }),\n          firstName: d.firstName,\n          lastName: d.lastName,\n          role: d.role ?? 'CUSTOMER',\n        },\n      });\n      const verificationCode = generateCode();\n      await prisma.authCode.create({\n        data: { id: randomBytes(16).toString('hex'), userId: user.id, type: 'EMAIL_VERIFICATION', codeHash: hashCode(verificationCode), expiresAt: new Date(Date.now() + 10 * 60 * 1000) },\n      });\n      try {\n        await sendVerificationEmail({ to: user.email, firstName: user.firstName, code: verificationCode, idempotencyKey: `verify/${user.id}/${verificationCode}` });\n      } catch (error) {\n        await prisma.user.delete({ where: { id: user.id } });\n        throw error;\n      }\n      return r.status(201).send({ data: { id: user.id, email: user.email, role: user.role, emailVerificationRequired: true } });'''
-              if old not in s:
-                  raise SystemExit('register block not found')
+              if old not in s: raise SystemExit('register block not found')
               s = s.replace(old, new, 1)
-
-          if "EMAIL_NOT_VERIFIED" not in s:
-              login_old = '''    if (!user || user.isSuspended || !(await argon2.verify(user.passwordHash, b.password ?? '')))\n      return r.status(401).send({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' } });\n    const accessToken = app.jwt.sign({ id: user.id, role: user.role }, { expiresIn: '15m' });'''
-              login_new = '''    if (!user || user.isSuspended || !(await argon2.verify(user.passwordHash, b.password ?? '')))\n      return r.status(401).send({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' } });\n    if (!user.emailVerifiedAt)\n      return r.status(403).send({ error: { code: 'EMAIL_NOT_VERIFIED', message: 'Please verify your email before signing in' } });\n    const accessToken = app.jwt.sign({ id: user.id, role: user.role }, { expiresIn: '15m' });'''
-              if login_old not in s:
-                  raise SystemExit('login block not found')
-              s = s.replace(login_old, login_new, 1)
-
+          if 'EMAIL_NOT_VERIFIED' not in s:
+              old = '''    if (!user || user.isSuspended || !(await argon2.verify(user.passwordHash, b.password ?? '')))\n      return r.status(401).send({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' } });\n    const accessToken = app.jwt.sign({ id: user.id, role: user.role }, { expiresIn: '15m' });'''
+              new = '''    if (!user || user.isSuspended || !(await argon2.verify(user.passwordHash, b.password ?? '')))\n      return r.status(401).send({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' } });\n    if (!user.emailVerifiedAt)\n      return r.status(403).send({ error: { code: 'EMAIL_NOT_VERIFIED', message: 'Please verify your email before signing in' } });\n    const accessToken = app.jwt.sign({ id: user.id, role: user.role }, { expiresIn: '15m' });'''
+              if old not in s: raise SystemExit('login block not found')
+              s = s.replace(old, new, 1)
           if 'await registerEmailAuthRoutes(app);' not in s:
               marker = "  app.post('/api/v1/auth/login'"
               idx = s.index(marker)
               s = s[:idx] + "  await registerEmailAuthRoutes(app);\n\n" + s[idx:]
-
           if "sendPasswordChangedEmail({ to: u.email" not in s:
-              password_old = '''    await prisma.auditLog.create({\n      data: { actorId: u.id, action: 'PASSWORD_CHANGED', entityType: 'User', entityId: u.id },\n    });\n    return r.status(204).send();'''
-              password_new = '''    await prisma.auditLog.create({\n      data: { actorId: u.id, action: 'PASSWORD_CHANGED', entityType: 'User', entityId: u.id },\n    });\n    await sendPasswordChangedEmail({ to: u.email, firstName: u.firstName }).catch((error) => app.log.error(error, 'password-changed email delivery failed'));\n    return r.status(204).send();'''
-              if password_old not in s:
-                  raise SystemExit('password block not found')
-              s = s.replace(password_old, password_new, 1)
+              old = '''    await prisma.auditLog.create({\n      data: { actorId: u.id, action: 'PASSWORD_CHANGED', entityType: 'User', entityId: u.id },\n    });\n    return r.status(204).send();'''
+              new = '''    await prisma.auditLog.create({\n      data: { actorId: u.id, action: 'PASSWORD_CHANGED', entityType: 'User', entityId: u.id },\n    });\n    await sendPasswordChangedEmail({ to: u.email, firstName: u.firstName }).catch((error) => app.log.error(error, 'password-changed email delivery failed'));\n    return r.status(204).send();'''
+              if old not in s: raise SystemExit('password block not found')
+              s = s.replace(old, new, 1)
           server.write_text(s)
 
           compose = Path('docker-compose.prod.yml')
           c = compose.read_text()
-          needle = '      FCM_SERVICE_ACCOUNT_B64: ${FCM_SERVICE_ACCOUNT_B64:-}\n'
-          replacement = needle + '      RESEND_API_KEY: ${RESEND_API_KEY:-}\n      EMAIL_FROM: ${EMAIL_FROM:-NearbyOrders <hello@nearbyorders.com>}\n      EMAIL_LOGO_URL: ${EMAIL_LOGO_URL:-https://nearbyorders.com/assets/nearbyorders-email-logo.png}\n'
           if 'RESEND_API_KEY:' not in c:
-              if needle not in c:
-                  raise SystemExit('production compose FCM block not found')
-              c = c.replace(needle, replacement, 1)
-              compose.write_text(c)
+              needle = '      FCM_SERVICE_ACCOUNT_B64: ${FCM_SERVICE_ACCOUNT_B64:-}\n'
+              replacement = needle + '      RESEND_API_KEY: ${RESEND_API_KEY:-}\n      EMAIL_FROM: ${EMAIL_FROM:-NearbyOrders <hello@nearbyorders.com>}\n      EMAIL_LOGO_URL: ${EMAIL_LOGO_URL:-https://nearbyorders.com/assets/nearbyorders-email-logo.png}\n'
+              if needle not in c: raise SystemExit('production compose FCM block not found')
+              compose.write_text(c.replace(needle, replacement, 1))
 
           env = Path('.env.example')
           e = env.read_text()
           if 'RESEND_API_KEY=' not in e:
               needle = 'FCM_SERVICE_ACCOUNT_B64=""\n'
               replacement = needle + '\n# Transactional/auth email delivery via Resend. Keep the API key server-side only.\nRESEND_API_KEY=""\nEMAIL_FROM="NearbyOrders <hello@nearbyorders.com>"\nEMAIL_LOGO_URL="https://nearbyorders.com/assets/nearbyorders-email-logo.png"\n'
-              if needle not in e:
-                  raise SystemExit('env example FCM block not found')
-              e = e.replace(needle, replacement, 1)
-              env.write_text(e)
+              if needle not in e: raise SystemExit('env example FCM block not found')
+              env.write_text(e.replace(needle, replacement, 1))
           PY
 
       - name: Generate email-safe PNG logo
         shell: bash
         run: |
-          if ! command -v rsvg-convert >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y librsvg2-bin
-          fi
-          rsvg-convert -w 176 -h 176 apps/website/assets/nearbyorders-email-logo.svg -o apps/website/assets/nearbyorders-email-logo.png
+          python3 - <<'PY'
+          try:
+              import cairosvg
+          except ImportError:
+              import subprocess, sys
+              subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet', 'cairosvg'])
+          import cairosvg
+          cairosvg.svg2png(url='apps/website/assets/nearbyorders-email-logo.svg', write_to='apps/website/assets/nearbyorders-email-logo.png', output_width=176, output_height=176)
+          PY
 
       - name: Update lockfile and generate Prisma client
         run: |
