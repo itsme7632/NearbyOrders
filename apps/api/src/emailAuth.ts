@@ -1,4 +1,5 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { randomUUID } from 'node:crypto';
+import type { FastifyInstance } from 'fastify';
 import argon2 from 'argon2';
 import { z } from 'zod';
 import { prisma } from './lib.js';
@@ -20,13 +21,12 @@ async function issueCode(type: AuthCodeType, userId: string): Promise<string> {
 
   await prisma.authCode.updateMany({ where: { userId, type, consumedAt: null }, data: { consumedAt: now } });
   const code = generateCode();
-  await prisma.authCode.create({ data: { id: crypto.randomUUID(), userId, type, codeHash: hashCode(code), expiresAt: new Date(now.getTime() + CODE_TTL_MS) } });
+  await prisma.authCode.create({ data: { id: randomUUID(), userId, type, codeHash: hashCode(code), expiresAt: new Date(now.getTime() + CODE_TTL_MS) } });
   return code;
 }
 
 async function findValidCode(type: AuthCodeType, userId: string, code: string) {
-  const row = await prisma.authCode.findFirst({ where: { userId, type, codeHash: hashCode(code), consumedAt: null, expiresAt: { gt: new Date() } }, orderBy: { createdAt: 'desc' } });
-  return row;
+  return prisma.authCode.findFirst({ where: { userId, type, codeHash: hashCode(code), consumedAt: null, expiresAt: { gt: new Date() } }, orderBy: { createdAt: 'desc' } });
 }
 
 export async function registerEmailAuthRoutes(app: FastifyInstance): Promise<void> {
@@ -47,10 +47,9 @@ export async function registerEmailAuthRoutes(app: FastifyInstance): Promise<voi
     return { data: { verified: true } };
   });
 
-  app.post('/api/v1/auth/resend-verification', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (q, r) => {
+  app.post('/api/v1/auth/resend-verification', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (q) => {
     const { email } = emailBody.parse(q.body);
     const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-    // Do not disclose whether the account exists.
     if (!user || user.emailVerifiedAt) return { data: { accepted: true } };
     const code = await issueCode('EMAIL_VERIFICATION', user.id);
     await sendVerificationEmail({ to: user.email, firstName: user.firstName, code, idempotencyKey: `verify/${user.id}/${code}` });
@@ -60,13 +59,11 @@ export async function registerEmailAuthRoutes(app: FastifyInstance): Promise<voi
   app.post('/api/v1/auth/password-reset/request', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (q) => {
     const { email } = emailBody.parse(q.body);
     const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-    // Always return the same response to prevent account enumeration.
     if (user) {
       try {
         const code = await issueCode('PASSWORD_RESET', user.id);
         await sendPasswordResetEmail({ to: user.email, firstName: user.firstName, code, idempotencyKey: `reset/${user.id}/${code}` });
       } catch (error) {
-        // Do not turn a valid email address into an account-existence oracle.
         if ((error as { statusCode?: number }).statusCode !== 429) throw error;
       }
     }
