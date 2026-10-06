@@ -94,6 +94,8 @@ import {
 } from './lib.js';
 import type { AuthUser, NotificationInput } from './lib.js';
 import { dispatchPushNotifications } from './push.js';
+import { registerEmailAuthRoutes } from './emailAuth.js';
+import { generateCode, hashCode, sendPasswordChangedEmail, sendVerificationEmail } from './email.js';
 import type { SubscriptionStatus, Prisma } from '@prisma/client';
 import { RECEIPT_ACCEPTED_TYPES, RECEIPT_KEY_PATTERN, RECEIPT_MAX_BYTES, readReceipt, receiptContentType, saveReceipt } from './receiptStorage.js';
 import { IMAGE_ACCEPTED_TYPES, IMAGE_KEY_PATTERN, IMAGE_MAX_BYTES, imageContentType, imageUrlForKey, readImage, saveImage } from './imageStorage.js';
@@ -337,15 +339,29 @@ export async function buildApp(): Promise<FastifyInstance> {
           role: d.role ?? 'CUSTOMER',
         },
       });
-      return r.status(201).send({ data: { id: user.id, email: user.email, role: user.role } });
+      const verificationCode = generateCode();
+      await prisma.authCode.create({
+        data: { id: randomBytes(16).toString('hex'), userId: user.id, type: 'EMAIL_VERIFICATION', codeHash: hashCode(verificationCode), expiresAt: new Date(Date.now() + 10 * 60 * 1000) },
+      });
+      try {
+        await sendVerificationEmail({ to: user.email, firstName: user.firstName, code: verificationCode, idempotencyKey: `verify/${user.id}/${verificationCode}` });
+      } catch (error) {
+        await prisma.user.delete({ where: { id: user.id } });
+        throw error;
+      }
+      return r.status(201).send({ data: { id: user.id, email: user.email, role: user.role, emailVerificationRequired: true } });
     },
   );
+
+  await registerEmailAuthRoutes(app);
 
   app.post('/api/v1/auth/login', { config: { rateLimit: { max: authRateMax, timeWindow: '15 minutes' } } }, async (q, r) => {
     const b = q.body as { email: string; password: string };
     const user = await prisma.user.findUnique({ where: { email: b.email?.toLowerCase() } });
     if (!user || user.isSuspended || !(await argon2.verify(user.passwordHash, b.password ?? '')))
       return r.status(401).send({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' } });
+    if (!user.emailVerifiedAt)
+      return r.status(403).send({ error: { code: 'EMAIL_NOT_VERIFIED', message: 'Please verify your email before signing in' } });
     const accessToken = app.jwt.sign({ id: user.id, role: user.role }, { expiresIn: '15m' });
     // Persistent login: an opaque refresh token (only its hash is stored)
     // with a 90-day lifetime. Additive to the existing response shape.
@@ -440,6 +456,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     await prisma.auditLog.create({
       data: { actorId: u.id, action: 'PASSWORD_CHANGED', entityType: 'User', entityId: u.id },
     });
+    await sendPasswordChangedEmail({ to: u.email, firstName: u.firstName }).catch((error) => app.log.error(error, 'password-changed email delivery failed'));
     return r.status(204).send();
   });
 

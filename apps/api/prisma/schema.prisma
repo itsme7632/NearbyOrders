@@ -13,6 +13,11 @@ enum Role {
   ADMIN
 }
 
+enum AuthCodeType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
 enum BusinessStatus {
   PENDING
   APPROVED
@@ -134,6 +139,7 @@ model User {
   lastName                  String?
   phone                     String?
   isSuspended               Boolean                      @default(false)
+  emailVerifiedAt           DateTime?
   createdAt                 DateTime                     @default(now())
   updatedAt                 DateTime                     @updatedAt
   businesses                Business[]                   @relation("BusinessOwner")
@@ -159,6 +165,7 @@ model User {
   savedBy                   FavoriteBusiness[]
   /// Phase 17: the customer's address book for DELIVERY orders.
   addresses                 CustomerAddress[]
+  authCodes                 AuthCode[]
 
   @@index([role, isSuspended])
 }
@@ -1052,4 +1059,19 @@ model EditorialFeature {
 
   @@index([businessId, endAt])
   @@index([endAt, startAt])
+}
+
+
+model AuthCode {
+  id         String       @id @default(uuid())
+  userId     String
+  type       AuthCodeType
+  codeHash   String
+  expiresAt  DateTime
+  createdAt  DateTime     @default(now())
+  consumedAt DateTime?
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type, createdAt])
+  @@index([expiresAt])
 }
