@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { makeApp, authed, registerAndLogin, createBusiness, approveBusiness, uniqueEmail } from './helpers.js';
+import { prisma } from '../src/lib.js';
 import type { TestApp } from './helpers.js';
 
 /**
@@ -117,6 +118,10 @@ describe('business image persist / reload / customer flow', () => {
       payload: { email, password: PASSWORD, role: 'BUSINESS_OWNER' },
     });
     expect(res.statusCode).toBe(201);
+    // This fixture tests persistence across sessions, not email verification.
+    // Mark the account verified before exercising the login flow.
+    const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+    await prisma.user.update({ where: { id: user.id }, data: { emailVerifiedAt: new Date() } });
     const firstToken = await freshLogin(email);
 
     const biz = await createBusiness(app, firstToken, { name: `Fresh Biz ${Date.now()}` });
