@@ -18,6 +18,11 @@ async function registerOwner() {
     payload: { email, password: PASSWORD, role: 'BUSINESS_OWNER' },
   });
   expect(reg.statusCode).toBe(201);
+  // These fixtures exercise refresh-token behavior, not email verification.
+  // Mark the test account verified so the new production auth gate does not
+  // change the contract of this pre-existing test suite.
+  const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+  await prisma.user.update({ where: { id: user.id }, data: { emailVerifiedAt: new Date() } });
   return { email };
 }
 
