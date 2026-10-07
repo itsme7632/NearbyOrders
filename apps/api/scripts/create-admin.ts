@@ -147,8 +147,16 @@ export async function createAdminAccount(
   // Identical hashing to register/login: argon2id with library defaults.
   const passwordHash = await argon2.hash(parsed.data.password, { type: argon2.argon2id });
   const user = await prisma.user.create({
-    data: { email: parsed.data.email, passwordHash, role: 'ADMIN' },
-    select: { id: true, email: true, role: true },
+    data: {
+      email: parsed.data.email,
+      passwordHash,
+      role: 'ADMIN',
+      // Operator-provisioned admins are trusted accounts, not public signups.
+      // Marking them verified preserves the normal login gate for public users
+      // without requiring an email verification step that this script cannot deliver.
+      emailVerifiedAt: new Date(),
+    },
+    select: { id: true, email: true, role: true, emailVerifiedAt: true },
   });
   await prisma.auditLog.create({
     data: {

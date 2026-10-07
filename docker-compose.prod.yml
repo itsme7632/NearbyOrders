@@ -71,6 +71,9 @@ services:
       AUTH_RATE_LIMIT_MAX: ${AUTH_RATE_LIMIT_MAX:-10}
       FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
       FCM_SERVICE_ACCOUNT_B64: ${FCM_SERVICE_ACCOUNT_B64:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-NearbyOrders <hello@nearbyorders.com>}
+      EMAIL_LOGO_URL: ${EMAIL_LOGO_URL:-https://nearbyorders.com/assets/nearbyorders-email-logo.png}
     volumes:
       # Persistent receipt/verification storage. The API creates the directory
       # on first write (saveReceipt mkdir -p). Survives container recreation;

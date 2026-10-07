@@ -28,6 +28,14 @@ export async function registerAndLogin(
     payload: { email, password: PASSWORD, role },
   });
   if (reg.statusCode !== 201) throw new Error(`register failed: ${reg.body}`);
+
+  // Most existing integration tests need an authenticated fixture immediately.
+  // Email verification itself is tested explicitly by the email-auth tests;
+  // helper-created accounts represent pre-verified users so unrelated tests
+  // continue to exercise their original behavior.
+  const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+  await prisma.user.update({ where: { id: user.id }, data: { emailVerifiedAt: new Date() } });
+
   return login(app, email);
 }
 
