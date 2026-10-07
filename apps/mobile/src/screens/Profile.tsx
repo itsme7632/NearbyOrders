@@ -13,19 +13,20 @@ import {
   type Session,
 } from '../api.js';
 import { Button, ErrorState, Field } from '../components/ui.js';
+import { PasswordInput } from '../components/PasswordInput.js';
+import { setAuthFlowState } from '../authFlow.js';
 import {
   AlertIcon,
   BellIcon,
   CheckIcon,
   ChevronRightIcon,
-  EyeIcon,
-  EyeOffIcon,
   HeartIcon,
   HelpIcon,
   InfoIcon,
   KeyIcon,
   LockIcon,
   MailIcon,
+  NearbyOrdersMark,
   OrdersIcon,
   PinIcon,
   StoreIcon,
@@ -49,42 +50,6 @@ function AuthInput(props: { icon: ReactNode; invalid?: boolean; children: ReactN
         {props.icon}
       </span>
       <span className="auth-input-field">{props.children}</span>
-    </div>
-  );
-}
-
-function PasswordInput(props: {
-  value: string;
-  onChange: (v: string) => void;
-  autoComplete: string;
-  invalid?: boolean;
-  placeholder: string;
-  label: string;
-  name?: string;
-}) {
-  const [visible, setVisible] = useState(false);
-  return (
-    <div className="password-slot">
-      <input
-        type={visible ? 'text' : 'password'}
-        name={props.name}
-        value={props.value}
-        onChange={(e) => props.onChange(e.target.value)}
-        autoComplete={props.autoComplete}
-        aria-label={props.label}
-        aria-invalid={props.invalid || undefined}
-        placeholder={props.placeholder}
-        enterKeyHint="done"
-      />
-      <button
-        type="button"
-        className="password-toggle"
-        onClick={() => setVisible((v) => !v)}
-        aria-label={visible ? `Hide ${props.label.toLowerCase()}` : `Show ${props.label.toLowerCase()}`}
-        aria-pressed={visible}
-      >
-        {visible ? <EyeOffIcon size={19} /> : <EyeIcon size={19} />}
-      </button>
     </div>
   );
 }
@@ -479,6 +444,8 @@ export function ProfileScreen(props: {
   onOpenMyReviews: () => void;
   onOpenAddresses: () => void;
   onOpenInfo: (page: 'help' | 'terms' | 'privacy' | 'about') => void;
+  onForgotPassword: () => void;
+  onRegisterSuccess: () => void;
 }) {
   const [session, setSessionState] = useState<Session | null>(getSession());
   useEffect(() => onSessionChange(setSessionState), []);
@@ -531,9 +498,11 @@ export function ProfileScreen(props: {
     setError(null);
     try {
       if (registering) {
-        // Create the account through the configured API base, then establish
-        // the native session with a real login. Errors are mapped per step so
-        // a signup failure never shows login-specific wording.
+        // Create the account, then route to email verification. The backend
+        // sends a 6-digit code and returns emailVerificationRequired: true.
+        // Do NOT call login() here: it returns 403 EMAIL_NOT_VERIFIED until
+        // the email is verified. The password is retained in memory only
+        // for the verification flow's auto-login.
         try {
           await register(email.trim(), password, role);
         } catch (regErr) {
@@ -545,18 +514,24 @@ export function ProfileScreen(props: {
           else setError(regErr instanceof Error ? regErr.message : 'Could not create your account. Please try again.');
           return;
         }
-        try {
-          await login(email.trim(), password);
-        } catch {
-          // The account exists now; only the automatic sign-in failed.
-          setError('Your account was created, but we could not sign you in automatically. Please sign in with your new credentials.');
-          setMode('login');
-          return;
-        }
+        setAuthFlowState({ email: email.trim(), password, mode: 'register' });
+        props.onRegisterSuccess();
+        return;
       } else {
         try {
           await login(email.trim(), password);
         } catch (loginErr) {
+          if (
+            loginErr instanceof ApiError &&
+            loginErr.status === 403 &&
+            loginErr.code === 'EMAIL_NOT_VERIFIED'
+          ) {
+            // Correct password, unverified email: route to verification with
+            // a recovery path instead of showing a sign-in failure.
+            setAuthFlowState({ email: email.trim(), password, mode: 'login-recovery' });
+            props.onRegisterSuccess();
+            return;
+          }
           if (loginErr instanceof ApiError && loginErr.status === 401)
             setError('Incorrect email or password. Please try again.');
           else if (loginErr instanceof ApiError && loginErr.status === 0) setError(loginErr.message);
@@ -576,10 +551,10 @@ export function ProfileScreen(props: {
 
   return (
     <div className={`screen auth-screen${registering ? ' auth-mode-register' : ' auth-mode-login'}`}>
-      {/* Brand lockup: compact mark + wordmark, matching the in-app header. */}
+      {/* Brand lockup: real N+O mark + wordmark, matching the in-app header. */}
       <header className="auth-brand">
-        <span className="auth-brand-mark" aria-hidden>
-          <PinIcon size={19} />
+        <span className="auth-brand-mark auth-brand-mark-real" aria-hidden>
+          <NearbyOrdersMark size={30} tone="light" />
         </span>
         <span className="auth-brand-lockup">
           <span className="auth-brand-name">
@@ -719,9 +694,7 @@ export function ProfileScreen(props: {
             </>
           ) : (
             <div className="auth-row">
-              {/* Password recovery is not implemented in the API yet; the link is
-                  shown disabled rather than pretending to work. */}
-              <button type="button" className="forgot-link" disabled title="Password reset is coming soon">
+              <button type="button" className="forgot-link" onClick={props.onForgotPassword}>
                 Forgot password?
               </button>
             </div>

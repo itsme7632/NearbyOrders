@@ -124,3 +124,17 @@ describe('locked navigation (Warm Proximity reversal)', () => {
     expect(parseHash('#/business/gulberg-grill').name).not.toBe('tabs');
   });
 });
+
+describe('email-auth routes', () => {
+  it('parses the four new auth routes', () => {
+    expect(parseHash('#/verify-email')).toEqual({ name: 'verify-email' });
+    expect(parseHash('#/forgot-password')).toEqual({ name: 'forgot-password' });
+    expect(parseHash('#/reset-code')).toEqual({ name: 'reset-code' });
+    expect(parseHash('#/new-password')).toEqual({ name: 'new-password' });
+  });
+
+  it('does not confuse auth routes with tab or owner routes', () => {
+    expect(parseHash('#/verify-email').name).not.toBe('tabs');
+    expect(parseHash('#/forgot-password').name).not.toBe('tabs');
+  });
+});

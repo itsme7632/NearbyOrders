@@ -16,6 +16,11 @@ import { BusinessDetailScreen } from './screens/BusinessDetail.js';
 import { BookServiceScreen } from './screens/BookService.js';
 import { BookingDetailScreen, BookingsScreen } from './screens/Bookings.js';
 import { ProfileScreen, EditProfileScreen, ChangePasswordScreen } from './screens/Profile.js';
+import { VerifyEmailScreen } from './screens/VerifyEmailScreen.js';
+import { ForgotPasswordScreen } from './screens/ForgotPasswordScreen.js';
+import { ResetCodeScreen } from './screens/ResetCodeScreen.js';
+import { NewPasswordScreen } from './screens/NewPasswordScreen.js';
+import { clearAuthFlowState } from './authFlow.js';
 import { OwnerScreen } from './screens/OwnerScreen.js';
 import { OwnerBookingDetailScreen } from './screens/OwnerBookings.js';
 import { OwnerOrderDetailScreen } from './screens/OwnerOrderDetail.js';
@@ -208,6 +213,8 @@ export function App() {
       onOpenMyReviews={() => push('/my-reviews')}
       onOpenAddresses={() => push('/addresses')}
       onOpenInfo={(page) => push(`/info/${page}`)}
+      onForgotPassword={() => push('/forgot-password')}
+      onRegisterSuccess={() => push('/verify-email')}
     />
   );
 
@@ -233,6 +240,8 @@ export function App() {
       onOpenMyReviews={() => push('/my-reviews')}
       onOpenAddresses={() => push('/addresses')}
       onOpenInfo={(page) => push(`/info/${page}`)}
+      onForgotPassword={() => push('/forgot-password')}
+      onRegisterSuccess={() => push('/verify-email')}
     />
   );
 
@@ -368,6 +377,27 @@ export function App() {
     content = session ? <EditProfileScreen onBack={back} onSaved={unread.refresh} /> : null;
   } else if (route.name === 'change-password') {
     content = session ? <ChangePasswordScreen onBack={back} /> : null;
+  } else if (route.name === 'verify-email') {
+    // Pre-auth by design: the user has no session yet (or is recovering one).
+    // After verification the screen auto-logs in, then back() returns to the
+    // exact previous hash (Profile tab, or the deep link authFlow was holding).
+    // Backing out abandons the flow: the in-memory password is wiped.
+    const backFromVerify = () => {
+      clearAuthFlowState();
+      back();
+    };
+    content = !session ? <VerifyEmailScreen onBack={backFromVerify} onVerified={back} /> : null;
+  } else if (route.name === 'forgot-password') {
+    content = !session ? <ForgotPasswordScreen onBack={back} onCodeSent={() => push('/reset-code')} /> : null;
+  } else if (route.name === 'reset-code') {
+    content = !session ? <ResetCodeScreen onBack={back} onContinue={() => push('/new-password')} /> : null;
+  } else if (route.name === 'new-password') {
+    // Terminal password-changed state ends at the tab root (login tab).
+    // The recovery action ("Get a new code") explicitly returns to the
+    // reset-code step — never history-dependent, never the auth root.
+    content = !session ? (
+      <NewPasswordScreen onBack={back} onGetNewCode={() => push('/reset-code')} onDone={() => push('/')} />
+    ) : null;
   } else if (route.name === 'saved-businesses') {
     content = session ? <SavedBusinessesScreen onBack={back} onOpenBusiness={openBusiness} /> : null;
   } else if (route.name === 'my-reviews') {
@@ -556,7 +586,11 @@ export function App() {
     ((route.name === 'tabs' && tab === 'Profile') ||
       route.name === 'book' ||
       route.name === 'booking' ||
-      route.name === 'notifications');
+      route.name === 'notifications' ||
+      route.name === 'verify-email' ||
+      route.name === 'forgot-password' ||
+      route.name === 'reset-code' ||
+      route.name === 'new-password');
   if (authFlow && content === null) content = session ? profileHubScreen : profileAuthScreen;
 
   // Session restore gate: nothing else renders until the refresh-token
