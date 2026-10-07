@@ -172,7 +172,7 @@ describe('ResetCodeScreen', () => {
 describe('NewPasswordScreen', () => {
   function setup() {
     setAuthFlowState({ email: 'user@example.com', code: '654321', mode: 'password-reset' });
-    render(<NewPasswordScreen onBack={() => {}} onDone={() => {}} />);
+    render(<NewPasswordScreen onBack={() => {}} onGetNewCode={() => {}} onDone={() => {}} />);
   }
 
   function fillPasswords(next: string, confirm: string) {
@@ -217,5 +217,56 @@ describe('NewPasswordScreen', () => {
 
     await screen.findByText('This code is invalid or expired.');
     expect(screen.getByRole('button', { name: 'Get a new code' })).toBeTruthy();
+  });
+
+  it('regression: "Get a new code" explicitly navigates to the reset-code step (not generic back)', async () => {
+    // 1. User reaches the New Password screen with a (stale) code in flow state.
+    setAuthFlowState({ email: 'user@example.com', code: '000000', mode: 'password-reset' });
+    // 2. The reset fails: invalid/expired code.
+    vi.spyOn(api, 'completePasswordReset').mockRejectedValue(new ApiError(400, 'INVALID_CODE', 'Invalid or expired reset code'));
+    const onBack = vi.fn();
+    const onGetNewCode = vi.fn();
+    const onDone = vi.fn();
+
+    render(<NewPasswordScreen onBack={onBack} onGetNewCode={onGetNewCode} onDone={onDone} />);
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'anewsecurepassword1' } });
+    fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'anewsecurepassword1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Reset password' }));
+
+    // 3. The recovery UI is shown.
+    const getNewCode = await screen.findByRole('button', { name: 'Get a new code' });
+
+    // 4. Tapping it fires the explicit recovery navigation…
+    fireEvent.click(getNewCode);
+    expect(onGetNewCode).toHaveBeenCalledTimes(1);
+    // …and NOT the generic back callback.
+    expect(onBack).not.toHaveBeenCalled();
+
+    // 5+6. The password-reset flow state is preserved (email intact, stale
+    // code still present until overwritten), so the reset-code step remains
+    // usable for entering a fresh code.
+    expect(getAuthFlowState()).toMatchObject({ email: 'user@example.com', mode: 'password-reset' });
+
+    // The reset-code screen renders for the same email with a working resend row.
+    cleanup();
+    const onContinue = vi.fn();
+    render(<ResetCodeScreen onBack={() => {}} onContinue={onContinue} />);
+    expect(screen.getByText('user@example.com')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('6-digit reset code'), { target: { value: '654321' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(getAuthFlowState()).toMatchObject({ email: 'user@example.com', code: '654321' });
+    expect(onContinue).toHaveBeenCalled();
+  });
+
+  it('normal back from New Password still uses the back callback', () => {
+    setAuthFlowState({ email: 'user@example.com', code: '654321', mode: 'password-reset' });
+    const onBack = vi.fn();
+    const onGetNewCode = vi.fn();
+
+    render(<NewPasswordScreen onBack={onBack} onGetNewCode={onGetNewCode} onDone={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: /back/i }));
+
+    expect(onBack).toHaveBeenCalledTimes(1);
+    expect(onGetNewCode).not.toHaveBeenCalled();
   });
 });

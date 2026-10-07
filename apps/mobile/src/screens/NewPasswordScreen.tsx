@@ -20,8 +20,14 @@ const MIN_PASSWORD = 12;
  *
  * The user is NOT auto-logged in: the backend revoked every session, so the
  * UX ends at "Back to login".
+ *
+ * Props make the two exits explicit:
+ * - onBack: normal back → the reset-code step (history back).
+ * - onGetNewCode: recovery from an invalid/expired code → explicitly
+ *   navigates to the reset-code step (not history-dependent).
+ * - onDone: password changed → back to login.
  */
-export function NewPasswordScreen(props: { onBack: () => void; onDone: () => void }) {
+export function NewPasswordScreen(props: { onBack: () => void; onGetNewCode: () => void; onDone: () => void }) {
   const flow = getAuthFlowState();
   const email = flow?.email ?? '';
   const code = flow?.code ?? '';
@@ -160,7 +166,7 @@ export function NewPasswordScreen(props: { onBack: () => void; onDone: () => voi
             <span>
               {error}{' '}
               {error === 'This code is invalid or expired.' ? (
-                <button type="button" className="link-inline" onClick={props.onBack}>
+                <button type="button" className="link-inline" onClick={props.onGetNewCode}>
                   Get a new code
                 </button>
               ) : null}

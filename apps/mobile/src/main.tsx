@@ -393,7 +393,11 @@ export function App() {
     content = !session ? <ResetCodeScreen onBack={back} onContinue={() => push('/new-password')} /> : null;
   } else if (route.name === 'new-password') {
     // Terminal password-changed state ends at the tab root (login tab).
-    content = !session ? <NewPasswordScreen onBack={back} onDone={() => push('/')} /> : null;
+    // The recovery action ("Get a new code") explicitly returns to the
+    // reset-code step — never history-dependent, never the auth root.
+    content = !session ? (
+      <NewPasswordScreen onBack={back} onGetNewCode={() => push('/reset-code')} onDone={() => push('/')} />
+    ) : null;
   } else if (route.name === 'saved-businesses') {
     content = session ? <SavedBusinessesScreen onBack={back} onOpenBusiness={openBusiness} /> : null;
   } else if (route.name === 'my-reviews') {
