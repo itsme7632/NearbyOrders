@@ -451,6 +451,9 @@ export function ProfileScreen(props: {
   useEffect(() => onSessionChange(setSessionState), []);
 
   const [mode, setMode] = useState<Mode>('login');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -482,7 +485,9 @@ export function ProfileScreen(props: {
   const emailValid = EMAIL_RE.test(email.trim());
   const passwordValid = password.length >= MIN_PASSWORD;
   const confirmValid = password === confirm;
-  const canSubmit = emailValid && passwordValid && (!registering || (confirmValid && agree)) && !busy;
+  const phoneValid = /^[+\d][\d\s-]{6,19}$/.test(phone.trim());
+  const profileFieldsValid = firstName.trim().length > 0 && lastName.trim().length > 0 && phoneValid;
+  const canSubmit = emailValid && passwordValid && (!registering || (profileFieldsValid && confirmValid && agree)) && !busy;
 
   let emailMessage: string | null = null;
   if (touched && email.length > 0 && !emailValid) emailMessage = 'Enter a valid email address, e.g. you@example.com';
@@ -490,6 +495,12 @@ export function ProfileScreen(props: {
   if (touched && password.length > 0 && !passwordValid) passwordMessage = `Password must be at least ${MIN_PASSWORD} characters.`;
   let confirmMessage: string | null = null;
   if (touched && confirm.length > 0 && !confirmValid) confirmMessage = 'Passwords do not match.';
+  let firstNameMessage: string | null = null;
+  if (touched && registering && firstName.trim().length === 0) firstNameMessage = 'Enter your first name.';
+  let lastNameMessage: string | null = null;
+  if (touched && registering && lastName.trim().length === 0) lastNameMessage = 'Enter your last name.';
+  let phoneMessage: string | null = null;
+  if (touched && registering && !phoneValid) phoneMessage = 'Enter a valid phone number, e.g. +92 300 1234567';
 
   const submit = async () => {
     setTouched(true);
@@ -504,7 +515,7 @@ export function ProfileScreen(props: {
         // the email is verified. The password is retained in memory only
         // for the verification flow's auto-login.
         try {
-          await register(email.trim(), password, role);
+          await register(email.trim(), password, role, firstName.trim(), lastName.trim(), phone.trim());
         } catch (regErr) {
           if (regErr instanceof ApiError && regErr.status === 409)
             setError('An account with this email already exists. Try signing in instead.');
@@ -607,6 +618,26 @@ export function ProfileScreen(props: {
           }}
           noValidate
         >
+          {registering ? (
+            <>
+              <Field label="First name" hint={firstNameMessage ?? undefined}>
+                <AuthInput icon={<UserIcon size={18} />} invalid={Boolean(firstNameMessage)}>
+                  <input name="first-name" value={firstName} onChange={(e) => setFirstName(e.target.value)} onBlur={() => setTouched(true)} autoComplete="given-name" placeholder="Your first name" aria-label="First name" aria-invalid={Boolean(firstNameMessage)} enterKeyHint="next" />
+                </AuthInput>
+              </Field>
+              <Field label="Last name" hint={lastNameMessage ?? undefined}>
+                <AuthInput icon={<UserIcon size={18} />} invalid={Boolean(lastNameMessage)}>
+                  <input name="last-name" value={lastName} onChange={(e) => setLastName(e.target.value)} onBlur={() => setTouched(true)} autoComplete="family-name" placeholder="Your last name" aria-label="Last name" aria-invalid={Boolean(lastNameMessage)} enterKeyHint="next" />
+                </AuthInput>
+              </Field>
+              <Field label="Phone" hint={phoneMessage ?? undefined}>
+                <AuthInput icon={<PinIcon size={18} />} invalid={Boolean(phoneMessage)}>
+                  <input type="tel" name="phone" value={phone} onChange={(e) => setPhone(e.target.value)} onBlur={() => setTouched(true)} autoComplete="tel" inputMode="tel" placeholder="e.g. +92 300 1234567" aria-label="Phone" aria-invalid={Boolean(phoneMessage)} enterKeyHint="next" />
+                </AuthInput>
+              </Field>
+            </>
+          ) : null}
+
           <Field label="Email" hint={emailMessage ?? undefined}>
             <AuthInput icon={<MailIcon size={18} />} invalid={Boolean(emailMessage)}>
               <input
