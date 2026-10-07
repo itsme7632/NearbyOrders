@@ -1,0 +1,106 @@
+name: Patch signup fields
+on:
+  push:
+    branches: [fix/signup-profile-fields]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply signup and email presentation fixes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              s = p.read_text()
+              n = s.count(old)
+              if n != 1:
+                  raise SystemExit(f'{path}: expected 1 occurrence, found {n}: {old[:100]!r}')
+              p.write_text(s.replace(old, new, 1))
+
+          # API contract: capture phone at account creation.
+          replace_once(
+              'apps/api/src/lib.ts',
+              "  lastName: z.string().max(80).optional(),\n  role: z.enum(['CUSTOMER', 'BUSINESS_OWNER']).optional(),",
+              "  lastName: z.string().max(80).optional(),\n  phone: z.string().trim().min(7).max(20).regex(/^[+\\d][\\d\\s-]+$/, 'Invalid phone number').optional(),\n  role: z.enum(['CUSTOMER', 'BUSINESS_OWNER']).optional(),",
+          )
+
+          replace_once(
+              'apps/api/src/server.ts',
+              "          firstName: d.firstName,\n          lastName: d.lastName,\n          role: d.role ?? 'CUSTOMER',",
+              "          firstName: d.firstName,\n          lastName: d.lastName,\n          phone: d.phone,\n          role: d.role ?? 'CUSTOMER',",
+          )
+
+          # Mobile API helper.
+          replace_once(
+              'apps/mobile/src/api.ts',
+              "export const register = (email: string, password: string, role: 'CUSTOMER' | 'BUSINESS_OWNER') =>\n  request<RegisterResult>('/auth/register', { method: 'POST', body: { email, password, role } });",
+              "export const register = (\n  email: string,\n  password: string,\n  role: 'CUSTOMER' | 'BUSINESS_OWNER',\n  firstName: string,\n  lastName: string,\n  phone: string,\n) =>\n  request<RegisterResult>('/auth/register', {\n    method: 'POST',\n    body: { email, password, role, firstName, lastName, phone },\n  });",
+          )
+
+          # Mobile registration form state + validation + API call.
+          p = Path('apps/mobile/src/screens/Profile.tsx')
+          s = p.read_text()
+          replace_once(
+              'apps/mobile/src/screens/Profile.tsx',
+              "  const [email, setEmail] = useState('');\n  const [password, setPassword] = useState('');",
+              "  const [firstName, setFirstName] = useState('');\n  const [lastName, setLastName] = useState('');\n  const [phone, setPhone] = useState('');\n  const [email, setEmail] = useState('');\n  const [password, setPassword] = useState('');",
+          )
+          replace_once(
+              'apps/mobile/src/screens/Profile.tsx',
+              "  const registering = mode === 'register';\n  const emailValid = EMAIL_RE.test(email.trim());\n  const passwordValid = password.length >= MIN_PASSWORD;\n  const confirmValid = password === confirm;\n  const canSubmit = emailValid && passwordValid && (!registering || (confirmValid && agree)) && !busy;",
+              "  const registering = mode === 'register';\n  const emailValid = EMAIL_RE.test(email.trim());\n  const passwordValid = password.length >= MIN_PASSWORD;\n  const confirmValid = password === confirm;\n  const phoneValid = /^[+\\d][\\d\\s-]{6,19}$/.test(phone.trim());\n  const profileFieldsValid = firstName.trim().length > 0 && lastName.trim().length > 0 && phoneValid;\n  const canSubmit = emailValid && passwordValid && (!registering || (profileFieldsValid && confirmValid && agree)) && !busy;",
+          )
+          replace_once(
+              'apps/mobile/src/screens/Profile.tsx',
+              "  let confirmMessage: string | null = null;\n  if (touched && confirm.length > 0 && !confirmValid) confirmMessage = 'Passwords do not match.';",
+              "  let confirmMessage: string | null = null;\n  if (touched && confirm.length > 0 && !confirmValid) confirmMessage = 'Passwords do not match.';\n  let firstNameMessage: string | null = null;\n  if (touched && registering && firstName.trim().length === 0) firstNameMessage = 'Enter your first name.';\n  let lastNameMessage: string | null = null;\n  if (touched && registering && lastName.trim().length === 0) lastNameMessage = 'Enter your last name.';\n  let phoneMessage: string | null = null;\n  if (touched && registering && !phoneValid) phoneMessage = 'Enter a valid phone number, e.g. +92 300 1234567';",
+          )
+          replace_once(
+              'apps/mobile/src/screens/Profile.tsx',
+              "          await register(email.trim(), password, role);",
+              "          await register(email.trim(), password, role, firstName.trim(), lastName.trim(), phone.trim());",
+          )
+
+          email_anchor = '''          <Field label="Email" hint={emailMessage ?? undefined}>'''
+          if email_anchor not in s:
+              raise SystemExit('Profile.tsx: email field anchor not found')
+          profile_fields = '''          {registering ? (\n            <>\n              <Field label="First name" hint={firstNameMessage ?? undefined}>\n                <AuthInput icon={<UserIcon size={18} />} invalid={Boolean(firstNameMessage)}>\n                  <input\n                    name="first-name"\n                    value={firstName}\n                    onChange={(e) => setFirstName(e.target.value)}\n                    onBlur={() => setTouched(true)}\n                    autoComplete="given-name"\n                    placeholder="Your first name"\n                    aria-label="First name"\n                    aria-invalid={Boolean(firstNameMessage)}\n                    enterKeyHint="next"\n                  />\n                </AuthInput>\n              </Field>\n              <Field label="Last name" hint={lastNameMessage ?? undefined}>\n                <AuthInput icon={<UserIcon size={18} />} invalid={Boolean(lastNameMessage)}>\n                  <input\n                    name="last-name"\n                    value={lastName}\n                    onChange={(e) => setLastName(e.target.value)}\n                    onBlur={() => setTouched(true)}\n                    autoComplete="family-name"\n                    placeholder="Your last name"\n                    aria-label="Last name"\n                    aria-invalid={Boolean(lastNameMessage)}\n                    enterKeyHint="next"\n                  />\n                </AuthInput>\n              </Field>\n              <Field label="Phone" hint={phoneMessage ?? undefined}>\n                <AuthInput icon={<PinIcon size={18} />} invalid={Boolean(phoneMessage)}>\n                  <input\n                    type="tel"\n                    name="phone"\n                    value={phone}\n                    onChange={(e) => setPhone(e.target.value)}\n                    onBlur={() => setTouched(true)}\n                    autoComplete="tel"\n                    inputMode="tel"\n                    placeholder="e.g. +92 300 1234567"\n                    aria-label="Phone"\n                    aria-invalid={Boolean(phoneMessage)}\n                    enterKeyHint="next"\n                  />\n                </AuthInput>\n              </Field>\n            </>\n          ) : null}\n\n'''
+          s = s.replace(email_anchor, profile_fields + email_anchor, 1)
+          p.write_text(s)
+
+          # Improve the logo's contrast inside dark-mode email clients by putting the transparent N+O mark on a solid light tile.
+          replace_once(
+              'apps/api/src/email.ts',
+              '<td><img src="${LOGO_URL}" width="44" height="44" alt="NearbyOrders" style="display:block;width:44px;height:44px"></td>',
+              '<td><table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td style="width:52px;height:52px;background:#F2F5F7;border:1px solid #DCE2E7;border-radius:14px;text-align:center;vertical-align:middle"><img src="${LOGO_URL}" width="44" height="44" alt="NearbyOrders" style="display:block;width:44px;height:44px;margin:0 auto"></td></tr></table></td>',
+          )
+
+          # Sanity checks for this patch.
+          for path in ['apps/api/src/lib.ts','apps/api/src/server.ts','apps/mobile/src/api.ts','apps/mobile/src/screens/Profile.tsx','apps/api/src/email.ts']:
+              text = Path(path).read_text()
+              if 'firstName' not in text and path.endswith('Profile.tsx'):
+                  raise SystemExit(f'{path}: signup patch missing')
+          print('signup/email patch applied')
+          PY
+
+      - name: Validate
+        run: |
+          git diff --check
+          pnpm install --frozen-lockfile
+          pnpm --filter @nearbyorders/api prisma:generate
+          pnpm typecheck
+
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src/lib.ts apps/api/src/server.ts apps/mobile/src/api.ts apps/mobile/src/screens/Profile.tsx apps/api/src/email.ts
+          git commit -m "fix: complete signup profile fields [skip ci]"
+          git push origin HEAD:fix/signup-profile-fields
