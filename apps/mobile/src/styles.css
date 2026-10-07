@@ -6833,3 +6833,98 @@ nav.nav-v3, nav.business-nav-v3 {
 .push-permission-card p { margin: 0 0 10px; font-size: 13px; line-height: 1.5; color: var(--ink-soft); }
 .push-permission-card .btn-row { margin: 0; }
 .push-permission-denied-note { font-size: 12.5px; color: var(--ink-soft); margin: 0; }
+
+/* ------------------------- email-auth (PR #11 UX) ------------------------- */
+/* Real N+O brand mark in auth headers: no slate square, no PinIcon. */
+.auth-brand-mark-real {
+  background: none;
+  box-shadow: none;
+  border-radius: 0;
+  width: auto;
+  height: auto;
+}
+
+/* 6-digit code input: large Bricolage digits, letter-spaced, centered. */
+.code-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: 0.35em;
+  text-align: center;
+  text-indent: 0.35em; /* optically recenter the trailing letter-spacing */
+  color: var(--brand);
+  background: var(--brand-softer);
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 12px;
+  margin: 4px 0 2px;
+}
+.code-input:focus {
+  outline: none;
+  border-color: var(--brand);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(22, 34, 46, 0.08);
+}
+.code-input.input-invalid {
+  border-color: var(--error);
+}
+.code-input:disabled {
+  opacity: 0.6;
+}
+.code-input::placeholder {
+  color: var(--muted);
+  opacity: 0.5;
+}
+
+/* Resend row: text-link ↔ countdown. */
+.resend-row {
+  margin-top: 18px;
+  text-align: center;
+}
+.resend-line {
+  margin: 0;
+  font-size: 14.5px;
+  color: var(--muted);
+}
+.resend-cooldown {
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Password-changed terminal state. */
+.password-changed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 56px 28px 32px;
+}
+.password-changed-icon {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: rgba(46, 125, 50, 0.1);
+  border: 1.5px solid rgba(46, 125, 50, 0.25);
+  color: #2e7d32;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+.password-changed h1 {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--brand);
+  margin: 0 0 10px;
+}
+.password-changed .muted {
+  margin: 0 0 28px;
+  max-width: 300px;
+}
+.password-changed .btn {
+  width: 100%;
+}

@@ -362,17 +362,71 @@ export const login = (email: string, password: string) =>
     return s;
   });
 
-/** Result of POST /auth/register: the created account (no session — callers log in next). */
-export type RegisterResult = { id: string; email: string; role: string };
+/** Result of POST /auth/register: the created account (no session — the caller
+ * routes to email verification next; the backend returns
+ * emailVerificationRequired: true). */
+export type RegisterResult = { id: string; email: string; role: string; emailVerificationRequired: boolean };
 
 /**
  * Creates a new account through the configured API base (never a raw
  * relative fetch, which breaks on Capacitor where there is no same-origin
- * API). The server returns 201 with the created user; callers then call
- * login() to establish the native session.
+ * API). The server returns 201 with the created user and
+ * emailVerificationRequired: true, and sends a 6-digit verification code
+ * by email. Callers must route to verification — do NOT call login()
+ * here: login returns 403 EMAIL_NOT_VERIFIED until the email is verified.
  */
 export const register = (email: string, password: string, role: 'CUSTOMER' | 'BUSINESS_OWNER') =>
   request<RegisterResult>('/auth/register', { method: 'POST', body: { email, password, role } });
+
+/* ------------------------- email verification ------------------------ */
+
+/** Result of POST /auth/verify-email. Also returned when already verified. */
+export type VerifyEmailResult = { verified: boolean };
+
+/**
+ * Verifies a 6-digit email code. The code is one-time and expires after
+ * 10 minutes. Returns { verified: true } on success — including when the
+ * account was already verified (idempotent).
+ * Throws ApiError 400/INVALID_CODE for wrong, expired, or unknown-email codes.
+ */
+export const verifyEmail = (email: string, code: string) =>
+  request<VerifyEmailResult>('/auth/verify-email', { method: 'POST', body: { email, code } });
+
+/** Result of POST /auth/resend-verification and POST /auth/password-reset/request. */
+export type AcceptResult = { accepted: boolean };
+
+/**
+ * Requests a fresh verification code. Always returns { accepted: true } —
+ * unknown emails and already-verified accounts get the identical response
+ * (no account-existence leak). Enforces a 60-second minimum interval
+ * (HTTP 429; note the wire code is the misleading 'CONFLICT' — key off the
+ * status) and a 5/hour endpoint quota (429 'RATE_LIMITED').
+ */
+export const resendVerification = (email: string) =>
+  request<AcceptResult>('/auth/resend-verification', { method: 'POST', body: { email } });
+
+/**
+ * Starts password recovery. Always returns { accepted: true } — never
+ * reveals whether the account exists. A 429 from the 60-second interval is
+ * swallowed server-side; other send failures surface as 500.
+ */
+export const requestPasswordReset = (email: string) =>
+  request<AcceptResult>('/auth/password-reset/request', { method: 'POST', body: { email } });
+
+/** Result of POST /auth/password-reset/complete. */
+export type ResetPasswordResult = { reset: boolean };
+
+/**
+ * Completes password recovery: consumes the 6-digit code, sets the new
+ * password (12–128 chars, server-enforced), revokes all live refresh
+ * tokens, and triggers the password-changed email.
+ * Throws ApiError 400/INVALID_CODE for wrong or expired codes.
+ */
+export const completePasswordReset = (email: string, code: string, newPassword: string) =>
+  request<ResetPasswordResult>('/auth/password-reset/complete', {
+    method: 'POST',
+    body: { email, code, newPassword },
+  });
 
 /**
  * Logs out everywhere this device knows about: clears the in-memory session

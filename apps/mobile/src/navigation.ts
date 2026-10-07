@@ -63,6 +63,10 @@ export type Route =
   | { name: 'create-business' }
   | { name: 'edit-profile' }
   | { name: 'change-password' }
+  | { name: 'verify-email' }
+  | { name: 'forgot-password' }
+  | { name: 'reset-code' }
+  | { name: 'new-password' }
   | { name: 'saved-businesses' }
   | { name: 'my-reviews' }
   | { name: 'addresses' }
@@ -101,6 +105,10 @@ export function parseHash(hash: string): Route {
   if (clean === 'create-business') return { name: 'create-business' };
   if (clean === 'edit-profile') return { name: 'edit-profile' };
   if (clean === 'change-password') return { name: 'change-password' };
+  if (clean === 'verify-email') return { name: 'verify-email' };
+  if (clean === 'forgot-password') return { name: 'forgot-password' };
+  if (clean === 'reset-code') return { name: 'reset-code' };
+  if (clean === 'new-password') return { name: 'new-password' };
   if (clean === 'saved-businesses') return { name: 'saved-businesses' };
   if (clean === 'my-reviews') return { name: 'my-reviews' };
   if (clean === 'addresses') return { name: 'addresses' };

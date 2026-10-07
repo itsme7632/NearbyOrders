@@ -20,6 +20,8 @@ const authProps = {
   onOpenMyReviews: noop,
   onOpenAddresses: noop,
   onOpenInfo: noop,
+  onForgotPassword: noop,
+  onRegisterSuccess: noop,
 };
 
 const session = {
@@ -100,17 +102,21 @@ describe('register() API layer', () => {
 });
 
 describe('ProfileScreen auth flows', () => {
-  it('signs up successfully: registers then establishes the session', async () => {
-    const registerMock = vi.spyOn(api, 'register').mockResolvedValue({ id: 'u1', email: 'new@example.com', role: 'CUSTOMER' });
+  it('signs up successfully: registers then routes to email verification (no auto-login)', async () => {
+    const registerMock = vi.spyOn(api, 'register').mockResolvedValue({ id: 'u1', email: 'new@example.com', role: 'CUSTOMER', emailVerificationRequired: true });
     const loginMock = vi.spyOn(api, 'login').mockResolvedValue(session);
+    const onRegisterSuccess = vi.fn();
 
-    render(<ProfileScreen {...authProps} />);
+    render(<ProfileScreen {...authProps} onRegisterSuccess={onRegisterSuccess} />);
     switchToRegister();
     fillRegisterForm('new@example.com', 'supersecretpassword1');
     fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
 
     await waitFor(() => expect(registerMock).toHaveBeenCalledWith('new@example.com', 'supersecretpassword1', 'CUSTOMER'));
-    await waitFor(() => expect(loginMock).toHaveBeenCalledWith('new@example.com', 'supersecretpassword1'));
+    // The new backend returns 403 EMAIL_NOT_VERIFIED on login until the email
+    // is verified, so registration must NOT attempt login.
+    expect(loginMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(onRegisterSuccess).toHaveBeenCalled());
     // No login-style error may leak into the signup flow.
     expect(screen.queryByText('Incorrect email or password. Please try again.')).toBeNull();
   });
@@ -118,14 +124,16 @@ describe('ProfileScreen auth flows', () => {
   it('signup with an existing email explains the account already exists', async () => {
     const registerMock = vi.spyOn(api, 'register').mockRejectedValue(new ApiError(409, 'CONFLICT', 'Email already in use'));
     const loginMock = vi.spyOn(api, 'login');
+    const onRegisterSuccess = vi.fn();
 
-    render(<ProfileScreen {...authProps} />);
+    render(<ProfileScreen {...authProps} onRegisterSuccess={onRegisterSuccess} />);
     switchToRegister();
     fillRegisterForm('taken@example.com', 'supersecretpassword1');
     fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
 
     await waitFor(() => expect(registerMock).toHaveBeenCalled());
     expect(loginMock).not.toHaveBeenCalled();
+    expect(onRegisterSuccess).not.toHaveBeenCalled();
     await screen.findByText('An account with this email already exists. Try signing in instead.');
     expect(screen.queryByText('Incorrect email or password. Please try again.')).toBeNull();
   });
@@ -144,17 +152,29 @@ describe('ProfileScreen auth flows', () => {
     expect(screen.queryByText('Incorrect email or password. Please try again.')).toBeNull();
   });
 
-  it('signup that creates the account but fails auto sign-in never shows login wording', async () => {
-    vi.spyOn(api, 'register').mockResolvedValue({ id: 'u1', email: 'new@example.com', role: 'CUSTOMER' });
-    vi.spyOn(api, 'login').mockRejectedValue(new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid email or password'));
+  it('login with an unverified email routes to verification recovery, not a generic failure', async () => {
+    const loginMock = vi.spyOn(api, 'login').mockRejectedValue(new ApiError(403, 'EMAIL_NOT_VERIFIED', 'Please verify your email before signing in'));
+    const onRegisterSuccess = vi.fn();
 
-    render(<ProfileScreen {...authProps} />);
-    switchToRegister();
-    fillRegisterForm('new@example.com', 'supersecretpassword1');
-    fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
+    render(<ProfileScreen {...authProps} onRegisterSuccess={onRegisterSuccess} />);
+    fillLoginForm('new@example.com', 'supersecretpassword1');
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
-    await screen.findByText(/could not sign you in automatically/i);
+    await waitFor(() => expect(loginMock).toHaveBeenCalledWith('new@example.com', 'supersecretpassword1'));
+    // No generic failure: the user gets the verification recovery path.
+    await waitFor(() => expect(onRegisterSuccess).toHaveBeenCalled());
     expect(screen.queryByText('Incorrect email or password. Please try again.')).toBeNull();
+    expect(screen.queryByText('Sign in failed. Please try again.')).toBeNull();
+  });
+
+  it('forgot password button is enabled and navigates to the reset flow', async () => {
+    const onForgotPassword = vi.fn();
+
+    render(<ProfileScreen {...authProps} onForgotPassword={onForgotPassword} />);
+    const forgot = screen.getByRole('button', { name: 'Forgot password?' });
+    expect(forgot).toBeEnabled();
+    fireEvent.click(forgot);
+    expect(onForgotPassword).toHaveBeenCalled();
   });
 
   it('login with wrong credentials shows the login-specific error', async () => {

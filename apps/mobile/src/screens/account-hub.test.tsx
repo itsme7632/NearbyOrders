@@ -46,6 +46,8 @@ describe('AccountHub (signed-in Profile tab)', () => {
         onOpenMyReviews={noop}
         onOpenAddresses={noop}
         onOpenInfo={noop}
+        onForgotPassword={noop}
+        onRegisterSuccess={noop}
       />,
     );
     await screen.findByText('Ayesha Khan');
@@ -57,7 +59,7 @@ describe('AccountHub (signed-in Profile tab)', () => {
   });
 
   it('navigates from hub rows to Edit Profile, Change Password, Orders, Bookings and Notifications', async () => {
-    const handlers = { edit: vi.fn(), pw: vi.fn(), orders: vi.fn(), bookings: vi.fn(), notifs: vi.fn(), saved: vi.fn(), reviews: vi.fn(), addresses: vi.fn(), info: vi.fn() };
+    const handlers = { edit: vi.fn(), pw: vi.fn(), orders: vi.fn(), bookings: vi.fn(), notifs: vi.fn(), saved: vi.fn(), reviews: vi.fn(), addresses: vi.fn(), info: vi.fn(), forgotPassword: vi.fn(), registerSuccess: vi.fn() };
     render(
       <ProfileScreen
         onOwnerDashboard={noop}
@@ -70,6 +72,8 @@ describe('AccountHub (signed-in Profile tab)', () => {
         onOpenMyReviews={handlers.reviews}
         onOpenAddresses={handlers.addresses}
         onOpenInfo={handlers.info}
+        onForgotPassword={handlers.forgotPassword}
+        onRegisterSuccess={handlers.registerSuccess}
       />,
     );
     await screen.findByText('Ayesha Khan');
@@ -107,6 +111,8 @@ describe('AccountHub (signed-in Profile tab)', () => {
         onOpenMyReviews={noop}
         onOpenAddresses={noop}
         onOpenInfo={noop}
+        onForgotPassword={noop}
+        onRegisterSuccess={noop}
       />,
     );
     await screen.findByText('Ayesha Khan');
@@ -132,6 +138,8 @@ describe('AccountHub (signed-in Profile tab)', () => {
         onOpenMyReviews={noop}
         onOpenAddresses={noop}
         onOpenInfo={noop}
+        onForgotPassword={noop}
+        onRegisterSuccess={noop}
       />,
     );
     expect(await screen.findByText('Ayesha Khan')).toBeTruthy();
