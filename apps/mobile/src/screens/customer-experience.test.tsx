@@ -29,8 +29,6 @@ vi.mock('../api.js', async (importOriginal) => ({
   listMyReviews: vi.fn(),
 }));
 
-// The address form's pin section uses the real map; mock the picker with a
-// tappable stand-in so these tests exercise the form wiring, not Leaflet.
 vi.mock('../components/PinDropPicker.js', () => ({
   PinDropPicker: (props: {
     value: { latitude: number; longitude: number } | null;
@@ -66,7 +64,6 @@ const favEntry = (id: string, name: string): FavoriteEntry => ({
 });
 
 describe('SavedBusinessesScreen', () => {
-  // Phase 2F: unsave feedback comes from useToast, which needs the provider.
   const renderSaved = () =>
     render(
       <ToastProvider>
@@ -92,7 +89,6 @@ describe('SavedBusinessesScreen', () => {
 
     expect(await screen.findByText('Butt Spices')).toBeTruthy();
     expect(screen.getByText('Glow Salon')).toBeTruthy();
-    // BusinessRow shows the shared rating chip (star glyph + average).
     expect(screen.getAllByLabelText('Rated 4.5 out of 5')).toHaveLength(2);
 
     fireEvent.click(screen.getByText('Butt Spices').closest('button')!);
@@ -123,7 +119,6 @@ describe('SavedBusinessesScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: /Remove Butt Spices from saved/i }));
     await waitFor(() => expect(api.unsaveFavorite).toHaveBeenCalledWith('b1'));
     expect(await screen.findByText('Could not remove from Saved. Please try again.')).toBeTruthy();
-    // The row stays so the user can retry.
     expect(screen.getByText('Butt Spices')).toBeTruthy();
   });
 });
@@ -181,7 +176,6 @@ describe('AddressesScreen', () => {
     fireEvent.change(screen.getByPlaceholderText('House, street, area, city'), {
       target: { value: 'Office 5, Main Boulevard, Lahore' },
     });
-    // recipientName inputs have no placeholder — grab by label text.
     const recipient = screen.getAllByLabelText(/Recipient name/i)[0] as HTMLInputElement;
     fireEvent.change(recipient, { target: { value: 'Ayesha Khan' } });
 
@@ -209,7 +203,6 @@ describe('AddressesScreen', () => {
     expect(screen.getByText('House 12, Street 4, Gulberg III, Lahore')).toBeTruthy();
     expect(screen.getByText('Office 5, Main Boulevard, Lahore')).toBeTruthy();
 
-    // Work's "Set default" calls the API with isDefault.
     const setDefaultButtons = screen.getAllByText('Set default');
     expect(setDefaultButtons).toHaveLength(1);
     fireEvent.click(setDefaultButtons[0]);
@@ -242,7 +235,6 @@ describe('AddressesScreen', () => {
     render(<AddressesScreen onBack={() => {}} />);
     fireEvent.click(await screen.findByText('Add an address'));
 
-    // The pin section is collapsed by default and never invents coordinates.
     expect(screen.queryByTestId('mock-pin-picker')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /pin on map/i }));
     fireEvent.click(screen.getByTestId('mock-pin-picker'));
@@ -283,18 +275,26 @@ describe('AddressesScreen', () => {
 });
 
 describe('info pages', () => {
-  it('renders honest placeholder copy for all four pages', () => {
+  it('renders the current support and legal pages', () => {
     const { unmount: u1 } = render(<HelpScreen onBack={() => {}} />);
     expect(screen.getByRole('heading', { name: 'Help & support' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Orders' })).toBeTruthy();
+    expect(screen.getAllByText('info@nearbyorders.com')).toHaveLength(2);
     u1();
+
     const { unmount: u2 } = render(<TermsScreen onBack={() => {}} />);
-    expect(screen.getByText(/not the final legal text/i)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '1. About NearbyOrders' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '7. Refunds and cancellations' })).toBeTruthy();
     u2();
+
     const { unmount: u3 } = render(<PrivacyScreen onBack={() => {}} />);
-    expect(screen.getByText(/replaced by the final legal policy/i)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '1. Information you provide' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '12. Account deletion' })).toBeTruthy();
     u3();
+
     const { unmount: u4 } = render(<AboutScreen onBack={() => {}} />);
     expect(screen.getByText('Find nearby. Book or order.')).toBeTruthy();
+    expect(screen.getByText(/Local commerce, built for real neighborhoods/)).toBeTruthy();
     u4();
   });
 });
