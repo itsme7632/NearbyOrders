@@ -25,6 +25,9 @@ import {
   type NotifyFn,
 } from './SavedCollections.js';
 import { PinDropPicker } from '../components/PinDropPicker.js';
+import { HelpScreen, TermsScreen, PrivacyScreen, AboutScreen } from './InfoScreens.js';
+
+export { HelpScreen, TermsScreen, PrivacyScreen, AboutScreen };
 
 /* ------------------------------------------------------------------ */
 /* Shared screen scaffolding                                           */
@@ -557,75 +560,8 @@ export function AddressesScreen(props: { onBack: () => void }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Info pages (honest placeholders: final legal content comes later)   */
+/* Info pages live in InfoScreens.tsx.                               */
 /* ------------------------------------------------------------------ */
-
-function InfoPage(props: { title: string; children: React.ReactNode; onBack: () => void }) {
-  return (
-    <div className="screen">
-      <ScreenHead title={props.title} />
-      <div className="info-card">{props.children}</div>
-      <Button full variant="ghost" onClick={props.onBack}>
-        Back
-      </Button>
-    </div>
-  );
-}
-
-export function HelpScreen(props: { onBack: () => void }) {
-  return (
-    <InfoPage title="Help & support" onBack={props.onBack}>
-      <p>
-        NearbyOrders connects you with nearby local businesses for bookings and orders. If something went wrong with an
-        order or booking, contact the business directly first. Their phone number and address are on their profile.
-      </p>
-      <p>For account problems (sign-in, wrong charges shown, deleted listings), reach the platform team at the support
-        address published with your app release. This page will grow into full self-service support.</p>
-    </InfoPage>
-  );
-}
-
-export function TermsScreen(props: { onBack: () => void }) {
-  return (
-    <InfoPage title="Terms & conditions" onBack={props.onBack}>
-      <p>
-        This is a plain-language summary, not the final legal text. By using NearbyOrders you agree to use the platform
-        for genuine bookings and orders, to pay businesses through the payment channels they publish, and not to
-        misuse other people's data.
-      </p>
-      <p>
-        Businesses are responsible for the accuracy of their own listings, prices, and availability. The final legal
-        terms will replace this summary before public launch.
-      </p>
-    </InfoPage>
-  );
-}
-
-export function PrivacyScreen(props: { onBack: () => void }) {
-  return (
-    <InfoPage title="Privacy policy" onBack={props.onBack}>
-      <p>
-        NearbyOrders stores your account details (name, email, phone), your bookings and orders, and (if you add them)
-        your saved businesses and delivery addresses. Businesses you transact with see only the information needed to
-        serve you (your name and the order/booking details).
-      </p>
-      <p>Payment receipts you upload go only to the business you are paying. Push notification tokens are used solely
-        to deliver your notifications. This summary will be replaced by the final legal policy before public launch.</p>
-    </InfoPage>
-  );
-}
-
-export function AboutScreen(props: { onBack: () => void }) {
-  return (
-    <InfoPage title="About NearbyOrders" onBack={props.onBack}>
-      <p className="about-tagline">Find nearby. Book or order.</p>
-      <p>
-        NearbyOrders is a local marketplace for Pakistan: discover real businesses around you, book services with live
-        availability, and order products for pickup or delivery. Built mobile-first, in PKR, for real neighborhoods.
-      </p>
-    </InfoPage>
-  );
-}
 
 /* ------------------------------------------------------------------ */
 /* Saved-state hook shared by the business profile heart               */
