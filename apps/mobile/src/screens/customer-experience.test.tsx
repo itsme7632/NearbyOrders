@@ -283,18 +283,26 @@ describe('AddressesScreen', () => {
 });
 
 describe('info pages', () => {
-  it('renders honest placeholder copy for all four pages', () => {
+  it('renders the current support and legal pages', () => {
     const { unmount: u1 } = render(<HelpScreen onBack={() => {}} />);
     expect(screen.getByRole('heading', { name: 'Help & support' })).toBeTruthy();
+    expect(screen.getByText(/Orders/)).toBeTruthy();
+    expect(screen.getByText(/info@nearbyorders\.com/)).toBeTruthy();
     u1();
+
     const { unmount: u2 } = render(<TermsScreen onBack={() => {}} />);
-    expect(screen.getByText(/not the final legal text/i)).toBeTruthy();
+    expect(screen.getByText(/1\. About NearbyOrders/)).toBeTruthy();
+    expect(screen.getByText(/Refunds and cancellations/)).toBeTruthy();
     u2();
+
     const { unmount: u3 } = render(<PrivacyScreen onBack={() => {}} />);
-    expect(screen.getByText(/replaced by the final legal policy/i)).toBeTruthy();
+    expect(screen.getByText(/1\. Information you provide/)).toBeTruthy();
+    expect(screen.getByText(/Account deletion/)).toBeTruthy();
     u3();
+
     const { unmount: u4 } = render(<AboutScreen onBack={() => {}} />);
     expect(screen.getByText('Find nearby. Book or order.')).toBeTruthy();
+    expect(screen.getByText(/Local commerce, built for real neighborhoods/)).toBeTruthy();
     u4();
   });
 });
