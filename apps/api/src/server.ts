@@ -336,6 +336,7 @@ export async function buildApp(): Promise<FastifyInstance> {
           passwordHash: await argon2.hash(d.password, { type: argon2.argon2id }),
           firstName: d.firstName,
           lastName: d.lastName,
+          phone: d.phone,
           role: d.role ?? 'CUSTOMER',
         },
       });

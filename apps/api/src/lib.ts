@@ -14,6 +14,7 @@ export const registerSchema = z.object({
   password: z.string().min(12).max(128),
   firstName: z.string().min(1).max(80).optional(),
   lastName: z.string().max(80).optional(),
+  phone: z.string().trim().min(7).max(20).regex(/^[+\d][\d\s-]+$/, 'Invalid phone number').optional(),
   role: z.enum(['CUSTOMER', 'BUSINESS_OWNER']).optional(),
 });
 

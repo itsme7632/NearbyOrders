@@ -375,8 +375,18 @@ export type RegisterResult = { id: string; email: string; role: string; emailVer
  * by email. Callers must route to verification — do NOT call login()
  * here: login returns 403 EMAIL_NOT_VERIFIED until the email is verified.
  */
-export const register = (email: string, password: string, role: 'CUSTOMER' | 'BUSINESS_OWNER') =>
-  request<RegisterResult>('/auth/register', { method: 'POST', body: { email, password, role } });
+export const register = (
+  email: string,
+  password: string,
+  role: 'CUSTOMER' | 'BUSINESS_OWNER',
+  firstName: string,
+  lastName: string,
+  phone: string,
+) =>
+  request<RegisterResult>('/auth/register', {
+    method: 'POST',
+    body: { email, password, role, firstName, lastName, phone },
+  });
 
 /* ------------------------- email verification ------------------------ */
 
