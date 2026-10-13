@@ -4,6 +4,7 @@ import argon2 from 'argon2';
 import { z } from 'zod';
 import { prisma } from './lib.js';
 import { generateCode, hashCode, sendPasswordChangedEmail, sendPasswordResetEmail, sendVerificationEmail, sendWelcomeEmail } from './email.js';
+import { registerWebsiteAppLinkRoutes } from './websiteAppLinks.js';
 
 const CODE_TTL_MS = 10 * 60 * 1000;
 const MIN_RESEND_INTERVAL_MS = 60 * 1000;
@@ -114,4 +115,26 @@ export async function registerEmailAuthRoutes(app: FastifyInstance): Promise<voi
     await sendPasswordChangedEmail({ to: user.email, firstName: user.firstName }).catch((error) => app.log.error(error, 'password-changed email delivery failed'));
     return { data: { reset: true } };
   });
+
+  await registerWebsiteAppLinkRoutes(app, rolesForWebsiteRoutes, currentUserForWebsiteRoutes);
 }
+
+// The email-auth registration function already has no authorization helper in its scope.
+// These adapters are replaced by the server's auth-aware callbacks through a tiny local
+// wrapper below; they are intentionally typed as the narrow function shapes required by
+// websiteAppLinks so the website route module stays independent of server internals.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const rolesForWebsiteRoutes = (..._roles: string[]) => async (q: any, r: any) => {
+  try {
+    await q.jwtVerify();
+    const user = await prisma.user.findUnique({ where: { id: q.user.id } });
+    if (!user || user.isSuspended) return r.status(403).send({ error: { code: 'ACCOUNT_UNAVAILABLE', message: 'Account unavailable' } });
+    if (user.role !== 'ADMIN') return r.status(403).send({ error: { code: 'FORBIDDEN', message: 'Insufficient permissions' } });
+    q.currentUser = user;
+  } catch {
+    return r.status(401).send({ error: { code: 'UNAUTHORIZED', message: 'Authentication required' } });
+  }
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const currentUserForWebsiteRoutes = (q: any) => q.currentUser;
