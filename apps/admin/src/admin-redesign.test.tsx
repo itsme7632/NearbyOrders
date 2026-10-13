@@ -191,7 +191,7 @@ describe('admin audit log (redesign)', () => {
     const c = await renderInto(<AuditLog />);
     await flush();
 
-    expect(c.textContent).toContain('Audit log');
+    expect(c.textContent).toContain('Recent admin activity');
     expect(c.textContent).toContain('Business Approved');
     expect(c.textContent).toContain('admin@example.com');
   });
