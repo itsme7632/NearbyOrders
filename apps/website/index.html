@@ -3,790 +3,774 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NearbyOrders: Discover, Order &amp; Book Nearby</title>
-<meta name="description" content="NearbyOrders is the local marketplace app for Android. Discover nearby businesses, place orders, and make bookings, all in one place.">
-<link rel="canonical" href="https://nearbyorders.com/">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta name="theme-color" content="#16222E">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="NearbyOrders">
-<meta property="og:title" content="NearbyOrders: Discover, Order &amp; Book Nearby">
-<meta property="og:description" content="Discover nearby businesses, place orders, and make bookings, all from one Android app.">
-<meta property="og:url" content="https://nearbyorders.com/">
-<meta property="og:image" content="https://nearbyorders.com/og-cover.png">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="NearbyOrders wordmark with the N+O mark">
-<meta name="twitter:card" content="summary_large_image">
+<title>NearbyOrders: Discover What's Nearby</title>
+<meta name="description" content="NearbyOrders puts the shops around the corner in your pocket. Discover local businesses, order food and groceries, book services, and track everything live.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Caveat:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
-/* ============================================================
-   NEARBYORDERS · FINAL PRODUCTION WEBSITE
-   Foundation: Concept 01 "Product First" + restrained local-
-   discovery influence from Concept 02.
-   Brand: N+O / ATLAS REFINED
-   Tokens: Porcelain #F2F5F7 · Slate #16222E · Ember #E23A2E
-   Type: Bricolage Grotesque (display) · Inter (body) ·
-         JetBrains Mono (meta labels)
-   ============================================================ */
-:root{
-  --porcelain:#F2F5F7;
-  --porcelain-deep:#E7ECF0;
-  --porcelain-card:#FFFFFF;
-  --slate:#16222E;
-  --slate-soft:#22313F;
-  --slate-mute:#8FA0AF;
-  --ink:#16222E;
-  --muted:#5B6D7D;
-  --ember:#E23A2E;
-  --ember-deep:#C22E24;
-  --line:#DCE3E9;
-  --line-dark:#2B3B4A;
-  --radius:20px;
-  --radius-lg:28px;
-  --font-display:"Bricolage Grotesque",system-ui,sans-serif;
-  --font-body:"Inter",system-ui,sans-serif;
-  --font-mono:"JetBrains Mono",ui-monospace,monospace;
-  --shadow-card:0 1px 2px rgba(22,34,46,.05),0 12px 32px -12px rgba(22,34,46,.18);
-  --shadow-phone:0 2px 6px rgba(22,34,46,.25),0 40px 80px -24px rgba(22,34,46,.45);
-  --maxw:1200px;
-}
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth}
-body{
-  font-family:var(--font-body);
-  background:var(--porcelain);
-  color:var(--ink);
-  line-height:1.6;
-  -webkit-font-smoothing:antialiased;
-  overflow-x:hidden;
-}
-img,svg{display:block;max-width:100%}
-a{color:inherit;text-decoration:none}
-button{font:inherit;cursor:pointer}
-::selection{background:var(--ember);color:#fff}
-:focus-visible{outline:3px solid var(--ember);outline-offset:3px;border-radius:6px}
-
-.skip-link{
-  position:absolute;left:-9999px;top:0;background:var(--slate);color:#fff;
-  padding:12px 20px;border-radius:0 0 12px 0;z-index:200;font-weight:600;
-}
-.skip-link:focus{left:0}
-
-.wrap{max-width:var(--maxw);margin:0 auto;padding:0 32px}
-section{position:relative}
-.eyebrow{
-  font-family:var(--font-mono);font-size:12px;letter-spacing:.22em;
-  text-transform:uppercase;color:var(--ember);font-weight:500;
-  display:flex;align-items:center;gap:12px;margin-bottom:20px;
-}
-.eyebrow::before{content:"";width:28px;height:2px;background:var(--ember)}
-h1,h2{font-family:var(--font-display);font-weight:800;letter-spacing:-.02em;line-height:1.04}
-h2{font-size:clamp(34px,4.4vw,56px);margin-bottom:18px}
-.lede{font-size:clamp(16px,1.6vw,19px);color:var(--muted);max-width:56ch}
-
-/* ---------- Buttons ---------- */
-.btn{
-  display:inline-flex;align-items:center;justify-content:center;gap:10px;
-  min-height:52px;padding:0 30px;border-radius:999px;font-weight:600;font-size:16px;
-  border:2px solid transparent;transition:transform .18s ease,box-shadow .18s ease,background .18s ease;
-  white-space:nowrap;
-}
-.btn-ember{background:var(--ember);color:#fff}
-.btn-ember:hover{background:var(--ember-deep);transform:translateY(-2px);box-shadow:0 12px 24px -10px rgba(226,58,46,.55)}
-.btn-outline{border-color:var(--line);color:var(--ink);background:transparent}
-.btn-outline:hover{border-color:var(--slate);transform:translateY(-2px)}
-.btn-porcelain{background:var(--porcelain);color:var(--slate)}
-.btn-porcelain:hover{transform:translateY(-2px);box-shadow:0 12px 24px -10px rgba(0,0,0,.35)}
-.btn-outline-light{border-color:var(--line-dark);color:var(--porcelain)}
-.btn-outline-light:hover{border-color:var(--porcelain);transform:translateY(-2px)}
-
-/* ---------- Header ---------- */
-.site-header{
-  position:sticky;top:0;z-index:100;
-  background:rgba(242,245,247,.86);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-  border-bottom:1px solid var(--line);
-}
-.nav{display:flex;align-items:center;justify-content:space-between;height:72px}
-.brand{display:flex;align-items:center;gap:11px;font-family:var(--font-display);font-weight:800;font-size:21px;letter-spacing:-.01em}
-.brand-mark{
-  width:34px;height:34px;flex:0 0 auto;
-}
-.brand-mark svg{display:block;width:100%;height:100%}
-.nav-links{display:flex;align-items:center;gap:34px;list-style:none}
-.nav-links a{font-weight:500;font-size:15px;color:var(--muted);transition:color .15s}
-.nav-links a:hover{color:var(--ink)}
-.nav-cta{display:flex;align-items:center;gap:12px}
-.nav-cta .btn{min-height:44px;padding:0 22px;font-size:15px}
-.nav-toggle{display:none;background:none;border:0;width:44px;height:44px;position:relative}
-.nav-toggle span,.nav-toggle span::before,.nav-toggle span::after{
-  content:"";display:block;width:22px;height:2px;background:var(--slate);border-radius:2px;position:absolute;left:11px;transition:transform .2s,opacity .2s;
-}
-.nav-toggle span{top:21px}
-.nav-toggle span::before{top:-7px;left:0}
-.nav-toggle span::after{top:7px;left:0}
-
-/* ---------- Hero ---------- */
-.hero{padding:96px 0 110px;overflow:hidden}
-.hero-grid{display:grid;grid-template-columns:1.02fr .98fr;gap:48px;align-items:center}
-.hero h1{font-size:clamp(48px,6.2vw,88px);margin:0 0 24px}
-.hero h1 .ember{color:var(--ember)}
-.hero .lede{margin-bottom:36px}
-.hero-ctas{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:28px}
-.hero-meta{font-family:var(--font-mono);font-size:12px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase}
-.hero-visual{position:relative;display:flex;justify-content:center}
-
-/* ---------- Phone mockup component ---------- */
-.phone{
-  width:min(300px,72vw);aspect-ratio:300/614;border-radius:48px;position:relative;z-index:1;
-  background:#0C141C;padding:13px;box-shadow:var(--shadow-phone);
-}
-.phone::before{ /* side button */
-  content:"";position:absolute;right:-3px;top:150px;width:3px;height:74px;border-radius:2px;background:#0C141C;
-}
-.phone-screen{
-  width:100%;height:100%;border-radius:36px;overflow:hidden;background:var(--porcelain-deep);
-  position:relative;
-}
-/* App screen, drawn from the real NearbyOrders mobile app (see assets/screens/SCREEN_SOURCES.md).
-   Drop a PNG at the slot path; no code changes needed. */
-.phone-shot{width:100%;height:100%;object-fit:cover;display:block;background:var(--porcelain-deep)}
-
-/* floating cards around hero phone */
-.float-card{
-  position:absolute;z-index:2;background:#fff;border:1px solid var(--line);border-radius:18px;
-  box-shadow:var(--shadow-card);padding:14px 16px;display:flex;gap:12px;align-items:center;
-  animation:floaty 6s ease-in-out infinite;
-}
-.float-card .fc-icon{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;flex:none}
-.float-card h5{font-size:13px;font-weight:700}
-.float-card p{font-size:11.5px;color:var(--muted)}
-.fc-order{top:16%;left:-4%}
-.fc-book{bottom:14%;right:-6%;animation-delay:3s}
-@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
-
-/* ---------- Reveal on scroll ---------- */
-.reveal{opacity:0;transform:translateY(28px);transition:opacity .7s ease,transform .7s ease}
-.reveal.in{opacity:1;transform:none}
-
-/* ---------- Section scaffolding ---------- */
-.section{padding:110px 0}
-.section-head{max-width:720px;margin-bottom:64px}
-.section-head.center{margin-left:auto;margin-right:auto;text-align:center}
-.section-head.center .eyebrow{justify-content:center}
-.section-head.center .eyebrow::after{content:"";width:28px;height:2px;background:var(--ember)}
-.section-head.center .lede{margin:0 auto}
-
-/* ---------- S2: Product moments (editorial rows, not cards) ---------- */
-.moment-rows{border-top:1px solid var(--line)}
-.moment-row{
-  display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center;
-  padding:52px 0;border-bottom:1px solid var(--line);
-}
-.moment-row:nth-child(even) .moment-text{order:2}
-.moment-row:nth-child(even) .shot-slot{justify-self:end;width:100%}
-.moment-num{font-family:var(--font-mono);font-size:12px;letter-spacing:.2em;color:var(--ember);margin-bottom:16px}
-.moment-row h3{font-family:var(--font-display);font-size:clamp(26px,2.8vw,34px);font-weight:700;letter-spacing:-.01em;margin-bottom:12px}
-.moment-row p{color:var(--muted);font-size:16px;max-width:44ch}
-/* App screen (wide crop), drawn from the real NearbyOrders mobile app.
-   Drop a PNG at the slot path; no code changes needed. */
-.shot-slot{
-  border-radius:16px;overflow:hidden;border:1px solid var(--line);
-  aspect-ratio:4/3;background:var(--porcelain-deep);box-shadow:var(--shadow-card);
-  max-width:480px;
-}
-.shot-slot img{width:100%;height:100%;object-fit:cover;display:block}
-.duo-order .shot-slot{border-color:var(--line-dark)}
-.pill{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:4px 10px;border-radius:999px;background:rgba(226,58,46,.12);color:var(--ember);margin-left:auto;flex:none}
-.pill.slate{background:var(--slate);color:#fff}
-
-/* ---------- S3: Local discovery ---------- */
-.discovery{background:var(--slate);color:var(--porcelain);overflow:hidden}
-.discovery .wrap{padding-top:110px;padding-bottom:110px}
-.discovery .eyebrow{color:var(--ember)}
-.discovery h2{color:#fff}
-.discovery .lede{color:var(--slate-mute)}
-.discovery-grid{display:grid;grid-template-columns:1fr 1.1fr;gap:64px;align-items:center;margin-top:8px}
-.map-panel{
-  background:#0E1822;border:1px solid var(--line-dark);border-radius:var(--radius-lg);
-  padding:28px;position:relative;overflow:hidden;
-}
-.map-panel svg.map{width:100%;height:auto;border-radius:12px}
-.map-legend{display:flex;justify-content:space-between;align-items:center;margin-top:16px}
-.map-legend span{font-family:var(--font-mono);font-size:11px;letter-spacing:.16em;color:var(--slate-mute);text-transform:uppercase}
-.cat-chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
-.cat-chips button{
-  background:transparent;border:1px solid var(--line-dark);color:var(--porcelain);
-  font-size:13.5px;font-weight:600;padding:10px 18px;border-radius:999px;
-  transition:background .15s,border-color .15s;display:inline-flex;align-items:center;gap:8px;
-}
-.cat-chips button:hover,.cat-chips button.on{background:var(--ember);border-color:var(--ember);color:#fff}
-.cat-chips button .cdot{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.7}
-.pin{transform-box:fill-box;transform-origin:center;animation:pinpulse 2.6s ease-out infinite}
-@keyframes pinpulse{0%{opacity:.9;transform:scale(.6)}70%{opacity:0;transform:scale(2.1)}100%{opacity:0;transform:scale(2.1)}}
-.discovery-points{list-style:none;margin-top:34px;display:grid;gap:18px}
-.discovery-points li{display:flex;gap:16px;align-items:flex-start}
-.discovery-points .dp-icon{
-  width:42px;height:42px;border-radius:13px;background:rgba(226,58,46,.14);color:var(--ember);
-  display:grid;place-items:center;flex:none;
-}
-.discovery-points b{color:#fff;font-size:16px;display:block;margin-bottom:2px}
-.discovery-points p{color:var(--slate-mute);font-size:14.5px}
-
-/* ---------- S4: Orders + Bookings ---------- */
-.duo{display:grid;grid-template-columns:1fr 1fr;gap:24px}
-.duo-card{
-  border-radius:var(--radius-lg);padding:48px 44px;position:relative;overflow:hidden;
-  display:flex;flex-direction:column;gap:8px;min-height:560px;
-}
-.duo-order{background:var(--slate);color:var(--porcelain)}
-.duo-book{background:var(--porcelain-card);border:1px solid var(--line);box-shadow:var(--shadow-card)}
-.duo-card .kicker{font-family:var(--font-mono);font-size:12px;letter-spacing:.24em;text-transform:uppercase;margin-bottom:10px}
-.duo-order .kicker{color:var(--ember)}
-.duo-book .kicker{color:var(--ember)}
-.duo-card h3{font-family:var(--font-display);font-size:clamp(28px,3vw,38px);font-weight:800;letter-spacing:-.015em;line-height:1.1}
-.duo-order h3{color:#fff}
-.duo-card>p{font-size:15.5px;margin-bottom:8px}
-.duo-order>p{color:var(--slate-mute)}
-.duo-book>p{color:var(--muted)}
-.duo-ui{margin-top:auto;background:rgba(255,255,255,.04);border:1px solid var(--line-dark);border-radius:18px;padding:20px}
-.duo-book .duo-ui{background:var(--porcelain);border-color:var(--line)}
-
-/* ---------- S5: For businesses ---------- */
-.business{background:var(--porcelain-deep);border-radius:28px;margin:0 20px}
-.business .wrap{padding-top:110px;padding-bottom:110px}
-.biz-grid{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center}
-.owner-dash{
-  background:var(--slate);border-radius:var(--radius-lg);padding:30px;color:var(--porcelain);
-  box-shadow:var(--shadow-card);border:1px solid var(--line-dark);
-}
-.od-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px}
-.od-head b{font-family:var(--font-display);font-size:18px;color:#fff}
-.od-head span{font-family:var(--font-mono);font-size:11px;letter-spacing:.14em;color:var(--slate-mute);text-transform:uppercase}
-.od-kpis{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
-.od-kpi{background:var(--slate-soft);border:1px solid var(--line-dark);border-radius:14px;padding:14px 16px}
-.od-kpi small{font-size:11px;color:var(--slate-mute);text-transform:uppercase;letter-spacing:.1em;display:block;margin-bottom:4px}
-.od-kpi b{font-family:var(--font-display);font-size:22px;color:#fff}
-.od-kpi b em{font-style:normal;color:var(--ember);font-size:14px}
-.od-note{font-size:11px;color:var(--slate-mute);text-align:center;margin:16px 0 0;letter-spacing:.06em}
-.od-orders{display:grid;gap:10px}
-.od-order{background:var(--slate-soft);border:1px solid var(--line-dark);border-radius:14px;padding:13px 16px;display:flex;align-items:center;gap:12px}
-.od-order .oid{font-family:var(--font-mono);font-size:12px;color:var(--slate-mute)}
-.od-order b{font-size:13.5px;color:#fff;display:block}
-.od-order small{font-size:11.5px;color:var(--slate-mute)}
-.biz-list{list-style:none;margin:30px 0 36px;display:grid;gap:16px}
-.biz-list li{display:flex;gap:14px;align-items:flex-start;font-size:15.5px}
-.biz-list .tick{
-  width:28px;height:28px;border-radius:50%;background:rgba(226,58,46,.12);color:var(--ember);
-  display:grid;place-items:center;flex:none;font-weight:700;font-size:14px;margin-top:2px;
-}
-.biz-list p{color:var(--muted)}
-.biz-list b{color:var(--ink)}
-
-/* ---------- S6: One connected platform ---------- */
-.platform-diagram{max-width:640px;margin:0 auto;text-align:center}
-.plat-node{
-  border:2px solid var(--line);border-radius:var(--radius);background:#fff;
-  padding:26px 30px;box-shadow:var(--shadow-card);position:relative;
-}
-.plat-node .pn-tag{font-family:var(--font-mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--ember);display:block;margin-bottom:8px}
-.plat-node h3{font-family:var(--font-display);font-size:26px;font-weight:800}
-.plat-node p{color:var(--muted);font-size:14.5px;margin-top:6px}
-.plat-core{border-color:var(--slate);background:var(--slate);color:#fff}
-.plat-core h3{color:#fff}
-.plat-core p{color:var(--slate-mute)}
-.plat-core .brand-mark{margin:0 auto 14px}
-.plat-link{display:flex;flex-direction:column;align-items:center;padding:6px 0;color:var(--ember)}
-.plat-link .pline{width:0;height:30px;border-left:2px dashed var(--ember);opacity:.7}
-.plat-admin{
-  margin-top:34px;border:1px dashed var(--line);border-radius:var(--radius);padding:26px 30px;
-  background:var(--porcelain-card);
-}
-.plat-admin .pn-tag{font-family:var(--font-mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:8px}
-.plat-admin p{color:var(--muted);font-size:14.5px;max-width:46ch;margin:6px auto 0}
-.admin-list{
-  margin-top:18px;font-family:var(--font-mono);font-size:12.5px;letter-spacing:.06em;
-  color:var(--muted);line-height:2.1;
-}
-.admin-list b{color:var(--ink);font-weight:500}
-
-/* ---------- S7: App CTA ---------- */
-.app-cta{background:var(--slate);color:#fff;overflow:hidden;position:relative}
-.app-cta .wrap{padding-top:110px;padding-bottom:110px;display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center}
-.app-cta h2{color:#fff}
-.app-cta h2 .ember{color:var(--ember)}
-.app-cta .lede{color:var(--slate-mute);margin-bottom:36px}
-.app-cta .hero-ctas{margin-bottom:0}
-
-/* ---------- Footer ---------- */
-.site-footer{border-top:1px solid var(--line);padding:72px 0 36px;background:var(--porcelain)}
-.footer-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:40px;margin-bottom:56px}
-.footer-brand p{color:var(--muted);font-size:14.5px;margin:16px 0 20px;max-width:30ch}
-.footer-domains{font-family:var(--font-mono);font-size:12px;color:var(--muted);display:grid;gap:6px}
-.footer-domains b{color:var(--ink);font-weight:500}
-.footer-col h4{font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:18px}
-.footer-col ul{list-style:none;display:grid;gap:12px}
-.footer-col a{font-size:15px;color:var(--ink)}
-.footer-col a:hover{color:var(--ember)}
-.footer-bottom{border-top:1px solid var(--line);padding-top:28px;display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
-.footer-bottom p{font-size:13.5px;color:var(--muted)}
-
-/* ---------- Responsive ---------- */
-@media (max-width:1024px){
-  .hero{padding:72px 0 88px}
-  .hero-grid{grid-template-columns:1fr;gap:64px}
-  .hero-visual{order:2}
-  .hero-copy{max-width:640px}
-  .discovery-grid{grid-template-columns:1fr;gap:48px}
-  .biz-grid{grid-template-columns:1fr;gap:48px}
-  .app-cta .wrap{grid-template-columns:1fr;gap:64px}
-  .moment-row{grid-template-columns:1fr;gap:28px;padding:40px 0}
-  .moment-row:nth-child(even) .moment-text{order:0}
-  .moment-row:nth-child(even) .shot-slot{justify-self:start}
-  .moment-row .shot-slot{max-width:560px}
-  .duo{grid-template-columns:1fr}
-  .duo-card{min-height:0}
-  .footer-grid{grid-template-columns:1fr 1fr}
-}
-@media (max-width:768px){
-  .wrap{padding:0 22px}
-  .section{padding:80px 0}
-  .nav-links,.nav-cta{display:none}
-  .nav-toggle{display:block}
-  .site-header.nav-open .nav-links{
-    display:flex;position:absolute;top:72px;left:0;right:0;flex-direction:column;align-items:stretch;
-    background:var(--porcelain);border-bottom:1px solid var(--line);padding:12px 22px 20px;gap:0;
+  /* ============ NEARBYORDERS : DESIGN TOKENS ============ */
+  :root{
+    --slate:#16222E;
+    --ember:#E23A2E;
+    --porcelain:#F2F5F7;
+    --white:#FFFFFF;
+    --slate-70:rgba(22,34,46,.70);
+    --slate-55:rgba(22,34,46,.55);
+    --slate-15:rgba(22,34,46,.14);
+    --slate-08:rgba(22,34,46,.08);
+    --ember-15:rgba(226,58,46,.12);
+    --shadow:0 14px 34px rgba(22,34,46,.14), 0 3px 8px rgba(22,34,46,.08);
+    --shadow-sm:0 6px 16px rgba(22,34,46,.10);
+    --font-d:'Bricolage Grotesque',system-ui,sans-serif;
+    --font-h:'Caveat',cursive;
   }
-  .site-header.nav-open .nav-links a{display:block;padding:14px 0;border-bottom:1px solid var(--line);font-size:17px;color:var(--ink)}
-  .site-header.nav-open .nav-cta{display:flex;position:absolute;top:328px;left:0;right:0;padding:4px 22px 20px;background:var(--porcelain);border-bottom:1px solid var(--line)}
-  .site-header.nav-open .nav-cta .btn{flex:1}
-  .site-header.nav-open .nav-toggle span{background:transparent}
-  .site-header.nav-open .nav-toggle span::before{transform:translateY(7px) rotate(45deg)}
-  .site-header.nav-open .nav-toggle span::after{transform:translateY(-7px) rotate(-45deg)}
-  .hero h1{font-size:clamp(40px,11vw,56px)}
-  .float-card{padding:10px 12px;border-radius:14px}
-  .fc-order{left:-2%}
-  .fc-book{right:-2%}
-  .business{margin:0 12px;border-radius:24px}
-  .discovery .wrap,.business .wrap,.app-cta .wrap{padding-top:72px;padding-bottom:72px}
-  .duo-card{padding:34px 26px}
-  .footer-grid{grid-template-columns:1fr;gap:32px}
-  .btn{width:100%}
-  .hero-ctas .btn{width:auto;flex:1}
-}
-@media (max-width:520px){
-  .hero{padding:56px 0 72px}
-  .od-kpis{grid-template-columns:1fr 1fr}
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{font-family:var(--font-d);background:var(--porcelain);color:var(--slate);overflow-x:clip;-webkit-font-smoothing:antialiased}
+  ::selection{background:var(--ember);color:var(--white)}
+  img,svg{display:block;max-width:100%}
+  a{color:inherit}
+  :focus-visible{outline:3px solid var(--ember);outline-offset:3px;border-radius:6px}
+  .wrap{max-width:1200px;margin:0 auto;padding:0 28px}
+  .hand{font-family:var(--font-h)}
 
-}
-/* ---------- Reduced motion ---------- */
-@media (prefers-reduced-motion:reduce){
-  html{scroll-behavior:auto}
-  *,*::before,*::after{animation-duration:.001s !important;transition-duration:.001s !important}
-  .reveal{opacity:1;transform:none}
-}
+  /* ============ STICKER PRIMITIVES 2.0 ============ */
+  .sticker{
+    background:var(--white);border:4px solid var(--white);border-radius:20px;
+    box-shadow:var(--shadow);position:relative;
+  }
+  .tilt-a{transform:rotate(-2.2deg)} .tilt-b{transform:rotate(1.8deg)}
+  .tilt-c{transform:rotate(-1.2deg)} .tilt-d{transform:rotate(2.6deg)}
+  .tape{position:absolute;width:88px;height:26px;top:-13px;left:50%;
+    transform:translateX(-50%) rotate(-4deg);background:rgba(226,58,46,.30);
+    border-left:2px dashed rgba(255,255,255,.7);border-right:2px dashed rgba(255,255,255,.7)}
+  .tape.slate{background:rgba(22,34,46,.20)}
+  .doodle{position:absolute;pointer-events:none;z-index:5}
+  .burst{position:absolute;z-index:6;filter:drop-shadow(0 8px 14px rgba(22,34,46,.22))}
+  .kicker{
+    display:inline-block;background:var(--white);border-radius:999px;
+    box-shadow:var(--shadow-sm);padding:10px 22px;font-weight:700;font-size:.92rem;
+    transform:rotate(-2deg);margin-bottom:26px;
+  }
+  .kicker b{color:var(--ember)}
+  .eyebrow{font-size:.8rem;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--ember);margin-bottom:18px;display:block}
+  h2.sec-title{font-size:clamp(2.4rem,5vw,4.2rem);font-weight:800;letter-spacing:-.03em;line-height:1.02;margin-bottom:18px}
+  h2.sec-title .hl-ember{color:var(--ember)}
+  .sec-lede{font-size:1.12rem;color:var(--slate-70);line-height:1.65;max-width:34rem;font-weight:500}
+  section.block{padding:110px 0;position:relative}
+  @media(max-width:640px){section.block{padding:72px 0}.wrap{padding:0 20px}}
+
+  /* Buttons */
+  .btn{display:inline-flex;align-items:center;gap:10px;font-weight:700;font-size:1rem;
+    padding:16px 34px;border-radius:999px;text-decoration:none;border:none;cursor:pointer;
+    transition:transform .18s ease, box-shadow .18s ease;font-family:var(--font-d)}
+  .btn-ember{background:var(--ember);color:var(--white);box-shadow:0 10px 24px rgba(226,58,46,.35)}
+  .btn-ember:hover{transform:translateY(-2px) rotate(-1deg);box-shadow:0 14px 30px rgba(226,58,46,.42)}
+  .btn-slate{background:var(--slate);color:var(--white);box-shadow:var(--shadow-sm)}
+  .btn-slate:hover{transform:translateY(-2px) rotate(1deg)}
+  .btn-white{background:var(--white);color:var(--slate);box-shadow:var(--shadow-sm)}
+  .btn-white:hover{transform:translateY(-2px)}
+
+  /* ============ 1. NAV ============ */
+  nav{position:sticky;top:16px;z-index:90;padding:0 20px}
+  .nav-inner{max-width:1160px;margin:0 auto;background:var(--white);border-radius:999px;
+    box-shadow:var(--shadow);display:flex;align-items:center;justify-content:space-between;
+    padding:12px 14px 12px 24px;transform:rotate(-.6deg)}
+  .lockup{display:flex;align-items:center;gap:11px;text-decoration:none;font-weight:800;font-size:1.22rem;letter-spacing:-.01em}
+  .lockup svg{width:34px;height:34px}
+  .nav-links{display:flex;gap:30px;align-items:center}
+  .nav-links a{text-decoration:none;font-weight:600;font-size:.95rem;color:var(--slate-70);transition:color .15s}
+  .nav-links a:hover{color:var(--ember)}
+  .nav-cta{padding:12px 26px;font-size:.92rem;white-space:nowrap}
+  @media(max-width:900px){.nav-links a:not(.nav-cta){display:none}}
+  @media(max-width:640px){
+    .nav-inner{padding:10px 10px 10px 18px}
+    .nav-cta{padding:10px 18px;font-size:.82rem}
+    .lockup span{font-size:1rem}
+  }
+
+  /* ============ 2. HERO ============ */
+  .hero{position:relative;padding:84px 0 120px;overflow:hidden;
+    background-image:radial-gradient(rgba(22,34,46,.10) 1.5px, transparent 1.6px);background-size:26px 26px}
+  .hero-grid{display:grid;grid-template-columns:1.08fr .92fr;gap:56px;align-items:center}
+  h1.display{font-size:clamp(3.4rem,8vw,6.4rem);font-weight:800;line-height:.96;letter-spacing:-.035em;margin-bottom:26px}
+  h1.display .word-sticker{
+    display:inline-block;background:var(--ember);color:var(--white);
+    padding:.06em .28em .12em;border-radius:.18em;transform:rotate(-2deg);
+    box-shadow:0 12px 28px rgba(226,58,46,.35);border:4px solid var(--white);
+  }
+  .hero .lede{font-size:1.18rem;line-height:1.65;color:var(--slate-70);max-width:29rem;margin-bottom:36px;font-weight:500}
+  .hero-ctas{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+  .hero-note{font-size:1.45rem;color:var(--slate-55);transform:rotate(-2deg);display:inline-block}
+  .hero-note b{color:var(--ember)}
+
+  .stage{position:relative;display:flex;justify-content:center;padding:24px 0;min-height:660px}
+  .phone{
+    width:302px;height:628px;background:var(--white);border-radius:46px;padding:13px;
+    box-shadow:var(--shadow);transform:rotate(2deg);position:relative;z-index:2;
+  }
+  .phone-notch{width:110px;height:26px;background:var(--slate);border-radius:999px;margin:2px auto 10px}
+  .phone-screen{background:var(--porcelain);border-radius:34px;height:calc(100% - 38px);overflow:hidden;display:flex;flex-direction:column}
+  .app-top{padding:16px 16px 8px;display:flex;justify-content:space-between;align-items:center}
+  .app-loc{font-weight:800;font-size:.92rem}
+  .app-loc small{display:block;font-weight:500;font-size:.68rem;color:var(--slate-55)}
+  .avatar{width:36px;height:36px;border-radius:50%;background:var(--ember);color:var(--white);
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.85rem;flex-shrink:0}
+  .searchbar{margin:6px 14px 4px;background:var(--white);border-radius:999px;padding:11px 16px;
+    font-size:.78rem;color:var(--slate-55);display:flex;align-items:center;box-shadow:var(--shadow-sm)}
+  .s-ico{display:inline-block;width:13px;height:13px;border:2px solid currentColor;border-radius:50%;position:relative;margin-right:9px;flex-shrink:0}
+  .s-ico:after{content:"";position:absolute;width:6px;height:2px;background:currentColor;transform:rotate(45deg);right:-5px;bottom:-2px}
+  .chiprow{display:flex;gap:8px;padding:10px 14px 2px;overflow:hidden}
+  .chip{font-size:.68rem;font-weight:700;padding:7px 13px;border-radius:999px;white-space:nowrap;
+    background:var(--white);color:var(--slate-70);box-shadow:var(--shadow-sm)}
+  .chip.on{background:var(--slate);color:var(--white)}
+  .biz{margin:10px 14px 0;background:var(--white);border-radius:16px;padding:12px 14px;box-shadow:var(--shadow-sm)}
+  .biz .bn{font-weight:800;font-size:.86rem;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .biz .bm{font-size:.7rem;color:var(--slate-55);margin:4px 0 8px}
+  .biz .bm b{color:var(--ember)}
+  .biz .br{display:flex;justify-content:space-between;align-items:center}
+  .biz .bp{font-size:.78rem;font-weight:700}
+  .mini-btn{font-size:.68rem;font-weight:800;background:var(--ember);color:var(--white);border:none;
+    border-radius:999px;padding:7px 15px;cursor:pointer;font-family:var(--font-d)}
+  .tag-open{font-size:.6rem;font-weight:800;letter-spacing:.08em;background:var(--ember-15);color:var(--ember);
+    padding:4px 10px;border-radius:999px}
+  .app-tabs{margin-top:auto;display:flex;justify-content:space-around;padding:12px 8px 18px;background:var(--white)}
+  .tab{font-size:.6rem;color:var(--slate-55);font-weight:600;text-align:center}
+  .tab.on{color:var(--ember);font-weight:800}
+
+  .float{position:absolute;z-index:4;padding:14px 18px;font-weight:800;font-size:.88rem;max-width:215px}
+  .float small{display:block;font-weight:500;font-size:.72rem;color:var(--slate-55);margin-top:4px;line-height:1.45}
+  .f-order{top:9%;left:-2%}
+  .f-book{top:34%;right:-3%}
+  .f-track{bottom:16%;left:-4%}
+  .f-local{bottom:6%;right:2%}
+  .f-dist{top:2%;right:6%;background:var(--slate);color:var(--white);border-color:var(--slate);font-size:.8rem}
+  .f-dist small{color:rgba(255,255,255,.65)}
+  .note{position:absolute;font-size:1.35rem;color:var(--slate);z-index:5;line-height:1.25}
+  .n1{top:24%;left:2%}
+  .n2{bottom:30%;right:-1%;transform:rotate(5deg)}
+  .b-new{top:44%;left:-6%}
+  @media(max-width:1020px){
+    .hero-grid{grid-template-columns:1fr}
+    .stage{max-width:460px;width:100%;margin:24px auto 0;min-height:620px}
+    .f-order{left:0}.f-book{right:0}.f-track{left:0}.f-local{right:2%}
+  }
+  @media(max-width:640px){
+    .hero{padding:56px 0 80px}
+    h1.display{font-size:clamp(2.9rem,15vw,4rem)}
+    .phone{width:272px;height:580px}
+    .float{font-size:.78rem;max-width:170px;padding:11px 14px}
+    .note{font-size:1.15rem}
+    .n1{top:30%;left:2%}
+    .n2{display:none}
+    .f-dist{top:0;right:0}
+    /* mobile recomposition: fewer stickers, no crowding */
+    .f-book,.f-local{display:none}
+    .f-order{top:6%;left:0}
+    .f-track{bottom:10%;left:-2%}
+    .b-new{top:40%;left:-4%}
+  }
 </style>
 </head>
 <body>
-<a class="skip-link" href="#main">Skip to content</a>
 
-<!-- ================= HEADER ================= -->
-<header class="site-header" id="siteHeader">
-  <div class="wrap">
-    <nav class="nav" aria-label="Primary">
-      <a class="brand" href="#top" aria-label="NearbyOrders home">
-        <svg class="brand-mark" viewBox="0 0 120 120" role="img" aria-label="NearbyOrders mark"><path d="M29 90 L29 30 L52.17 52.42" stroke="#16222E" stroke-width="14" fill="none" stroke-linejoin="round" stroke-linecap="round"/><path d="M67.83 67.58 L91 90 L91 30" stroke="#16222E" stroke-width="14" fill="none" stroke-linejoin="round" stroke-linecap="round"/><path d="M50 60 A10 10 0 1 1 70 60 A10 10 0 1 1 50 60 Z" fill="none" stroke="#E23A2E" stroke-width="6"/><path d="M49.09 39.70 L57.00 47.35 L55.69 47.74 L54.43 48.25 L53.23 48.90 L52.11 49.67 L51.07 50.55 L50.14 51.53 L49.30 52.61 L48.59 53.77 L48.00 55.00 L47.54 56.28 C50.12 47.65 55.56 45.96 49.09 39.70 Z" fill="#E23A2E"/><path d="M39.36 49.76 L47.26 57.41 L47.60 56.09 L48.08 54.82 L48.68 53.60 L49.41 52.45 L50.26 51.39 L51.21 50.42 L52.26 49.55 L53.40 48.80 L54.61 48.17 L55.87 47.67 C47.34 50.53 45.82 56.02 39.36 49.76 Z" fill="#E23A2E"/><path d="M70.91 80.30 L63.00 72.65 L64.31 72.26 L65.57 71.75 L66.77 71.10 L67.89 70.33 L68.93 69.45 L69.86 68.47 L70.70 67.39 L71.41 66.23 L72.00 65.00 L72.46 63.72 C69.88 72.35 64.44 74.04 70.91 80.30 Z" fill="#E23A2E"/><path d="M80.64 70.24 L72.74 62.59 L72.40 63.91 L71.92 65.18 L71.32 66.40 L70.59 67.55 L69.74 68.61 L68.79 69.58 L67.74 70.45 L66.60 71.20 L65.39 71.83 L64.13 72.33 C72.66 69.47 74.18 63.98 80.64 70.24 Z" fill="#E23A2E"/></svg>
-        NearbyOrders
-      </a>
-      <ul class="nav-links" id="navLinks">
-        <li><a href="#product">Product</a></li>
-        <li><a href="#discover">Discover</a></li>
-        <li><a href="#business">For Businesses</a></li>
-        <li><a href="#platform">Platform</a></li>
-      </ul>
-      <div class="nav-cta">
-        <a class="btn btn-ember" href="#get-app">Get the App</a>
+
+<!-- ============ 1. NAVIGATION ============ -->
+<nav aria-label="Main navigation">
+  <div class="nav-inner">
+    <a class="lockup" href="#top" aria-label="NearbyOrders home">
+      <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="NearbyOrders logo"><path d="M29 90 L29 30 L52.17 52.42" stroke="#16222E" stroke-width="14" fill="none" stroke-linejoin="round" stroke-linecap="round"/><path d="M67.83 67.58 L91 90 L91 30" stroke="#16222E" stroke-width="14" fill="none" stroke-linejoin="round" stroke-linecap="round"/><circle cx="60" cy="60" r="10" fill="none" stroke="#E23A2E" stroke-width="6"/><path d="M49.09 39.70 L57.00 47.35 L55.69 47.74 L54.43 48.25 L53.23 48.90 L52.11 49.67 L51.07 50.55 L50.14 51.53 L49.30 52.61 L48.59 53.77 L48.00 55.00 L47.54 56.28 C50.12 47.65 55.56 45.96 49.09 39.70 Z" fill="#E23A2E"/><path d="M39.36 49.76 L47.26 57.41 L47.60 56.09 L48.08 54.82 L48.68 53.60 L49.41 52.45 L50.26 51.39 L51.21 50.42 L52.26 49.55 L53.40 48.80 L54.61 48.17 L55.87 47.67 C47.34 50.53 45.82 56.02 39.36 49.76 Z" fill="#E23A2E"/><path d="M70.91 80.30 L63.00 72.65 L64.31 72.26 L65.57 71.75 L66.77 71.10 L67.89 70.33 L68.93 69.45 L69.86 68.47 L70.70 67.39 L71.41 66.23 L72.00 65.00 L72.46 63.72 C69.88 72.35 64.44 74.04 70.91 80.30 Z" fill="#E23A2E"/><path d="M80.64 70.24 L72.74 62.59 L72.40 63.91 L71.92 65.18 L71.32 66.40 L70.59 67.55 L69.74 68.61 L68.79 69.58 L67.74 70.45 L66.60 71.20 L65.39 71.83 L64.13 72.33 C72.66 69.47 74.18 63.98 80.64 70.24 Z" fill="#E23A2E"/></svg>
+      <span>NearbyOrders</span>
+    </a>
+    <div class="nav-links">
+      <a href="#what">What it does</a>
+      <a href="#discover">Discover</a>
+      <a href="#business">For Business</a>
+      <a href="#why">Why us</a>
+      <a class="btn btn-ember nav-cta" href="#download" data-applink="primary">Get the app</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ 2. HERO ============ -->
+<header class="hero" id="top">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="kicker">Made for your <b>mohalla</b>, powered by local shops</span>
+      <h1 class="display">DISCOVER<br>WHAT'S<br><span class="word-sticker">NEARBY.</span></h1>
+      <p class="lede">Order what you need. Book the service you want. Discover what's around you. One app for your whole neighborhood.</p>
+      <div class="hero-ctas">
+        <a class="btn btn-ember" href="#download" data-applink="primary">Get the app
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+        <a class="btn btn-slate" href="#discover">Explore nearby</a>
       </div>
-      <button class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="navLinks" aria-label="Open menu">
-        <span aria-hidden="true"></span>
-      </button>
-    </nav>
+      <p class="hero-note hand">free to download, <b>no card needed</b> to look around!</p>
+    </div>
+
+    <div class="stage" aria-label="NearbyOrders app preview">
+      <!-- phone: discovery feed -->
+      <div class="phone">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <div class="app-top">
+            <div class="app-loc">Gulberg, Lahore<small>Delivering to Home</small></div>
+            <div class="avatar" aria-hidden="true">Z</div>
+          </div>
+          <div class="searchbar"><span class="s-ico" aria-hidden="true"></span>Search biryani, barbers, meds…</div>
+          <div class="chiprow" aria-hidden="true">
+            <span class="chip on">Near you</span><span class="chip">Food</span><span class="chip">Grocery</span><span class="chip">Services</span>
+          </div>
+          <div class="biz">
+            <div class="bn">Lahore Biryani House <span class="tag-open">OPEN</span></div>
+            <div class="bm"><b>4.8</b> (2.1k) · 12 min away</div>
+            <div class="br"><span class="bp">Rs. 250 onwards</span><button class="mini-btn" type="button" tabindex="-1">Order</button></div>
+          </div>
+          <div class="biz">
+            <div class="bn">FreshDaily Mart <span class="tag-open">OPEN</span></div>
+            <div class="bm"><b>4.6</b> (860) · 8 min away</div>
+            <div class="br"><span class="bp">Rs. 99 delivery</span><button class="mini-btn" type="button" tabindex="-1">Shop</button></div>
+          </div>
+          <div class="biz">
+            <div class="bn">UrbanCut Barber <span class="tag-open">SLOTS</span></div>
+            <div class="bm"><b>4.9</b> (1.4k) · 5 min away</div>
+            <div class="br"><span class="bp">Rs. 500 haircut</span><button class="mini-btn" type="button" tabindex="-1">Book</button></div>
+          </div>
+          <div class="app-tabs" aria-hidden="true">
+            <span class="tab on">Home</span><span class="tab">Explore</span><span class="tab">Orders</span><span class="tab">Bookings</span><span class="tab">Profile</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- floating stickers -->
+      <div class="sticker float f-order tilt-a"><div class="tape"></div>ORDER NEARBY<small>Food, groceries and more, from shops on your street</small></div>
+      <div class="sticker float f-book tilt-b">BOOK A SERVICE<small>Barbers, tailors, repairs. Pick a slot, done.</small></div>
+      <div class="sticker float f-track tilt-c">TRACK YOUR RIDER<small>Live map, live updates, zero guessing</small></div>
+      <div class="sticker float f-local tilt-d">SUPPORT LOCAL<small>Every order keeps money in your neighborhood</small></div>
+      <div class="sticker float f-dist tilt-b">JUST 2.4 KM AWAY<small>Shops near you, right now</small></div>
+
+      <!-- annotations + bursts -->
+      <span class="hand note n1">real shops,<br>real ratings!</span>
+      <svg class="doodle" style="top:30%;left:6%;transform:rotate(14deg)" width="64" height="46" viewBox="0 0 70 50" aria-hidden="true"><path d="M6 8 C 24 4, 40 20, 58 30 M52 24 l8 7 -10 3" fill="none" stroke="#E23A2E" stroke-width="4" stroke-linecap="round"/></svg>
+      <span class="hand note n2">one app,<br>whole street</span>
+      <svg class="burst b-new" width="76" height="76" viewBox="0 0 100 100" aria-hidden="true">
+        <polygon points="50,2 61,20 80,12 79,32 98,38 86,52 98,66 79,72 80,92 61,84 50,98 39,84 20,92 21,72 2,66 14,52 2,38 21,32 20,12 39,20" fill="#16222E" stroke="#fff" stroke-width="4"/>
+        <text x="50" y="58" text-anchor="middle" fill="#fff" font-family="Bricolage Grotesque" font-weight="800" font-size="17">NEW</text>
+      </svg>
+    </div>
   </div>
 </header>
 
-<main id="main">
-<!-- ================= S1 · HERO ================= -->
-<section class="hero" id="top" aria-labelledby="hero-title">
-  <div class="wrap hero-grid">
-    <div class="hero-copy">
-      <p class="eyebrow">NearbyOrders for Android</p>
-      <h1 id="hero-title">Everything nearby.<br>One place to <span class="ember">order and book.</span></h1>
-      <p class="lede">NearbyOrders helps you discover local businesses, place orders, and make bookings. One app, built for the neighborhood around you.</p>
-      <div class="hero-ctas">
-        <a class="btn btn-ember" href="#get-app">Get the App</a>
-        <a class="btn btn-outline" href="#business">For Businesses</a>
-      </div>
-      <p class="hero-meta">Discover · Order · Book · Manage</p>
+<!-- ============ TICKER ============ -->
+<div class="ticker-band" aria-hidden="true">
+  <div class="ticker">
+    <span>Food</span><span class="e">Groceries</span><span>Barbers</span><span class="e">Pharmacies</span><span>Services</span><span class="e">Bakeries</span><span>Tailors</span><span class="e">Repairs</span>
+    <span>Food</span><span class="e">Groceries</span><span>Barbers</span><span class="e">Pharmacies</span><span>Services</span><span class="e">Bakeries</span><span>Tailors</span><span class="e">Repairs</span>
+  </div>
+</div>
+
+<!-- ============ 3. WHAT IT DOES ============ -->
+<section class="block" id="what" aria-labelledby="what-title">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="hand eyebrow-hand">psst… it is this easy</span>
+      <h2 class="sec-title" id="what-title">One app.<br><span class="hl-ember">Every errand.</span></h2>
+      <p class="sec-lede">From craving to doorstep, from empty calendar to fully booked. NearbyOrders connects you with the businesses already on your street.</p>
     </div>
-    <div class="hero-visual">
-      <div class="phone" role="img" aria-label="Phone frame: real NearbyOrders Home screen capture needed">
-        <!-- App screen: customer Home, from apps/mobile/src/screens/Home.tsx -->
+    <div class="cards4">
+      <article class="sticker step tilt-a">
+        <div class="tape slate"></div>
+        <div class="step-num">01</div>
+        <h3>DISCOVER</h3>
+        <p>Find the biryani spot, the barber, the pharmacy and the tailor hiding two streets away. Real local businesses, reviewed by real neighbors.</p>
+        <div class="frag"><span>FreshDaily Mart</span><b>0.4 km</b></div>
+        <div class="frag"><span>UrbanCut Barber</span><b>0.8 km</b></div>
+        <div class="frag"><span>Al-Noor Pharmacy</span><b>1.1 km</b></div>
+      </article>
+      <article class="sticker step tilt-b step-offset">
+        <div class="tape"></div>
+        <div class="step-num">02</div>
+        <h3>ORDER</h3>
+        <p>Groceries, dinner, medicines. Add to cart, pay the way you like, and the shop starts packing while you put your feet up.</p>
+        <div class="frag"><span>Chicken biryani × 2</span><b>Rs. 700</b></div>
+        <div class="frag"><span>Raita + salad</span><b>Rs. 150</b></div>
+        <div class="frag total"><span>Delivery</span><b>Rs. 120</b></div>
+      </article>
+      <article class="sticker step tilt-c">
+        <div class="tape slate"></div>
+        <div class="step-num">03</div>
+        <h3>BOOK</h3>
+        <p>Haircut at 5, plumber at 6. Pick a slot, get an instant confirmation, and a reminder before your appointment.</p>
+        <div class="frag"><span>UrbanCut · Haircut</span><b>Today 5:00</b></div>
+        <div class="frag"><span>Status</span><b class="ok">Confirmed ✓</b></div>
+        <div class="frag"><span>Reminder</span><b>4:30 PM</b></div>
+      </article>
+      <article class="sticker step tilt-d step-offset">
+        <div class="tape"></div>
+        <div class="step-num">04</div>
+        <h3>TRACK</h3>
+        <p>Watch your order move in real time, chat with your rider, and rate the shop to help the neighborhood choose well.</p>
+        <div class="frag"><span>Rider distance</span><b>2.1 km</b></div>
+        <div class="frag"><span>Arriving in</span><b>≈ 5 min</b></div>
+        <div class="frag"><span>Support local</span><b class="ok">100%</b></div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<style>
+  /* ============ TICKER ============ */
+  .ticker-band{background:var(--slate);transform:rotate(-1.1deg);margin:6px -24px 0;padding:20px 0;overflow:hidden}
+  .ticker{display:flex;gap:20px;width:max-content;animation:slide 28s linear infinite}
+  .ticker span{font-weight:800;font-size:1.05rem;letter-spacing:.04em;color:var(--white);
+    border:2px solid rgba(255,255,255,.9);border-radius:999px;padding:9px 26px;white-space:nowrap}
+  .ticker span.e{background:var(--ember);border-color:var(--ember)}
+  @keyframes slide{to{transform:translateX(-50%)}}
+  @keyframes drift{0%,100%{translate:0 0}50%{translate:0 -7px}}
+  .hero .float{animation:drift 7s ease-in-out infinite}
+  .hero .f-track{animation-delay:-2.5s}.hero .f-book{animation-delay:-4s}.hero .f-local{animation-delay:-5.5s}
+
+  /* ============ SECTION HEADS ============ */
+  .sec-head{text-align:center;max-width:660px;margin:0 auto 60px}
+  .eyebrow-hand{font-size:1.4rem;color:var(--ember);display:block;margin-bottom:8px;transform:rotate(-2deg)}
+
+  /* ============ WHAT-CARDS ============ */
+  .cards4{display:grid;grid-template-columns:repeat(4,1fr);gap:28px;align-items:start}
+  .step{padding:30px 24px}
+  .step-offset{margin-top:44px}
+  .step-num{font-size:2.6rem;font-weight:800;color:var(--ember);letter-spacing:-.02em;margin-bottom:6px}
+  .step h3{font-size:1.3rem;font-weight:800;letter-spacing:.02em;margin-bottom:12px}
+  .step p{font-size:.94rem;line-height:1.65;color:var(--slate-70);margin-bottom:18px;font-weight:500}
+  .frag{display:flex;justify-content:space-between;gap:10px;background:var(--porcelain);border-radius:12px;
+    padding:9px 13px;font-size:.8rem;margin-bottom:8px}
+  .frag span{color:var(--slate-70);font-weight:500}
+  .frag b{font-weight:800}
+  .frag .ok{color:var(--ember)}
+  .frag.total{background:var(--slate)}
+  .frag.total span,.frag.total b{color:var(--white)}
+  @media(max-width:1020px){.cards4{grid-template-columns:repeat(2,1fr)}.step-offset{margin-top:0}}
+  @media(max-width:640px){.cards4{grid-template-columns:1fr}}
+
+  /* ============ SHOWCASE SECTIONS ============ */
+  .show-grid{display:grid;grid-template-columns:1fr 1fr;gap:70px;align-items:center}
+  .show-grid.rev>.copy{order:2}
+  .show-grid.rev>.visual{order:1}
+  .giant-word{position:absolute;top:40px;left:0;right:0;text-align:center;font-size:clamp(4rem,14vw,12rem);
+    font-weight:800;letter-spacing:-.02em;color:transparent;-webkit-text-stroke:2px var(--slate-15);
+    pointer-events:none;user-select:none;white-space:nowrap}
+  .visual{position:relative;min-height:560px;display:flex;justify-content:center;align-items:center}
+  .bizcard{position:absolute;z-index:4;padding:16px 20px;max-width:230px;font-weight:800;font-size:.92rem}
+  .bizcard small{display:block;font-weight:500;font-size:.74rem;color:var(--slate-55);margin-top:5px;line-height:1.5}
+  .bizcard .stars{color:var(--ember);letter-spacing:3px;font-size:.8rem;margin-bottom:4px}
+  .notif{position:absolute;z-index:4;display:flex;gap:12px;align-items:center;padding:13px 18px;max-width:260px}
+  .notif .n-ico{width:40px;height:40px;border-radius:14px;background:var(--ember);color:var(--white);
+    display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0}
+  .notif b{font-size:.82rem;display:block}
+  .notif small{font-size:.7rem;color:var(--slate-55)}
+  @media(max-width:1020px){.show-grid{grid-template-columns:1fr;gap:50px}.show-grid.rev>.copy{order:1}.show-grid.rev>.visual{order:2}}
+
+  /* receipt + booking fragments */
+  .receipt{padding:22px 24px;max-width:280px;font-size:.85rem}
+  .receipt h4{font-size:1rem;margin-bottom:12px}
+  .receipt .rrow{display:flex;justify-content:space-between;padding:6px 0;color:var(--slate-70);font-weight:500}
+  .receipt .rrow b{color:var(--slate)}
+  .receipt .rtotal{border-top:2px dashed var(--slate-15);margin-top:8px;padding-top:10px;font-weight:800}
+  .slots{display:flex;gap:10px;margin:14px 0}
+  .slot{border:2px solid var(--slate-15);border-radius:12px;padding:9px 15px;font-weight:700;font-size:.82rem}
+  .slot.on{background:var(--ember);border-color:var(--ember);color:var(--white)}
+  .timeline{list-style:none;padding:6px 0}
+  .timeline li{display:flex;gap:12px;align-items:flex-start;padding:9px 0;font-size:.86rem;font-weight:600}
+  .timeline .dot{width:14px;height:14px;border-radius:50%;background:var(--slate-15);margin-top:3px;flex-shrink:0}
+  .timeline .dot.done{background:var(--ember)}
+  .timeline small{display:block;font-weight:500;color:var(--slate-55);font-size:.72rem}
+
+  /* dark band */
+  .dark-band{background:var(--slate);color:var(--porcelain);border-radius:36px;margin:0 20px;overflow:hidden}
+  .dark-band .sec-title{color:var(--white)}
+  .dark-band .sec-lede{color:rgba(242,245,247,.7)}
+  .dark-band .eyebrow{color:var(--ember)}
+  .dark-band .sticker,.dark-band .phone-screen{color:var(--slate)}
+  @media(max-width:640px){.dark-band{margin:0 12px;border-radius:26px}}
+
+  /* dashboard mockup */
+  .dash{background:var(--white);border-radius:24px;box-shadow:var(--shadow);padding:28px;color:var(--slate);max-width:480px;width:100%}
+  .dash-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+  .dash-head b{font-size:1.05rem}
+  .live-pill{font-size:.68rem;font-weight:800;letter-spacing:.1em;color:var(--ember)}
+  .live-pill i{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ember);margin-right:6px;animation:blink 1.6s infinite}
+  .dash-example{display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--slate-55);background:var(--porcelain);border:2px dashed var(--slate-25);border-radius:999px;padding:6px 14px;margin:0 0 16px}
+  @keyframes blink{50%{opacity:.25}}
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+  .stat{background:var(--porcelain);border-radius:16px;padding:14px 16px}
+  .stat b{font-size:1.5rem;letter-spacing:-.02em;display:block}
+  .stat span{font-size:.7rem;color:var(--slate-55);font-weight:600}
+  .order-row{display:flex;justify-content:space-between;font-size:.8rem;padding:10px 2px;border-top:1px solid var(--slate-08);font-weight:500}
+  .order-row b{font-weight:800}
+
+  /* why stickers */
+  .why-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:26px;max-width:880px;margin:56px auto 0}
+  .why-card{padding:28px 30px;display:flex;gap:18px;align-items:flex-start}
+  .why-ico{width:52px;height:52px;border-radius:16px;background:var(--ember);color:var(--white);flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;transform:rotate(-6deg)}
+  .why-card h3{font-size:1.25rem;margin-bottom:8px}
+  .why-card p{font-size:.95rem;color:var(--slate-70);line-height:1.6;font-weight:500}
+  @media(max-width:640px){.why-grid{grid-template-columns:1fr}}
+
+  /* download band */
+  .dl-band{background:var(--ember);border-radius:36px;margin:0 20px;overflow:hidden;color:var(--white);position:relative}
+  .dl-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:60px;align-items:center;padding:90px 0}
+  .dl-band h2{font-size:clamp(2.6rem,5.5vw,4.6rem);font-weight:800;letter-spacing:-.03em;line-height:1;margin-bottom:20px}
+  .dl-band p{font-size:1.1rem;line-height:1.65;opacity:.92;margin-bottom:34px;max-width:30rem;font-weight:500}
+  .dl-buttons{display:flex;gap:14px;flex-wrap:wrap}
+  .dl-btn{display:inline-flex;align-items:center;gap:12px;background:var(--white);color:var(--slate);
+    border-radius:18px;padding:14px 22px;text-decoration:none;font-weight:800;box-shadow:0 10px 26px rgba(0,0,0,.18);
+    transition:transform .18s ease}
+  .dl-btn:hover{transform:translateY(-3px) rotate(-1deg)}
+  .dl-btn small{display:block;font-size:.66rem;font-weight:600;opacity:.6}
+  .dl-btn span{font-size:.98rem}
+  .dl-btn.soon{opacity:.55;cursor:default}
+  .dl-note{margin-top:20px;font-size:.82rem;opacity:.75;font-weight:500}
+  .dl-band .phone-screen{color:var(--slate)}
+  @media(max-width:1020px){.dl-grid{grid-template-columns:1fr;padding:70px 0}}
+  @media(max-width:640px){.dl-band{margin:0 12px;border-radius:26px}}
+
+  /* footer */
+  footer{background:var(--slate);color:var(--porcelain);margin-top:110px;border-radius:36px 36px 0 0}
+  .foot-grid{display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr 1fr;gap:36px;padding:70px 0 50px}
+  .foot-brand p{font-size:.92rem;opacity:.65;line-height:1.65;margin-top:16px;max-width:22rem;font-weight:500}
+  .foot-col h4{font-size:.78rem;letter-spacing:.16em;text-transform:uppercase;opacity:.5;margin-bottom:20px}
+  .foot-col a{display:block;text-decoration:none;font-weight:600;font-size:.95rem;padding:7px 0;opacity:.85}
+  .foot-col a:hover{color:var(--ember);opacity:1}
+  .foot-base{border-top:1px solid rgba(255,255,255,.12);padding:26px 0;display:flex;justify-content:space-between;
+    font-size:.82rem;opacity:.55;font-weight:500;flex-wrap:wrap;gap:12px}
+  @media(max-width:900px){.foot-grid{grid-template-columns:1fr 1fr}}
+  @media(max-width:560px){.foot-grid{grid-template-columns:1fr}}
+
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation:none !important;transition:none !important}
+    html{scroll-behavior:auto}
+  }
+</style>
+
+<!-- ============ 4. DISCOVERY SHOWCASE ============ -->
+<section class="block" id="discover" aria-labelledby="discover-title" style="overflow:hidden">
+  <div class="giant-word" aria-hidden="true">DISCOVER</div>
+  <div class="wrap show-grid">
+    <div class="copy">
+      <span class="eyebrow">Nearby discovery</span>
+      <h2 class="sec-title" id="discover-title">Your street,<br>in your <span class="hl-ember">pocket.</span></h2>
+      <p class="sec-lede">Real shops with real ratings and real distances. No endless scrolling through chains, no sponsored pins. Just what's actually around you.</p>
+      <div style="margin-top:30px;display:flex;gap:14px;flex-wrap:wrap">
+        <a class="btn btn-slate" href="#download" data-applink="primary">Start discovering</a>
+      </div>
+      <p class="hand" style="font-size:1.35rem;color:var(--slate-55);margin-top:18px;transform:rotate(-2deg);display:inline-block">sorted by <b style="color:var(--ember)">distance</b>, not by ad money</p>
+    </div>
+    <div class="visual" aria-label="Discovery preview">
+      <div class="phone tilt-c">
+        <div class="tape"></div>
+        <div class="phone-notch"></div>
         <div class="phone-screen">
-          <img class="phone-shot" src="assets/screens/hero-home.png" alt="NearbyOrders app: customer Home screen with search, categories and nearby businesses">
+          <div class="app-top"><div class="app-loc">Johar Town<small>12 shops within 1 km</small></div><div class="avatar">Z</div></div>
+          <div class="searchbar"><span class="s-ico"></span>Try "nihari near me"</div>
+          <div class="chiprow"><span class="chip on">All</span><span class="chip">Food</span><span class="chip">Grocery</span><span class="chip">Meds</span></div>
+          <div class="biz"><div class="bn">Shahi Nihari House <span class="tag-open">OPEN</span></div><div class="bm"><b>4.7</b> · 0.4 km · Nihari Rs. 380</div><div class="br"><span class="bp">25 min delivery</span><button class="mini-btn" tabindex="-1">Order</button></div></div>
+          <div class="biz"><div class="bn">Minhaj Grocery <span class="tag-open">OPEN</span></div><div class="bm"><b>4.5</b> · 0.6 km · Daily essentials</div><div class="br"><span class="bp">Rs. 80 delivery</span><button class="mini-btn" tabindex="-1">Shop</button></div></div>
+          <div class="biz"><div class="bn">GlowUp Salon <span class="tag-open">SLOTS</span></div><div class="bm"><b>4.8</b> · 0.9 km · Haircut Rs. 800</div><div class="br"><span class="bp">Today 6:30 PM free</span><button class="mini-btn" tabindex="-1">Book</button></div></div>
+          <div class="app-tabs"><span class="tab">Home</span><span class="tab on">Explore</span><span class="tab">Orders</span><span class="tab">Bookings</span><span class="tab">Profile</span></div>
         </div>
       </div>
-      <div class="float-card fc-order" aria-hidden="true">
-        <span class="fc-icon" style="background:rgba(226,58,46,.12);color:#E23A2E">◉</span>
-        <div><h5>Order #NO-2481</h5><p>Preparing · arriving soon</p></div>
-      </div>
-      <div class="float-card fc-book" aria-hidden="true">
-        <span class="fc-icon" style="background:#16222E;color:#fff">◐</span>
-        <div><h5>Booking confirmed</h5><p>Tomorrow · 2:00 PM</p></div>
-      </div>
+      <div class="sticker bizcard tilt-a" style="top:6%;left:0"><div class="stars">★★★★★</div>NEW AROUND YOU!<small>Sheikhupura Sweets just joined. Jalebi Rs. 240/kg, 0.7 km away.</small></div>
+      <div class="sticker bizcard tilt-d" style="bottom:10%;right:0"><div class="tape slate"></div>JUST 2.4 KM AWAY<small>Verified local businesses, joining every week.</small></div>
+      <svg class="burst" style="top:2%;right:8%" width="88" height="88" viewBox="0 0 100 100" aria-hidden="true">
+        <polygon points="50,2 61,20 80,12 79,32 98,38 86,52 98,66 79,72 80,92 61,84 50,98 39,84 20,92 21,72 2,66 14,52 2,38 21,32 20,12 39,20" fill="#E23A2E" stroke="#fff" stroke-width="4"/>
+        <text x="50" y="52" text-anchor="middle" fill="#fff" font-family="Bricolage Grotesque" font-weight="800" font-size="14">100%</text>
+        <text x="50" y="70" text-anchor="middle" fill="#fff" font-family="Bricolage Grotesque" font-weight="700" font-size="11">LOCAL</text>
+      </svg>
     </div>
   </div>
 </section>
 
-<!-- ================= S2 · PRODUCT INTRODUCTION ================= -->
-<section class="section" id="product" aria-labelledby="product-title">
-  <div class="wrap">
-    <div class="section-head reveal">
-      <p class="eyebrow">The product</p>
-      <h2 id="product-title">The everyday app for local life.</h2>
-      <p class="lede">Three things NearbyOrders does well, built around the businesses near you.</p>
+<!-- ============ 5. ORDERING ============ -->
+<section class="block" id="order" aria-labelledby="order-title">
+  <div class="wrap show-grid rev">
+    <div class="copy">
+      <span class="eyebrow">Ordering</span>
+      <h2 class="sec-title" id="order-title">Dinner in<br><span class="hl-ember">30 minutes.</span></h2>
+      <p class="sec-lede">Add to cart, pay online or cash on delivery. The shop starts packing the second you tap order, and honest PKR prices mean no surprises at checkout.</p>
+      <div class="slots" aria-label="Sample delivery slots">
+        <span class="slot">ASAP</span><span class="slot on">6:30 PM</span><span class="slot">7:00 PM</span>
+      </div>
+      <p class="hand" style="font-size:1.35rem;color:var(--slate-55);transform:rotate(-2deg);display:inline-block">tap <b style="color:var(--ember)">reorder</b> for your usual, done in 10 seconds</p>
     </div>
-    <div class="moment-rows">
-      <article class="moment-row reveal">
-        <div class="moment-text">
-          <p class="moment-num">01</p>
-          <h3>Discover nearby</h3>
-          <p>Find businesses around you: shops, services, and places to eat, in one clean feed sorted by what's close.</p>
+    <div class="visual" aria-label="Ordering preview">
+      <div class="phone tilt-b">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <div class="app-top"><div class="app-loc">Your cart<small>Lahore Biryani House</small></div></div>
+          <div class="biz"><div class="bn">Chicken Biryani × 2</div><div class="bm">Regular · Rs. 350 each</div><div class="br"><span class="bp">Rs. 700</span></div></div>
+          <div class="biz"><div class="bn">Raita + Salad</div><div class="bm">Add-on</div><div class="br"><span class="bp">Rs. 150</span></div></div>
+          <div class="biz"><div class="bn">Delivery</div><div class="bm">Bike · 25 min</div><div class="br"><span class="bp">Rs. 120</span></div></div>
+          <div class="biz" style="background:var(--slate)"><div class="bn" style="color:var(--white)">Total <span style="color:var(--white)">Rs. 970</span></div><div class="bm" style="color:rgba(255,255,255,.6)">Cash on delivery selected</div></div>
+          <div style="padding:14px"><button class="btn btn-ember" style="width:100%;justify-content:center" tabindex="-1">Place order</button></div>
+          <div class="app-tabs"><span class="tab">Home</span><span class="tab">Explore</span><span class="tab on">Orders</span><span class="tab">Bookings</span><span class="tab">Profile</span></div>
         </div>
-        <!-- App screen: Explore, from apps/mobile/src/screens/Explore.tsx -->
-        <figure class="shot-slot" style="margin:0">
-          <img src="assets/screens/product-discover.png" alt="NearbyOrders app: Explore screen with business search and discovery list">
-        </figure>
-      </article>
-      <article class="moment-row reveal">
-        <div class="moment-text">
-          <p class="moment-num">02</p>
-          <h3>Order what you need</h3>
-          <p>Browse menus and catalogs, place your order, and follow it from confirmed to delivered, all in the app.</p>
-        </div>
-        <!-- App screen: cart / order flow, from apps/mobile/src/screens/Cart.tsx -->
-        <figure class="shot-slot" style="margin:0">
-          <img src="assets/screens/product-order.png" alt="NearbyOrders app: cart and order checkout with items, quantities and total">
-        </figure>
-      </article>
-      <article class="moment-row reveal">
-        <div class="moment-text">
-          <p class="moment-num">03</p>
-          <h3>Book when you need it</h3>
-          <p>Reserve services and appointments with local businesses in a few taps. Every booking lives in one list.</p>
-        </div>
-        <!-- App screen: booking flow, from apps/mobile/src/screens/BookService.tsx -->
-        <figure class="shot-slot" style="margin:0">
-          <img src="assets/screens/product-book.png" alt="NearbyOrders app: booking flow with service options, date and time pickers">
-        </figure>
-      </article>
+      </div>
+      <div class="sticker receipt tilt-a" style="top:8%;right:0"><div class="tape"></div><h4>Tonight's order</h4>
+        <div class="rrow"><span>Biryani × 2</span><b>Rs. 700</b></div>
+        <div class="rrow"><span>Raita + salad</span><b>Rs. 150</b></div>
+        <div class="rrow"><span>Delivery</span><b>Rs. 120</b></div>
+        <div class="rrow rtotal"><span>Total</span><b>Rs. 970</b></div>
+      </div>
+      <div class="sticker notif tilt-d" style="bottom:8%;left:0"><div class="n-ico">✓</div><div><b>Order confirmed</b><small>Kitchen started · 25 min away</small></div></div>
     </div>
   </div>
 </section>
 
-<!-- ================= S3 · LOCAL DISCOVERY ================= -->
-<section class="discovery" id="discover" aria-labelledby="discover-title">
+<!-- ============ 6. BOOKING ============ -->
+<section class="block" id="book" aria-labelledby="book-title">
   <div class="wrap">
-    <div class="discovery-grid">
-      <div class="reveal">
-        <p class="eyebrow">Local discovery</p>
-        <h2 id="discover-title">Made for what's around you.</h2>
-        <p class="lede">NearbyOrders starts with where you are. Explore categories, see what's close, and open any business to order or book. No endless scrolling through places across town.</p>
-        <ul class="discovery-points">
-          <li>
-            <span class="dp-icon" aria-hidden="true">⌖</span>
-            <div><b>Location-first, always</b><p>Your feed is organized by nearness, so the closest options come first.</p></div>
-          </li>
-          <li>
-            <span class="dp-icon" aria-hidden="true">▤</span>
-            <div><b>Real categories</b><p>Food, cafés, salons, repair, groceries. Browse by what you need today.</p></div>
-          </li>
-          <li>
-            <span class="dp-icon" aria-hidden="true">◈</span>
-            <div><b>From discovery to doorstep</b><p>Every business card leads straight to ordering or booking. Nothing dead-ends.</p></div>
-          </li>
+    <div class="sec-head">
+      <span class="eyebrow">Booking services</span>
+      <h2 class="sec-title" id="book-title">Your chair is <span class="hl-ember">waiting.</span></h2>
+      <p class="sec-lede">Barbers, tailors, salons, repairs, clinics. Pick a time that suits you, get an instant confirmation, and a reminder before your slot.</p>
+    </div>
+    <div class="show-grid">
+      <div class="visual" aria-label="Booking preview" style="min-height:480px">
+        <div class="sticker tilt-a" style="padding:26px 30px;max-width:380px;z-index:3">
+          <div class="tape"></div>
+          <div class="tag-open" style="display:inline-block;margin-bottom:10px">BOOKING CONFIRMED</div>
+          <h3 style="font-size:1.4rem;margin-bottom:6px">UrbanCut Barber</h3>
+          <p style="color:var(--slate-70);font-weight:500;font-size:.95rem;margin-bottom:14px">Haircut · Tomorrow, 4:30 PM<br>Shop 4, Main Boulevard</p>
+          <div class="slots"><span class="slot">3:30</span><span class="slot on">4:30</span><span class="slot">5:30</span><span class="slot">6:30</span></div>
+          <p style="font-size:.82rem;color:var(--slate-55);font-weight:600">Reminder at 4:00 PM · Rs. 500, pay at shop</p>
+        </div>
+        <svg class="doodle" style="top:6%;right:12%;transform:rotate(-18deg)" width="90" height="60" viewBox="0 0 90 60" aria-hidden="true"><path d="M8 10 C 30 6, 55 25, 74 34 M66 28 l10 7 -12 4" fill="none" stroke="#E23A2E" stroke-width="4" stroke-linecap="round"/></svg>
+        <span class="hand note" style="top:0;right:2%;font-size:1.3rem;transform:rotate(6deg)">picked in 20 seconds!</span>
+      </div>
+      <div class="copy">
+        <h3 style="font-size:1.8rem;margin-bottom:14px;letter-spacing:-.02em">No calls. No waiting.<br>Just show up.</h3>
+        <ul class="timeline">
+          <li><span class="dot done"></span><div>Pick your service<small>Services from verified local pros</small></div></li>
+          <li><span class="dot done"></span><div>Choose a slot<small>Real availability, updated live</small></div></li>
+          <li><span class="dot done"></span><div>Get confirmed<small>Instant confirmation + reminder</small></div></li>
+          <li><span class="dot"></span><div>Show up relaxed<small>Reschedule free up to 2 hours before</small></div></li>
         </ul>
       </div>
-      <div class="reveal">
-        <div class="map-panel">
-          <svg class="map" viewBox="0 0 520 380" role="img" aria-label="Stylized map showing nearby businesses around your location">
-            <rect width="520" height="380" fill="#0E1822"/>
-            <g stroke="#1E2E3E" stroke-width="10">
-              <line x1="0" y1="90" x2="520" y2="90"/><line x1="0" y1="210" x2="520" y2="210"/>
-              <line x1="0" y1="320" x2="520" y2="320"/><line x1="120" y1="0" x2="120" y2="380"/>
-              <line x1="300" y1="0" x2="300" y2="380"/><line x1="440" y1="0" x2="440" y2="380"/>
-            </g>
-            <g stroke="#16242F" stroke-width="4">
-              <line x1="0" y1="150" x2="520" y2="150"/><line x1="210" y1="0" x2="210" y2="380"/>
-              <line x1="370" y1="0" x2="370" y2="380"/><line x1="0" y1="265" x2="520" y2="265"/>
-            </g>
-            <rect x="330" y="230" width="90" height="70" rx="10" fill="#12241A"/>
-            <rect x="20" y="230" width="80" height="60" rx="10" fill="#152030"/>
-            <path d="M120 320 Q 210 300 300 330 T 520 310 L 520 380 L 120 380 Z" fill="#132433"/>
-            <g>
-              <circle class="pin" cx="210" cy="150" r="10" fill="none" stroke="#E23A2E" stroke-width="2"/>
-              <circle cx="210" cy="150" r="7" fill="#E23A2E"/>
-              <circle class="pin" cx="370" cy="90" r="10" fill="none" stroke="#E23A2E" stroke-width="2" style="animation-delay:.8s"/>
-              <circle cx="370" cy="90" r="7" fill="#E23A2E"/>
-              <circle class="pin" cx="440" cy="265" r="10" fill="none" stroke="#E23A2E" stroke-width="2" style="animation-delay:1.6s"/>
-              <circle cx="440" cy="265" r="7" fill="#E23A2E"/>
-              <circle cx="260" cy="210" r="11" fill="#F2F5F7" stroke="#E23A2E" stroke-width="3"/>
-              <circle cx="260" cy="210" r="4" fill="#E23A2E"/>
-            </g>
-          </svg>
-          <div class="map-legend"><span>Illustrative map</span><span>⌖ You are here</span></div>
-          <div class="cat-chips" role="group" aria-label="Browse categories">
-            <button type="button" class="on"><span class="cdot"></span>Restaurants</button>
-            <button type="button"><span class="cdot"></span>Cafés</button>
-            <button type="button"><span class="cdot"></span>Salons</button>
-            <button type="button"><span class="cdot"></span>Groceries</button>
-            <button type="button"><span class="cdot"></span>Repair</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 7. TRACKING (dark band) ============ -->
+<section class="block" aria-labelledby="track-title" style="padding-top:40px">
+  <div class="dark-band">
+    <div class="wrap show-grid" style="padding:90px 0">
+      <div class="copy">
+        <span class="eyebrow">Live tracking</span>
+        <h2 class="sec-title" id="track-title">Watch it<br>come to you.</h2>
+        <p class="sec-lede">Follow your order from the kitchen to your doorstep, live. One timeline, one rider, zero guessing about where your food is.</p>
+        <div class="sticker tilt-b" style="display:inline-flex;gap:12px;align-items:center;margin-top:28px;padding:14px 20px">
+          <div class="avatar">AR</div>
+          <div><b style="font-size:.9rem">Ahmed R. · your rider</b><br><small style="color:var(--slate-55);font-weight:600">4.9 rating · 2.1 km away</small></div>
+        </div>
+      </div>
+      <div class="visual" aria-label="Tracking preview" style="min-height:520px">
+        <div class="phone tilt-a">
+          <div class="phone-notch"></div>
+          <div class="phone-screen">
+            <div class="app-top"><div class="app-loc">Order #NO-4821<small>Lahore Biryani House</small></div><span class="tag-open">LIVE</span></div>
+            <div style="padding:8px 18px">
+              <ul class="timeline">
+                <li><span class="dot done"></span><div>Order confirmed<small>6:12 PM</small></div></li>
+                <li><span class="dot done"></span><div>Being prepared<small>Kitchen started</small></div></li>
+                <li><span class="dot done"></span><div>Rider on the way<small>Ahmed picked up your order</small></div></li>
+                <li><span class="dot"></span><div>Delivered<small>Arriving in ≈ 5 min</small></div></li>
+              </ul>
+            </div>
+            <div class="biz" style="margin-top:auto;margin-bottom:14px"><div class="bn">Ahmed R. <span class="tag-open">4.9 ★</span></div><div class="bm">Arriving in 5 min · 2.1 km away</div></div>
+            <div class="app-tabs"><span class="tab">Home</span><span class="tab">Explore</span><span class="tab on">Orders</span><span class="tab">Bookings</span><span class="tab">Profile</span></div>
           </div>
         </div>
+        <svg class="doodle" style="top:12%;left:4%" width="110" height="80" viewBox="0 0 110 80" aria-hidden="true"><path d="M10 70 C 30 60, 45 30, 70 28 S 95 40, 100 20 M92 16 l10 5 -9 7" fill="none" stroke="#E23A2E" stroke-width="4" stroke-linecap="round" stroke-dasharray="1 10"/></svg>
+        <span class="hand note" style="top:6%;left:6%;font-size:1.3rem;color:var(--porcelain);transform:rotate(-6deg)">he is 5 min away!</span>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ================= S4 · ORDERS + BOOKINGS ================= -->
-<section class="section" aria-labelledby="actions-title">
-  <div class="wrap">
-    <div class="section-head center reveal">
-      <p class="eyebrow">Two things, done well</p>
-      <h2 id="actions-title">Order. Book. Done.</h2>
-      <p class="lede">The two actions that matter, designed as first-class experiences. Everything stays manageable from your tabs.</p>
+<!-- ============ 8. FOR BUSINESSES ============ -->
+<section class="block" id="business" aria-labelledby="biz-title">
+  <div class="wrap show-grid">
+    <div class="copy">
+      <span class="eyebrow">For businesses</span>
+      <h2 class="sec-title" id="biz-title">Your shop,<br>open <span class="hl-ember">around the clock.</span></h2>
+      <p class="sec-lede">Join NearbyOrders and turn foot traffic into a steady stream of orders. Manage everything from one calm dashboard built for busy owners.</p>
+      <ul class="timeline" style="margin-top:26px">
+        <li><span class="dot done"></span><div>Receive orders<small>Instant alerts, simple accept and prepare flow</small></div></li>
+        <li><span class="dot done"></span><div>Manage bookings<small>Your calendar, your hours, your rules</small></div></li>
+        <li><span class="dot done"></span><div>Track payments<small>Clear daily earnings, settled in PKR</small></div></li>
+      </ul>
+             This must NOT point at an app download. -->
+        <!-- Business onboarding destination is managed by Admin → System → Website / App Settings. -->
+        <div style="margin-top:30px"><a class="btn btn-slate" href="#" data-destination="business-onboarding">List your business</a></div>
     </div>
-    <div class="duo">
-      <article class="duo-card duo-order reveal">
-        <p class="kicker">Order</p>
-        <h3>From craving to doorstep.</h3>
-        <p>Browse a business's menu or catalog, check out in seconds, and watch your order move from confirmed to on its way.</p>
-        <!-- App screen: customer Orders, from apps/mobile/src/screens/Orders.tsx -->
-        <div class="duo-ui">
-          <figure class="shot-slot" style="margin:0;max-width:none">
-            <img src="assets/screens/experience-order.png" alt="NearbyOrders app: My orders screen with live order status tracking">
-          </figure>
+    <div class="visual" aria-label="Business dashboard preview" style="min-height:520px">
+      <div class="dash tilt-c">
+        <div class="tape slate"></div>
+        <div class="dash-head"><b>Today at FreshDaily Mart</b><span class="live-pill"><i></i>LIVE</span></div>
+        <p class="dash-example">Example business dashboard</p>
+        <div class="stat-grid">
+          <div class="stat"><b>PKR 48,500</b><span>Sales today</span></div>
+          <div class="stat"><b>132</b><span>Orders today</span></div>
+          <div class="stat"><b>18</b><span>Bookings this week</span></div>
+          <div class="stat"><b>4.7</b><span>Average rating</span></div>
         </div>
+        <div class="order-row"><span>#NO-8241 · Groceries, 12 items</span><b>Rs. 3,240</b></div>
+        <div class="order-row"><span>#NO-8240 · Fresh produce box</span><b>Rs. 1,850</b></div>
+        <div class="order-row"><span>#NO-8239 · Household essentials</span><b>Rs. 2,120</b></div>
+      </div>
+      <span class="hand note" style="bottom:2%;left:4%;font-size:1.3rem;transform:rotate(-5deg)">owners love the <b style="color:var(--ember)">calm</b> dashboard</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 9. WHY ============ -->
+<section class="block" id="why" aria-labelledby="why-title" style="padding-top:40px">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="hand eyebrow-hand">why it matters</span>
+      <h2 class="sec-title" id="why-title">Made for your<br><span class="hl-ember">mohalla.</span></h2>
+    </div>
+    <div class="why-grid">
+      <article class="sticker why-card tilt-a">
+        <div class="why-ico" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11z"/><circle cx="12" cy="10" r="2.6"/></svg></div>
+        <div><h3>Local first</h3><p>Every rupee you spend stays in your neighborhood, supporting the shops that make your area home.</p></div>
       </article>
-      <article class="duo-card duo-book reveal">
-        <p class="kicker">Book</p>
-        <h3>Your time, reserved.</h3>
-        <p>Pick a service, choose a slot that suits you, and get a confirmed booking. Cancel from one list if plans change.</p>
-        <!-- App screen: customer Bookings, from apps/mobile/src/screens/Bookings.tsx -->
-        <div class="duo-ui">
-          <figure class="shot-slot" style="margin:0;max-width:none">
-            <img src="assets/screens/experience-book.png" alt="NearbyOrders app: My bookings screen with upcoming and past bookings">
-          </figure>
-        </div>
+      <article class="sticker why-card tilt-b">
+        <div class="why-ico" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg></div>
+        <div><h3>Fast and simple</h3><p>Reorder your usual in 10 seconds. Book a slot in 20. No accounts maze, no clutter, no learning curve.</p></div>
+      </article>
+      <article class="sticker why-card tilt-c">
+        <div class="why-ico" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M12 2l2.6 6.2 6.7.5-5.1 4.4 1.6 6.5L12 16l-5.8 3.6 1.6-6.5-5.1-4.4 6.7-.5z"/></svg></div>
+        <div><h3>Honest ratings</h3><p>Real reviews from real neighbors. The best shops rise because the neighborhood says so.</p></div>
+      </article>
+      <article class="sticker why-card tilt-d">
+        <div class="why-ico" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18M7 15h4"/></svg></div>
+        <div><h3>Pay your way</h3><p>Cash on delivery or online payment. Clear PKR prices, so you always know the total.</p></div>
       </article>
     </div>
   </div>
 </section>
 
-<!-- ================= S5 · FOR BUSINESSES ================= -->
-<section class="business" id="business" aria-labelledby="business-title">
-  <div class="wrap">
-    <div class="biz-grid">
-      <div class="reveal">
-        <p class="eyebrow">For businesses</p>
-        <h2 id="business-title">Your business, connected to nearby customers.</h2>
-        <p class="lede">Join the same platform your customers use. Manage your presence, orders, and bookings from one business toolkit.</p>
-        <ul class="biz-list">
-          <li><span class="tick" aria-hidden="true">✓</span><p><b>Create and manage your business presence</b>: profile, catalog, and services in one place.</p></li>
-          <li><span class="tick" aria-hidden="true">✓</span><p><b>Receive and manage orders</b>: confirm, prepare, and fulfill without the chaos.</p></li>
-          <li><span class="tick" aria-hidden="true">✓</span><p><b>Manage bookings</b>: keep your schedule organized and your customers informed.</p></li>
-          <li><span class="tick" aria-hidden="true">✓</span><p><b>Track earnings</b>: see how your business is doing at a glance.</p></li>
-          <li><span class="tick" aria-hidden="true">✓</span><p><b>Reach nearby customers</b>: get discovered by people already looking around you.</p></li>
-        </ul>
-        <a class="btn btn-ember" href="#get-app">Join NearbyOrders</a>
-      </div>
-      <div class="reveal">
-        <div class="owner-dash" role="img" aria-label="Business owner dashboard showing today's orders and earnings overview">
-          <div class="od-head"><b>Business Overview</b><span>Today</span></div>
-          <div class="od-kpis">
-            <div class="od-kpi"><small>Orders today</small><b>18 <em>▲</em></b></div>
-            <div class="od-kpi"><small>Bookings</small><b>7</b></div>
-            <div class="od-kpi"><small>Earnings</small><b>PKR 42k</b></div>
-            <div class="od-kpi"><small>Rating</small><b>4.8</b></div>
-          </div>
-          <div class="od-orders">
-            <div class="od-order"><div style="flex:1"><span class="oid">#NO-2481</span><b>2 items · Dine-in</b><small>2 min ago</small></div><span class="pill">New</span></div>
-            <div class="od-order"><div style="flex:1"><span class="oid">#NO-2479</span><b>5 items · Pickup</b><small>14 min ago</small></div><span class="pill slate">Preparing</span></div>
-            <div class="od-order"><div style="flex:1"><span class="oid">#NO-2476</span><b>Booking · 2:00 PM</b><small>26 min ago</small></div><span class="pill slate">Confirmed</span></div>
-          </div>
-          <p class="od-note">Illustrative preview.</p>
+<!-- ============ 10. DOWNLOAD ============ -->
+<section class="block" id="download" aria-labelledby="dl-title" style="padding-top:40px">
+  <div class="dl-band">
+    <div class="wrap dl-grid">
+      <div>
+        <h2 id="dl-title">Get NearbyOrders.</h2>
+        <p>Your whole neighborhood, in your pocket. Free to download, free to look around.</p>
+        <div class="dl-buttons" id="appLinks" aria-label="Download the app">
+<!-- STEP 2: button URLs are injected by GET /api/v1/website/app-links.
+             A button with no URL renders in the disabled "soon" state. -->
+          <a class="dl-btn" data-platform="play" href="#"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 3.5v17l9.5-8.5zM6.5 2.7l10 5.7-3.4 3.1zm10 18.6l-10 5.7 6.6-8.8zM16.5 8.4l3.9 2.2c.8.5.8 1.6 0 2.1l-3.9 2.2-3.6-3.2z"/></svg><span><small>Get it on</small><span>Google Play</span></span></a>
+          <a class="dl-btn" data-platform="apk" href="#"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v12m0 0l-4.5-4.5M12 15l4.5-4.5M4 19h16"/></svg><span><small>Direct download</small><span>APK file</span></span></a>
+          <a class="dl-btn soon" data-platform="ios" href="#" aria-disabled="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.5 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.9-1.6 0-3.1 1-4 2.4-1.7 2.9-.4 7.3 1.2 9.7.8 1.2 1.8 2.5 3.1 2.4 1.2-.1 1.7-.8 3.2-.8s1.9.8 3.2.8c1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8-.1 0-2.7-1-2.7-3.7zM15.2 5.4c.7-.8 1.1-1.9 1-3-1 0-2.1.6-2.8 1.4-.6.7-1.2 1.9-1 3 1.1.1 2.1-.6 2.8-1.4z"/></svg><span><small>Coming soon</small><span>App Store</span></span></a>
         </div>
+        <p class="dl-note">App links are managed centrally and update without a website redeploy.</p>
       </div>
-    </div>
-  </div>
-</section>
-
-<!-- ================= S6 · ONE CONNECTED PLATFORM ================= -->
-<section class="section" id="platform" aria-labelledby="platform-title">
-  <div class="wrap">
-    <div class="section-head center reveal">
-      <p class="eyebrow">One connected platform</p>
-      <h2 id="platform-title">Everyone on the same platform.</h2>
-      <p class="lede">Customers and businesses meet through NearbyOrders. One Android app, one business toolkit, and one unified admin panel running the whole ecosystem behind the scenes.</p>
-    </div>
-    <div class="platform-diagram reveal">
-      <div class="plat-node">
-        <span class="pn-tag">Customer</span>
-        <h3>The Android app</h3>
-        <p>Discover, order, book, and manage. Everything a customer needs, in their pocket.</p>
-      </div>
-      <div class="plat-link" aria-hidden="true"><span class="pline"></span><span style="font-size:20px">▾</span></div>
-      <div class="plat-node plat-core">
-        <svg class="brand-mark" viewBox="0 0 120 120" role="img" aria-label="NearbyOrders mark"><path d="M29 90 L29 30 L52.17 52.42" stroke="#16222E" stroke-width="14" fill="none" stroke-linejoin="round" stroke-linecap="round"/><path d="M67.83 67.58 L91 90 L91 30" stroke="#16222E" stroke-width="14" fill="none" stroke-linejoin="round" stroke-linecap="round"/><path d="M50 60 A10 10 0 1 1 70 60 A10 10 0 1 1 50 60 Z" fill="none" stroke="#E23A2E" stroke-width="6"/><path d="M49.09 39.70 L57.00 47.35 L55.69 47.74 L54.43 48.25 L53.23 48.90 L52.11 49.67 L51.07 50.55 L50.14 51.53 L49.30 52.61 L48.59 53.77 L48.00 55.00 L47.54 56.28 C50.12 47.65 55.56 45.96 49.09 39.70 Z" fill="#E23A2E"/><path d="M39.36 49.76 L47.26 57.41 L47.60 56.09 L48.08 54.82 L48.68 53.60 L49.41 52.45 L50.26 51.39 L51.21 50.42 L52.26 49.55 L53.40 48.80 L54.61 48.17 L55.87 47.67 C47.34 50.53 45.82 56.02 39.36 49.76 Z" fill="#E23A2E"/><path d="M70.91 80.30 L63.00 72.65 L64.31 72.26 L65.57 71.75 L66.77 71.10 L67.89 70.33 L68.93 69.45 L69.86 68.47 L70.70 67.39 L71.41 66.23 L72.00 65.00 L72.46 63.72 C69.88 72.35 64.44 74.04 70.91 80.30 Z" fill="#E23A2E"/><path d="M80.64 70.24 L72.74 62.59 L72.40 63.91 L71.92 65.18 L71.32 66.40 L70.59 67.55 L69.74 68.61 L68.79 69.58 L67.74 70.45 L66.60 71.20 L65.39 71.83 L64.13 72.33 C72.66 69.47 74.18 63.98 80.64 70.24 Z" fill="#E23A2E"/></svg>
-        <span class="pn-tag" style="color:var(--ember)">NearbyOrders</span>
-        <h3>One platform</h3>
-        <p>nearbyorders.com · api.nearbyorders.com · one shared backend for app and web.</p>
-      </div>
-      <div class="plat-link" aria-hidden="true"><span class="pline"></span><span style="font-size:20px">▾</span></div>
-      <div class="plat-node">
-        <span class="pn-tag">Business</span>
-        <h3>Business toolkit</h3>
-        <p>Profiles, orders, bookings, and earnings, connected to nearby customers.</p>
-      </div>
-      <div class="plat-admin">
-        <span class="pn-tag">Behind the platform · Unified admin</span>
-        <p>One admin panel governs the entire ecosystem. No separate systems for the app and the website.</p>
-        <p class="admin-list">Customers · Businesses · Orders · Bookings · Reviews · Categories · Subscriptions · Analytics · Website · App · Settings</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ================= S7 · APP CTA ================= -->
-<section class="app-cta" id="get-app" aria-labelledby="cta-title">
-  <div class="wrap">
-    <div class="reveal">
-      <p class="eyebrow">Get started</p>
-      <h2 id="cta-title">Nearby is just <span class="ember">the beginning.</span></h2>
-      <p class="lede">Download the NearbyOrders app and see what's around you. Order what you need, book when you need it.</p>
-      <div class="hero-ctas">
-        <a class="btn btn-ember" href="#top">Get the NearbyOrders App</a>
-        <a class="btn btn-outline-light" href="#business">For Businesses</a>
-      </div>
-    </div>
-    <div class="hero-visual reveal">
-      <div class="phone" role="img" aria-label="Phone frame: real NearbyOrders Explore screen capture needed">
-        <!-- App screen: Explore, from apps/mobile/src/screens/Explore.tsx -->
-        <div class="phone-screen">
-          <img class="phone-shot" src="assets/screens/cta-explore.png" alt="NearbyOrders app: Explore screen showing nearby businesses">
+      <div class="visual" aria-label="App download preview" style="min-height:480px">
+        <div class="phone tilt-d" style="transform:rotate(-2deg)">
+          <div class="tape"></div>
+          <div class="phone-notch"></div>
+          <div class="phone-screen" style="align-items:center;justify-content:center;text-align:center;padding:30px">
+            <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" style="width:84px;height:84px;margin-bottom:18px" role="img" aria-label="NearbyOrders logo"><path d="M29 90 L29 30 L52.17 52.42" stroke="#16222E" stroke-width="14" fill="none" stroke-linejoin="round" stroke-linecap="round"/><path d="M67.83 67.58 L91 90 L91 30" stroke="#16222E" stroke-width="14" fill="none" stroke-linejoin="round" stroke-linecap="round"/><circle cx="60" cy="60" r="10" fill="none" stroke="#E23A2E" stroke-width="6"/><path d="M49.09 39.70 L57.00 47.35 L55.69 47.74 L54.43 48.25 L53.23 48.90 L52.11 49.67 L51.07 50.55 L50.14 51.53 L49.30 52.61 L48.59 53.77 L48.00 55.00 L47.54 56.28 C50.12 47.65 55.56 45.96 49.09 39.70 Z" fill="#E23A2E"/><path d="M39.36 49.76 L47.26 57.41 L47.60 56.09 L48.08 54.82 L48.68 53.60 L49.41 52.45 L50.26 51.39 L51.21 50.42 L52.26 49.55 L53.40 48.80 L54.61 48.17 L55.87 47.67 C47.34 50.53 45.82 56.02 39.36 49.76 Z" fill="#E23A2E"/><path d="M70.91 80.30 L63.00 72.65 L64.31 72.26 L65.57 71.75 L66.77 71.10 L67.89 70.33 L68.93 69.45 L69.86 68.47 L70.70 67.39 L71.41 66.23 L72.00 65.00 L72.46 63.72 C69.88 72.35 64.44 74.04 70.91 80.30 Z" fill="#E23A2E"/><path d="M80.64 70.24 L72.74 62.59 L72.40 63.91 L71.92 65.18 L71.32 66.40 L70.59 67.55 L69.74 68.61 L68.79 69.58 L67.74 70.45 L66.60 71.20 L65.39 71.83 L64.13 72.33 C72.66 69.47 74.18 63.98 80.64 70.24 Z" fill="#E23A2E"/></svg>
+            <b style="font-size:1.3rem">NearbyOrders</b>
+            <p style="color:var(--slate-55);font-weight:500;margin:10px 0 22px;font-size:.9rem">Your street, in your pocket.</p>
+            <span class="tag-open">ANDROID · DOWNLOAD</span>
+          </div>
         </div>
+        <svg class="burst" style="top:6%;right:6%" width="92" height="92" viewBox="0 0 100 100" aria-hidden="true">
+          <polygon points="50,2 61,20 80,12 79,32 98,38 86,52 98,66 79,72 80,92 61,84 50,98 39,84 20,92 21,72 2,66 14,52 2,38 21,32 20,12 39,20" fill="#fff" stroke="#16222E" stroke-width="4"/>
+          <text x="50" y="54" text-anchor="middle" fill="#E23A2E" font-family="Bricolage Grotesque" font-weight="800" font-size="16">FREE</text>
+          <text x="50" y="70" text-anchor="middle" fill="#16222E" font-family="Bricolage Grotesque" font-weight="700" font-size="10">APP</text>
+        </svg>
+        <span class="hand note" style="bottom:6%;left:0%;font-size:1.35rem;color:var(--white);transform:rotate(-5deg)">your street,<br>in your pocket!</span>
       </div>
     </div>
   </div>
 </section>
-</main>
 
-<!-- ================= S8 · FOOTER ================= -->
-<footer class="site-footer" aria-label="Footer">
+<!-- ============ 11. FOOTER ============ -->
+<footer>
   <div class="wrap">
-    <div class="footer-grid">
-      <div class="footer-brand">
-        <a class="brand" href="#top" aria-label="NearbyOrders home">
-          <svg class="brand-mark" viewBox="0 0 120 120" role="img" aria-label="NearbyOrders mark"><path d="M29 90 L29 30 L52.17 52.42" stroke="#16222E" stroke-width="14" fill="none" stroke-linejoin="round" stroke-linecap="round"/><path d="M67.83 67.58 L91 90 L91 30" stroke="#16222E" stroke-width="14" fill="none" stroke-linejoin="round" stroke-linecap="round"/><path d="M50 60 A10 10 0 1 1 70 60 A10 10 0 1 1 50 60 Z" fill="none" stroke="#E23A2E" stroke-width="6"/><path d="M49.09 39.70 L57.00 47.35 L55.69 47.74 L54.43 48.25 L53.23 48.90 L52.11 49.67 L51.07 50.55 L50.14 51.53 L49.30 52.61 L48.59 53.77 L48.00 55.00 L47.54 56.28 C50.12 47.65 55.56 45.96 49.09 39.70 Z" fill="#E23A2E"/><path d="M39.36 49.76 L47.26 57.41 L47.60 56.09 L48.08 54.82 L48.68 53.60 L49.41 52.45 L50.26 51.39 L51.21 50.42 L52.26 49.55 L53.40 48.80 L54.61 48.17 L55.87 47.67 C47.34 50.53 45.82 56.02 39.36 49.76 Z" fill="#E23A2E"/><path d="M70.91 80.30 L63.00 72.65 L64.31 72.26 L65.57 71.75 L66.77 71.10 L67.89 70.33 L68.93 69.45 L69.86 68.47 L70.70 67.39 L71.41 66.23 L72.00 65.00 L72.46 63.72 C69.88 72.35 64.44 74.04 70.91 80.30 Z" fill="#E23A2E"/><path d="M80.64 70.24 L72.74 62.59 L72.40 63.91 L71.92 65.18 L71.32 66.40 L70.59 67.55 L69.74 68.61 L68.79 69.58 L67.74 70.45 L66.60 71.20 L65.39 71.83 L64.13 72.33 C72.66 69.47 74.18 63.98 80.64 70.24 Z" fill="#E23A2E"/></svg>
-          NearbyOrders
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <a class="lockup" href="#top" style="color:var(--white)" aria-label="NearbyOrders home">
+          <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" style="width:34px;height:34px" role="img" aria-label="NearbyOrders logo"><path d="M29 90 L29 30 L52.17 52.42" stroke="#FFFFFF" stroke-width="14" fill="none" stroke-linejoin="round" stroke-linecap="round"/><path d="M67.83 67.58 L91 90 L91 30" stroke="#FFFFFF" stroke-width="14" fill="none" stroke-linejoin="round" stroke-linecap="round"/><circle cx="60" cy="60" r="10" fill="none" stroke="#E23A2E" stroke-width="6"/><path d="M49.09 39.70 L57.00 47.35 L55.69 47.74 L54.43 48.25 L53.23 48.90 L52.11 49.67 L51.07 50.55 L50.14 51.53 L49.30 52.61 L48.59 53.77 L48.00 55.00 L47.54 56.28 C50.12 47.65 55.56 45.96 49.09 39.70 Z" fill="#E23A2E"/><path d="M39.36 49.76 L47.26 57.41 L47.60 56.09 L48.08 54.82 L48.68 53.60 L49.41 52.45 L50.26 51.39 L51.21 50.42 L52.26 49.55 L53.40 48.80 L54.61 48.17 L55.87 47.67 C47.34 50.53 45.82 56.02 39.36 49.76 Z" fill="#E23A2E"/><path d="M70.91 80.30 L63.00 72.65 L64.31 72.26 L65.57 71.75 L66.77 71.10 L67.89 70.33 L68.93 69.45 L69.86 68.47 L70.70 67.39 L71.41 66.23 L72.00 65.00 L72.46 63.72 C69.88 72.35 64.44 74.04 70.91 80.30 Z" fill="#E23A2E"/><path d="M80.64 70.24 L72.74 62.59 L72.40 63.91 L71.92 65.18 L71.32 66.40 L70.59 67.55 L69.74 68.61 L68.79 69.58 L67.74 70.45 L66.60 71.20 L65.39 71.83 L64.13 72.33 C72.66 69.47 74.18 63.98 80.64 70.24 Z" fill="#E23A2E"/></svg>
+          <span>NearbyOrders</span>
         </a>
-        <p>The local marketplace app. Discover nearby businesses, order what you need, and book when you need it.</p>
-        <div class="footer-domains">
-          <span><b>nearbyorders.com</b>: website</span>
-          <span><b>admin.nearbyorders.com</b>: admin panel</span>
-          <span><b>api.nearbyorders.com</b>: API</span>
-        </div>
+        <p>The local marketplace. Discover nearby businesses, order what you need, book the services you want, and support your neighborhood.</p>
       </div>
-      <div class="footer-col">
-        <h4>Customer</h4>
-        <ul>
-          <li><a href="#product">The App</a></li>
-          <li><a href="#discover">Discover</a></li>
-          <li><a href="#get-app">Download</a></li>
-        </ul>
+      <div class="foot-col">
+        <h4>Explore</h4>
+        <a href="#discover">Discover</a>
+        <a href="#order">Order</a>
+        <a href="#book">Book</a>
       </div>
-      <div class="footer-col">
-        <h4>Business</h4>
-        <ul>
-          <li><a href="#business">For Businesses</a></li>
-          <li><a href="#business">Join NearbyOrders</a></li>
-          <li><a href="#platform">Platform</a></li>
-        </ul>
-      </div>
-      <div class="footer-col">
+      <div class="foot-col">
         <h4>Company</h4>
-        <ul>
-          <li><a href="#top">About</a></li>
-          <li><a href="#top">Support</a></li>
-          <li><a href="#top">Privacy</a></li>
-          <li><a href="#top">Terms</a></li>
-        </ul>
+        <a href="/about.html">About</a>
+        <a href="#business">For Businesses</a>
+        <a href="#download">Download app</a>
       </div>
-    </div>
-    <div class="footer-bottom">
-      <p>© <span id="year">2026</span> NearbyOrders. All rights reserved.</p>
-      <p>Phone screens show the real NearbyOrders customer app.</p>
+      <div class="foot-col">
+        <h4>Support</h4>
+        <a href="/help.html">Help &amp; Support</a>
+        <a href="mailto:info@nearbyorders.com">Contact</a>
+      </div>
+      <div class="foot-col">
+        <h4>Legal</h4>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+      </div>
+    <div class="foot-base">
+      <span>© 2026 NearbyOrders. Made for your mohalla.</span>
+      <span>Discover · Order · Book · Track · Support local</span>
     </div>
   </div>
 </footer>
 
 <script>
-(function(){
-  "use strict";
-  /* Mobile nav */
-  var header=document.getElementById('siteHeader'),
-      toggle=document.getElementById('navToggle');
-  toggle.addEventListener('click',function(){
-    var open=header.classList.toggle('nav-open');
-    toggle.setAttribute('aria-expanded',open?'true':'false');
-    toggle.setAttribute('aria-label',open?'Close menu':'Open menu');
+/* STEP 2: production hydration. The NearbyOrders API serves the download
+   configuration at GET /api/v1/website/app-links; this function renders it.
+   Until then it is a safe no-op: buttons keep their designed states below,
+   and no fake URLs are hard-coded anywhere. */
+function hydrateAppLinks(cfg) {
+  if (!cfg || !Array.isArray(cfg.buttons)) return;
+  const byPlatform = Object.fromEntries(cfg.buttons.map(b => [b.platform, b]));
+  document.querySelectorAll('#appLinks .dl-btn').forEach(a => {
+    const b = byPlatform[a.dataset.platform];
+    if (!b || !b.enabled || !b.url) {
+      a.classList.add('soon'); a.setAttribute('aria-disabled', 'true'); a.href = '#download'; return;
+    }
+    a.classList.remove('soon'); a.removeAttribute('aria-disabled'); a.href = b.url;
   });
-  header.querySelectorAll('.nav-links a').forEach(function(a){
-    a.addEventListener('click',function(){
-      header.classList.remove('nav-open');
-      toggle.setAttribute('aria-expanded','false');
-    });
-  });
-
-  /* Reveal on scroll */
-  var reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var els=document.querySelectorAll('.reveal');
-  if(reduce||!('IntersectionObserver' in window)){
-    els.forEach(function(el){el.classList.add('in');});
-  }else{
-    var io=new IntersectionObserver(function(entries){
-      entries.forEach(function(e){
-        if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}
-      });
-    },{threshold:.12,rootMargin:'0px 0px -40px 0px'});
-    els.forEach(function(el){io.observe(el);});
+  const primary = byPlatform[cfg.primaryCta];
+  if (primary && primary.enabled && primary.url) {
+    document.querySelectorAll('[data-applink="primary"]').forEach(a => { a.href = primary.url; });
   }
 
-  /* Category chips: single-select toggle */
-  document.querySelectorAll('.cat-chips').forEach(function(group){
-    group.querySelectorAll('button').forEach(function(btn){
-      btn.addEventListener('click',function(){
-        group.querySelectorAll('button').forEach(function(b){b.classList.remove('on');});
-        btn.classList.add('on');
-      });
+  if (cfg.businessOnboardingUrl) {
+    document.querySelectorAll('[data-destination="business-onboarding"]').forEach(a => {
+      a.href = cfg.businessOnboardingUrl;
+      a.removeAttribute('aria-disabled');
     });
-  });
-
-  /* Footer year */
-  document.getElementById('year').textContent=new Date().getFullYear();
-})();
+  }
+}
+fetch('https://api.nearbyorders.com/api/v1/website/app-links')
+  .then(r => r.ok ? r.json() : null)
+  .then(hydrateAppLinks)
+  .catch(() => {});
 </script>
 </body>
 </html>
