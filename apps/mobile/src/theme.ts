@@ -70,7 +70,9 @@ export function initThemeSystemSync(): () => void {
     if (preference === 'system') applyTheme(resolveTheme('system'));
   };
   media.addEventListener?.('change', onChange);
-  return () => media.removeEventListener?.('change', onChange);
+  return () => {
+    media.removeEventListener?.('change', onChange);
+  };
 }
 
 export function useTheme(): {
@@ -87,7 +89,9 @@ export function useTheme(): {
       setCurrentPreference(preference);
     };
     listeners.add(update);
-    return () => listeners.delete(update);
+    return () => {
+      listeners.delete(update);
+    };
   }, []);
 
   return { preference: currentPreference, resolvedTheme: current, setPreference: setThemePreference };
