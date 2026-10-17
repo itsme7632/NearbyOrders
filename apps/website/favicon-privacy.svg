@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" role="img" aria-label="NearbyOrders app icon">
+  <title>NearbyOrders launcher icon</title>
+  <rect width="108" height="108" rx="24" fill="#F2F5F7"/>
+  <g transform="translate(21.5,21.5) scale(0.541667)">
+  <path d="M29 90 L29 30 L52.17 52.42" stroke="#16222E" stroke-width="14" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+      <path d="M67.83 67.58 L91 90 L91 30" stroke="#16222E" stroke-width="14" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="60" cy="60" r="10" fill="none" stroke="#E23A2E" stroke-width="6"/>
+      <path d="M49.09 39.70 L57.00 47.35 L55.69 47.74 L54.43 48.25 L53.23 48.90 L52.11 49.67 L51.07 50.55 L50.14 51.53 L49.30 52.61 L48.59 53.77 L48.00 55.00 L47.54 56.28 C50.12 47.65 55.56 45.96 49.09 39.70 Z" fill="#E23A2E"/>
+      <path d="M39.36 49.76 L47.26 57.41 L47.60 56.09 L48.08 54.82 L48.68 53.60 L49.41 52.45 L50.26 51.39 L51.21 50.42 L52.26 49.55 L53.40 48.80 L54.61 48.17 L55.87 47.67 C47.34 50.53 45.82 56.02 39.36 49.76 Z" fill="#E23A2E"/>
+      <path d="M70.91 80.30 L63.00 72.65 L64.31 72.26 L65.57 71.75 L66.77 71.10 L67.89 70.33 L68.93 69.45 L69.86 68.47 L70.70 67.39 L71.41 66.23 L72.00 65.00 L72.46 63.72 C69.88 72.35 64.44 74.04 70.91 80.30 Z" fill="#E23A2E"/>
+      <path d="M80.64 70.24 L72.74 62.59 L72.40 63.91 L71.92 65.18 L71.32 66.40 L70.59 67.55 L69.74 68.61 L68.79 69.58 L67.74 70.45 L66.60 71.20 L65.39 71.83 L64.13 72.33 C72.66 69.47 74.18 63.98 80.64 70.24 Z" fill="#E23A2E"/>
+  </g>
+</svg>
