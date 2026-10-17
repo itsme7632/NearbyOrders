@@ -1,0 +1,165 @@
+/* NearbyOrders dark theme: same layout and brand, darker Slate surfaces. */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b141c;
+    --bg-raised: #101c25;
+    --card: #14212b;
+    --border: #263743;
+    --border-strong: #354957;
+    --ink: #f2f5f7;
+    --ink-2: #d0dbe3;
+    --muted: #9eafbc;
+    --brand: #e6edf2;
+    --brand-strong: #ffffff;
+    --brand-pressed: #d5e0e8;
+    --brand-soft: #1d2c37;
+    --brand-softer: #162631;
+    --action-soft: #3a201f;
+    --accent: #9eb1bf;
+    --accent-soft: #263641;
+    --success: #63c98a;
+    --success-soft: #173326;
+    --warning: #e5ad58;
+    --warning-soft: #3a2c19;
+    --error: #ff8175;
+    --error-soft: #3b211f;
+    --info: #8faee0;
+    --info-soft: #202d42;
+    --disabled: #65747f;
+    --gold-strong: #e8bd65;
+    --nav-surface: #101b24;
+    --nav-selected: #f2f5f7;
+    --nav-selected-bg: #233441;
+    --overlay: rgba(0, 0, 0, 0.62);
+    --primary: var(--brand);
+    --primary-soft: var(--brand-soft);
+    --secondary: var(--action);
+    --navy: var(--ink);
+    --light: var(--brand-soft);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22);
+    --shadow: 0 2px 10px rgba(0, 0, 0, 0.24);
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.34);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0b141c;
+  --bg-raised: #101c25;
+  --card: #14212b;
+  --border: #263743;
+  --border-strong: #354957;
+  --ink: #f2f5f7;
+  --ink-2: #d0dbe3;
+  --muted: #9eafbc;
+  --brand: #e6edf2;
+  --brand-strong: #ffffff;
+  --brand-pressed: #d5e0e8;
+  --brand-soft: #1d2c37;
+  --brand-softer: #162631;
+  --action-soft: #3a201f;
+  --accent: #9eb1bf;
+  --accent-soft: #263641;
+  --success: #63c98a;
+  --success-soft: #173326;
+  --warning: #e5ad58;
+  --warning-soft: #3a2c19;
+  --error: #ff8175;
+  --error-soft: #3b211f;
+  --info: #8faee0;
+  --info-soft: #202d42;
+  --disabled: #65747f;
+  --gold-strong: #e8bd65;
+  --nav-surface: #101b24;
+  --nav-selected: #f2f5f7;
+  --nav-selected-bg: #233441;
+  --overlay: rgba(0, 0, 0, 0.62);
+  --primary: var(--brand);
+  --primary-soft: var(--brand-soft);
+  --secondary: var(--action);
+  --navy: var(--ink);
+  --light: var(--brand-soft);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22);
+  --shadow: 0 2px 10px rgba(0, 0, 0, 0.24);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.34);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) body,
+  :root[data-theme="dark"] body {
+    background: var(--bg);
+    color: var(--ink);
+  }
+}
+
+:root[data-theme="dark"] body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* Components that intentionally used literal light surfaces in the original
+   light theme need explicit dark equivalents. */
+:root[data-theme="dark"] nav,
+:root[data-theme="dark"] .bottom-nav {
+  background: var(--nav-surface);
+  box-shadow: 0 -3px 18px rgba(0, 0, 0, 0.3);
+}
+
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] select {
+  background: var(--card);
+  color: var(--ink);
+  border-color: var(--border);
+  color-scheme: dark;
+}
+
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] textarea::placeholder {
+  color: var(--muted);
+}
+
+:root[data-theme="dark"] .skeleton {
+  background: linear-gradient(100deg, #172630 40%, #21343f 50%, #172630 60%);
+}
+
+:root[data-theme="dark"] .app-header-v3 .logo {
+  color: #fff;
+}
+
+:root[data-theme="dark"] .app-header-v3 .brand-mark {
+  background: #fff;
+  color: var(--brand);
+}
+
+:root[data-theme="dark"] .hero {
+  color: #fff;
+}
+
+:root[data-theme="dark"] .card,
+:root[data-theme="dark"] .hub-card,
+:root[data-theme="dark"] .modal-card,
+:root[data-theme="dark"] .sheet,
+:root[data-theme="dark"] .toast {
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .statusbar-gutter {
+  background: var(--bg);
+}
+
+:root[data-theme="dark"] a {
+  color: #ff776d;
+}
+
+:root[data-theme="dark"] button {
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme="dark"] * {
+    scroll-behavior: auto !important;
+  }
+}
