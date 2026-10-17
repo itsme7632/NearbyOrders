@@ -6,6 +6,21 @@
     <meta name="theme-color" content="#16222e" />
     <link rel="icon" type="image/svg+xml" href="/brand/nearbyorders-mark.svg" />
     <link rel="alternate icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/dark-theme.css" />
+    <script>
+      (() => {
+        try {
+          const saved = localStorage.getItem('nearbyorders.theme');
+          const dark = saved === 'dark' || (saved !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+          document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+          const meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', dark ? '#0b141c' : '#16222e');
+        } catch {
+          /* Theme is non-critical; CSS media query remains the fallback. */
+        }
+      })();
+    </script>
     <title>NearbyOrders — Find nearby. Book or order.</title>
   </head>
   <body>
