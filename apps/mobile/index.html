@@ -11,11 +11,14 @@
       (() => {
         try {
           const saved = localStorage.getItem('nearbyorders.theme');
-          const dark = saved === 'dark' || (saved !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-          document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-          document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
-          const meta = document.querySelector('meta[name="theme-color"]');
-          if (meta) meta.setAttribute('content', dark ? '#0b141c' : '#16222e');
+          if (saved === 'dark' || saved === 'light') {
+            document.documentElement.dataset.theme = saved;
+            document.documentElement.style.colorScheme = saved;
+            const meta = document.querySelector('meta[name="theme-color"]');
+            if (meta) meta.setAttribute('content', saved === 'dark' ? '#0b141c' : '#16222e');
+          } else {
+            document.documentElement.style.colorScheme = 'light dark';
+          }
         } catch {
           /* Theme is non-critical; CSS media query remains the fallback. */
         }
