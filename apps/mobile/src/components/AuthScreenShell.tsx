@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { NearbyOrdersMark } from './icons.js';
+import { ThemedMark } from './icons.js';
 
 /**
  * Shared chrome for the pre-auth screens (verify-email, forgot-password,
@@ -21,7 +21,7 @@ export function AuthScreenShell(props: {
       </button>
       <header className="auth-brand">
         <span className="auth-brand-mark auth-brand-mark-real" aria-hidden>
-          <NearbyOrdersMark size={30} tone="light" />
+          <ThemedMark size={30} />
         </span>
         <span className="auth-brand-lockup">
           <span className="auth-brand-name">

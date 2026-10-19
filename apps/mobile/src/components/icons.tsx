@@ -1,4 +1,5 @@
 import type { ReactNode, SVGProps } from 'react';
+import { useTheme } from '../theme.js';
 
 /**
  * Minimal inline icon set (stroke-based, 24x24 grid, inherits currentColor).
@@ -269,6 +270,15 @@ export function HeartIcon(props: IconProps & { filled?: boolean }) {
   );
 }
 
+
+export function MoonIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M20 13.5A8 8 0 1 1 10.5 4 6.5 6.5 0 0 0 20 13.5Z" />
+    </Icon>
+  );
+}
+
 export function CloseIcon(props: IconProps) {
   return (
     <Icon {...props}>
@@ -287,6 +297,18 @@ export function CloseIcon(props: IconProps) {
  * `tone="dark"`: porcelain N — for dark surfaces. The ember O/tie and the
  * geometry never change between tones.
  */
+
+/**
+ * Theme-aware N+O mark. Renders the exact approved geometry; the N strokes
+ * follow the resolved theme (slate on light, porcelain-white on dark) while
+ * the ember O ring and welds never change. Light-mode rendering is untouched.
+ */
+export function ThemedMark(props: SVGProps<SVGSVGElement> & { size?: number }) {
+  const { resolvedTheme } = useTheme();
+  const { size = 30, ...rest } = props;
+  return <NearbyOrdersMark size={size} tone={resolvedTheme === 'dark' ? 'dark' : 'light'} {...rest} />;
+}
+
 const NO_LEFT_D = 'M29 90 L29 30 L52.17 52.42';
 const NO_RIGHT_D = 'M67.83 67.58 L91 90 L91 30';
 const NO_RING_D =

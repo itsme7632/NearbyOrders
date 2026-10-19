@@ -17,7 +17,7 @@ import './BusinessDetail.css';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
-type DetailTab = 'overview' | 'services' | 'products' | 'reviews' | 'photos';
+type DetailTab = 'overview' | 'services' | 'products' | 'reviews';
 
 /** The contextual primary CTA pinned above the bottom nav. */
 type DetailCta =
@@ -120,7 +120,6 @@ export function BusinessDetailScreen(props: {
     { key: 'services', label: 'Services', show: Boolean(b.services?.length) },
     { key: 'products', label: 'Products', show: Boolean(b.products?.length) },
     { key: 'reviews', label: 'Reviews', show: true },
-    { key: 'photos', label: 'Photos', show: Boolean(b.imageUrl) },
   ];
   const visibleTabs = tabs.filter((t) => t.show);
   const activeTab = visibleTabs.some((t) => t.key === tab) ? tab : 'overview';
@@ -358,14 +357,6 @@ export function BusinessDetailScreen(props: {
       ) : null}
 
       {activeTab === 'reviews' ? <ReviewsTab businessId={b.id} /> : null}
-
-      {activeTab === 'photos' && b.imageUrl ? (
-        <section className="detail-section detail-section-tab" aria-label="Photos">
-          <div className="detail-hero-media-v3" style={{ height: 220 }}>
-            <RemoteImage src={resolveImageUrl(b.imageUrl) ?? undefined} alt={`${b.name} photo`} />
-          </div>
-        </section>
-      ) : null}
 
       {/* Contextual primary action, pinned above the floating bottom nav and
           safe-area aware. Real <button>; disabled states are explicit. */}

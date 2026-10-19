@@ -6928,3 +6928,50 @@ nav.nav-v3, nav.business-nav-v3 {
 .password-changed .btn {
   width: 100%;
 }
+
+/* ==================================================================
+   Appearance setting (Light / Dark / System). Radio rows reuse the
+   pref-row pattern; the selected row gets the ember treatment.
+   ================================================================== */
+.appearance-option {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.appearance-option-active {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 1px var(--brand);
+}
+.radio-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  flex: 0 0 auto;
+}
+.appearance-option-active .radio-dot {
+  border-color: var(--brand);
+  background: var(--brand);
+  box-shadow: inset 0 0 0 4px var(--card);
+}
+
+/* ==================================================================
+   First-use push permission explainer (bottom sheet).
+   ================================================================== */
+.push-explainer { text-align: center; padding-top: 26px; }
+.push-explainer-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--brand-soft);
+  color: var(--brand);
+  margin-bottom: 12px;
+}
+.push-explainer h2 { margin: 0 0 8px; font-size: 20px; }
+.push-explainer p { margin: 0 0 20px; }
+.push-explainer-actions { display: grid; gap: 8px; }

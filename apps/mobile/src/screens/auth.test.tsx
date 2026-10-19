@@ -19,6 +19,7 @@ const authProps = {
   onOpenSaved: noop,
   onOpenMyReviews: noop,
   onOpenAddresses: noop,
+  onOpenAppearance: noop,
   onOpenInfo: noop,
   onForgotPassword: noop,
   onRegisterSuccess: noop,

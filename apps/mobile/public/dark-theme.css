@@ -2,88 +2,88 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0b141c;
-    --bg-raised: #101c25;
-    --card: #14212b;
-    --border: #263743;
-    --border-strong: #354957;
+    --bg: #0c1218;
+    --bg-raised: #18242f;
+    --card: #121a23;
+    --border: #212f3f;
+    --border-strong: #33465c;
     --ink: #f2f5f7;
-    --ink-2: #d0dbe3;
-    --muted: #9eafbc;
-    --brand: #e6edf2;
-    --brand-strong: #ffffff;
-    --brand-pressed: #d5e0e8;
-    --brand-soft: #1d2c37;
-    --brand-softer: #162631;
-    --action-soft: #3a201f;
+    --ink-2: #bfcad6;
+    --muted: #8595a8;
+    --brand: #e23a2e;
+    --brand-strong: #f4564a;
+    --brand-pressed: #c22e24;
+    --brand-soft: #311f25;
+    --brand-softer: #1a2530;
+    --action-soft: #311f25;
     --accent: #9eb1bf;
     --accent-soft: #263641;
-    --success: #63c98a;
-    --success-soft: #173326;
-    --warning: #e5ad58;
-    --warning-soft: #3a2c19;
-    --error: #ff8175;
-    --error-soft: #3b211f;
-    --info: #8faee0;
-    --info-soft: #202d42;
+    --success: #4fbf7b;
+    --success-soft: #1a2f2e;
+    --warning: #e3a93f;
+    --warning-soft: #2d2d27;
+    --error: #f0675d;
+    --error-soft: #2f242b;
+    --info: #6e9bda;
+    --info-soft: #1e2b3b;
     --disabled: #65747f;
-    --gold-strong: #e8bd65;
-    --nav-surface: #101b24;
-    --nav-selected: #f2f5f7;
-    --nav-selected-bg: #233441;
-    --overlay: rgba(0, 0, 0, 0.62);
+    --gold-strong: #e5b654;
+    --nav-surface: #18242f;
+    --nav-selected: #f4564a;
+    --nav-selected-bg: #311f25;
+    --overlay: rgba(4, 7, 10, 0.64);
     --primary: var(--brand);
     --primary-soft: var(--brand-soft);
     --secondary: var(--action);
     --navy: var(--ink);
     --light: var(--brand-soft);
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22);
-    --shadow: 0 2px 10px rgba(0, 0, 0, 0.24);
-    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.34);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
     color-scheme: dark;
   }
 }
 
 :root[data-theme="dark"] {
-  --bg: #0b141c;
-  --bg-raised: #101c25;
-  --card: #14212b;
-  --border: #263743;
-  --border-strong: #354957;
-  --ink: #f2f5f7;
-  --ink-2: #d0dbe3;
-  --muted: #9eafbc;
-  --brand: #e6edf2;
-  --brand-strong: #ffffff;
-  --brand-pressed: #d5e0e8;
-  --brand-soft: #1d2c37;
-  --brand-softer: #162631;
-  --action-soft: #3a201f;
-  --accent: #9eb1bf;
-  --accent-soft: #263641;
-  --success: #63c98a;
-  --success-soft: #173326;
-  --warning: #e5ad58;
-  --warning-soft: #3a2c19;
-  --error: #ff8175;
-  --error-soft: #3b211f;
-  --info: #8faee0;
-  --info-soft: #202d42;
-  --disabled: #65747f;
-  --gold-strong: #e8bd65;
-  --nav-surface: #101b24;
-  --nav-selected: #f2f5f7;
-  --nav-selected-bg: #233441;
-  --overlay: rgba(0, 0, 0, 0.62);
-  --primary: var(--brand);
-  --primary-soft: var(--brand-soft);
-  --secondary: var(--action);
-  --navy: var(--ink);
-  --light: var(--brand-soft);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.22);
-  --shadow: 0 2px 10px rgba(0, 0, 0, 0.24);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.34);
-  color-scheme: dark;
+    --bg: #0c1218;
+    --bg-raised: #18242f;
+    --card: #121a23;
+    --border: #212f3f;
+    --border-strong: #33465c;
+    --ink: #f2f5f7;
+    --ink-2: #bfcad6;
+    --muted: #8595a8;
+    --brand: #e23a2e;
+    --brand-strong: #f4564a;
+    --brand-pressed: #c22e24;
+    --brand-soft: #311f25;
+    --brand-softer: #1a2530;
+    --action-soft: #311f25;
+    --accent: #9eb1bf;
+    --accent-soft: #263641;
+    --success: #4fbf7b;
+    --success-soft: #1a2f2e;
+    --warning: #e3a93f;
+    --warning-soft: #2d2d27;
+    --error: #f0675d;
+    --error-soft: #2f242b;
+    --info: #6e9bda;
+    --info-soft: #1e2b3b;
+    --disabled: #65747f;
+    --gold-strong: #e5b654;
+    --nav-surface: #18242f;
+    --nav-selected: #f4564a;
+    --nav-selected-bg: #311f25;
+    --overlay: rgba(4, 7, 10, 0.64);
+    --primary: var(--brand);
+    --primary-soft: var(--brand-soft);
+    --secondary: var(--action);
+    --navy: var(--ink);
+    --light: var(--brand-soft);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -162,4 +162,57 @@
   :root[data-theme="dark"] * {
     scroll-behavior: auto !important;
   }
+}
+
+/* ---- Approved dark-system component overrides ---- */
+
+/* No gradients in dark mode: branded surfaces go flat. */
+:root[data-theme="dark"] .grow-card,
+:root[data-theme="dark"] .plan-card,
+:root[data-theme="dark"] .spotlight-media {
+  background: var(--brand);
+}
+:root[data-theme="dark"] .profile-hero-v4,
+:root[data-theme="dark"] .app-header-v3 {
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+}
+:root[data-theme="dark"] .app-header-v3 .brand-mark {
+  background: transparent;
+}
+
+/* Ratings use the approved dark star. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --star: #e5b654; }
+}
+:root[data-theme="dark"] { --star: #e5b654; }
+
+/* Links and small accents use ember-bright for contrast on dark. */
+:root[data-theme="dark"] a { color: #f4564a; }
+:root[data-theme="dark"] .info-row-link { color: #f4564a; }
+
+/* Button hover states that referenced light surfaces. */
+:root[data-theme="dark"] .btn-primary { box-shadow: 0 2px 12px rgba(226, 58, 46, 0.35); }
+:root[data-theme="dark"] .btn-primary:hover { background: #f4564a; }
+:root[data-theme="dark"] .btn-secondary:hover { background: #3d2a28; }
+:root[data-theme="dark"] .btn-ghost:hover { background: rgba(242, 245, 247, 0.06); }
+
+/* Focus rings use an ember tint on dark instead of the slate one. */
+:root[data-theme="dark"] .auth-input:focus-within {
+  box-shadow: 0 0 0 3px rgba(226, 58, 46, 0.22);
+}
+:root[data-theme="dark"] .field input:focus,
+:root[data-theme="dark"] .field textarea:focus,
+:root[data-theme="dark"] .field select:focus {
+  box-shadow: 0 0 0 3px rgba(226, 58, 46, 0.22);
+}
+
+/* Skeleton shimmer stays a shimmer, retinted to dark surfaces. */
+:root[data-theme="dark"] .skeleton {
+  background: linear-gradient(100deg, #121a23 40%, #1c2836 50%, #121a23 60%);
+}
+
+/* Modal scrims use the dark scrim token, never the light slate one. */
+:root[data-theme="dark"] .modal-overlay {
+  background: var(--overlay);
 }

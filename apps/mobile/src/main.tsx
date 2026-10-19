@@ -5,7 +5,7 @@ import { businessTabs, navigationTabs, resolveTab, type BusinessTab, type Tab } 
 import { getMyBusinesses, getMyBusinessesWithEntitlement, getSession, onSessionChange, bootstrapSession, resolveImageUrl, type Business, type Session } from './api.js';
 import { useRoute, useAsyncData } from './hooks.js';
 import { applyDefaultModeForSession, initModeSessionSync, setAppMode, useAppMode } from './mode.js';
-import { BellIcon, ExploreIcon, HomeIcon, OrdersIcon, BookingsIcon, NearbyOrdersMark, ProfileIcon, StoreIcon } from './components/icons.js';
+import { BellIcon, ExploreIcon, HomeIcon, OrdersIcon, BookingsIcon, ThemedMark, ProfileIcon, StoreIcon } from './components/icons.js';
 import { Loading } from './components/ui.js';
 import { RemoteImage } from './components/RemoteImage.js';
 import { ToastProvider } from './components/primitives.js';
@@ -25,6 +25,7 @@ import { OwnerScreen } from './screens/OwnerScreen.js';
 import { OwnerBookingDetailScreen } from './screens/OwnerBookings.js';
 import { OwnerOrderDetailScreen } from './screens/OwnerOrderDetail.js';
 import { ForegroundPushBanner, enqueueForegroundPush } from './components/ForegroundPushBanner.js';
+import { PushPermissionExplainer, wasPushExplainerShown } from './components/PushPermissionExplainer.js';
 import { OwnerBusinessHome } from './screens/OwnerBusinessHome.js';
 import { OwnerBusinessOrders } from './screens/OwnerBusinessOrders.js';
 import { OwnerBusinessBookings } from './screens/OwnerBusinessBookings.js';
@@ -36,6 +37,7 @@ import { OrderDetailScreen, OrdersScreen } from './screens/Orders.js';
 import { CartPill } from './components/CartPill.js';
 import { NotificationsScreen } from './screens/Notifications.js';
 import { NotificationPreferencesScreen } from './screens/NotificationPreferences.js';
+import { AppearanceScreen } from './screens/Appearance.js';
 import {
   SavedBusinessesScreen,
   MyReviewsScreen,
@@ -48,9 +50,15 @@ import {
 import { useUnreadNotifications } from './useUnreadNotifications.js';
 import { usePushRegistration } from './usePushRegistration.js';
 import { applyNativeStatusBarInset } from './statusBar.js';
+import { initTheme, initThemeSystemSync } from './theme.js';
 import { initAndroidBackNavigation } from './androidBack.js';
 
 initModeSessionSync();
+
+// Theme: apply the saved appearance (Light / Dark / System) before the
+// first interactive render, then keep System mode synced with the device.
+initTheme();
+initThemeSystemSync();
 
 // Android system back-button handling: overlays dismiss first, then WebView
 // history goes back, then the tab root, and only at the genuine root with no
@@ -98,7 +106,7 @@ function OwnerAppHeader(props: {
     <header className="app-header owner-app-header">
       <button className="logo" onClick={props.onHome} aria-label="NearbyOrders business overview">
         <span className="brand-mark" aria-hidden>
-          <NearbyOrdersMark size={30} />
+          <ThemedMark size={30} />
         </span>
         <span className="logo-word">
           Nearby<b>Orders</b>
@@ -212,6 +220,7 @@ export function App() {
       onOpenSaved={() => push('/saved-businesses')}
       onOpenMyReviews={() => push('/my-reviews')}
       onOpenAddresses={() => push('/addresses')}
+      onOpenAppearance={() => push('/appearance')}
       onOpenInfo={(page) => push(`/info/${page}`)}
       onForgotPassword={() => push('/forgot-password')}
       onRegisterSuccess={() => push('/verify-email')}
@@ -239,6 +248,7 @@ export function App() {
       onOpenSaved={() => push('/saved-businesses')}
       onOpenMyReviews={() => push('/my-reviews')}
       onOpenAddresses={() => push('/addresses')}
+      onOpenAppearance={() => push('/appearance')}
       onOpenInfo={(page) => push(`/info/${page}`)}
       onForgotPassword={() => push('/forgot-password')}
       onRegisterSuccess={() => push('/verify-email')}
@@ -304,6 +314,22 @@ export function App() {
     onDeepLink: handlePushDeepLink,
     onForegroundNotification: (push) => enqueueForegroundPush(push),
   });
+
+  /**
+   * First-use push permission explainer: once per device, for a signed-in
+   * customer on Home, shortly after arrival — never on the first frame and
+   * never when permission is already granted or denied (Android will not
+   * re-show the system dialog after a denial, so we do not ask again).
+   */
+  const [pushExplainerOpen, setPushExplainerOpen] = useState(false);
+  useEffect(() => {
+    if (!session || session.user.role !== 'CUSTOMER') return;
+    if (tab !== 'Home') return;
+    if (pushPermission !== 'prompt') return;
+    if (wasPushExplainerShown()) return;
+    const timer = window.setTimeout(() => setPushExplainerOpen(true), 1500);
+    return () => window.clearTimeout(timer);
+  }, [session, tab, pushPermission]);
 
   const goExplore = (seed: { category?: string; query?: string }) => {
     setTab('Explore');
@@ -373,6 +399,8 @@ export function App() {
     ) : null;
   } else if (route.name === 'notification-preferences') {
     content = session ? <NotificationPreferencesScreen onBack={back} /> : null;
+  } else if (route.name === 'appearance') {
+    content = <AppearanceScreen onBack={back} />;
   } else if (route.name === 'edit-profile') {
     content = session ? <EditProfileScreen onBack={back} onSaved={unread.refresh} /> : null;
   } else if (route.name === 'change-password') {
@@ -614,6 +642,9 @@ export function App() {
       <StatusbarGutter />
       {/* Foreground push banner: alerts that arrive while the app is open. */}
       <ForegroundPushBanner onOpen={handlePushDeepLink} />
+      {pushExplainerOpen ? (
+        <PushPermissionExplainer onEnable={requestPushPermission} onDismiss={() => setPushExplainerOpen(false)} />
+      ) : null}
       {/* Phase 3I: keyboard / screen-reader users can jump past the header. */}
       {/* Skip link: jumps keyboard users past the header/nav to the main
           content. tabIndex={-1} lets the target receive programmatic focus so
@@ -641,7 +672,7 @@ export function App() {
           <header className="app-header">
             <button className="logo" onClick={() => { setTab('Home'); setBusinessTab('Overview'); push('/'); }} aria-label="NearbyOrders home">
               <span className="brand-mark" aria-hidden>
-                <NearbyOrdersMark size={30} />
+                <ThemedMark size={30} />
               </span>
               <span className="logo-word">
                 Nearby<b>Orders</b>

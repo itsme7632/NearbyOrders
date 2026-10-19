@@ -26,12 +26,14 @@ import {
   KeyIcon,
   LockIcon,
   MailIcon,
-  NearbyOrdersMark,
+  MoonIcon,
+  ThemedMark,
   OrdersIcon,
   PinIcon,
   StoreIcon,
   UserIcon,
 } from '../components/icons.js';
+import { useTheme } from '../theme.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 12;
@@ -335,8 +337,10 @@ function AccountHub(props: {
   onOpenSaved: () => void;
   onOpenMyReviews: () => void;
   onOpenAddresses: () => void;
+  onOpenAppearance: () => void;
   onOpenInfo: (page: 'help' | 'terms' | 'privacy' | 'about') => void;
 }) {
+  const { preference } = useTheme();
   const [profile, setProfile] = useState<MyProfile | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -400,6 +404,12 @@ function AccountHub(props: {
       <HubSection label="Preferences">
         <HubRow icon={<BellIcon size={19} />} title="Notifications" subtitle="Updates about your bookings and orders" onClick={props.onOpenNotifications} />
         <HubRow icon={<PinIcon size={19} />} title="Addresses" subtitle="Delivery addresses for orders" onClick={props.onOpenAddresses} />
+        <HubRow
+          icon={<MoonIcon size={19} />}
+          title="Appearance"
+          subtitle={preference === 'light' ? 'Light' : preference === 'dark' ? 'Dark' : 'System'}
+          onClick={props.onOpenAppearance}
+        />
       </HubSection>
 
       <HubSection label="Support & information">
@@ -443,6 +453,7 @@ export function ProfileScreen(props: {
   onOpenSaved: () => void;
   onOpenMyReviews: () => void;
   onOpenAddresses: () => void;
+  onOpenAppearance: () => void;
   onOpenInfo: (page: 'help' | 'terms' | 'privacy' | 'about') => void;
   onForgotPassword: () => void;
   onRegisterSuccess: () => void;
@@ -476,6 +487,7 @@ export function ProfileScreen(props: {
         onOpenSaved={props.onOpenSaved}
         onOpenMyReviews={props.onOpenMyReviews}
         onOpenAddresses={props.onOpenAddresses}
+        onOpenAppearance={props.onOpenAppearance}
         onOpenInfo={props.onOpenInfo}
       />
     );
@@ -565,7 +577,7 @@ export function ProfileScreen(props: {
       {/* Brand lockup: real N+O mark + wordmark, matching the in-app header. */}
       <header className="auth-brand">
         <span className="auth-brand-mark auth-brand-mark-real" aria-hidden>
-          <NearbyOrdersMark size={30} tone="light" />
+          <ThemedMark size={30} />
         </span>
         <span className="auth-brand-lockup">
           <span className="auth-brand-name">
