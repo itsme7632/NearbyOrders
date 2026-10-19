@@ -24,6 +24,7 @@ import {
   type ServiceSearchResult,
 } from '../api.js';
 import { formatDistanceKm, isDeniedOutcome, locationOutcomeHint, requestCustomerLocation } from '../location.js';
+import { useLocationExplainer } from '../components/LocationPermissionExplainer.js';
 import { longDateLabel } from '../time.js';
 import { useAsyncData } from '../hooks.js';
 import { BusinessRow, EmptyState, ErrorState, Money, RatingChip, SectionHeader } from '../components/ui.js';
@@ -159,6 +160,7 @@ export function HomeScreen(props: {
   const [locNotice, setLocNotice] = useState<string | null>(null);
   const [locDenied, setLocDenied] = useState(false);
   const [locDismissed, setLocDismissed] = useState(false);
+  const { requestWithExplainer, explainer: locationExplainer } = useLocationExplainer();
   const nearbyKey = coords ? `${coords.lat.toFixed(4)},${coords.lng.toFixed(4)}` : 'all';
 
   const businesses = useAsyncData<Business[]>(async () => {
@@ -185,36 +187,40 @@ export function HomeScreen(props: {
   const context = contextData.data ? pickContext(contextData.data.orders, contextData.data.bookings, contextData.data.favorites) : null;
 
   const enableNearby = () => {
-    if (locating) return;
-    setLocating(true);
-    setLocNotice(null);
-    setLocDenied(false);
-    setLocDismissed(false);
-    requestCustomerLocation()
-      .then((outcome) => {
-        if (outcome.status === 'granted') {
-          setCoords(outcome.coords);
-          setLocNotice(null);
-          setLocDenied(false);
-          setLocDismissed(false);
-        } else if (isDeniedOutcome(outcome)) {
-          // Denied is sticky but retryable: the chip stays tappable so the
-          // customer can retry after enabling permission in system settings
-          // (permanently-denied says so explicitly). A calm, dismissible card
-          // explains what happened — browsing and search keep working either way.
-          setCoords(null);
-          setLocNotice(locationOutcomeHint(outcome));
-          setLocDenied(true);
-          setLocDismissed(false);
-        } else {
-          // Unavailable/error: quietly keep the plain feed — the app must not
-          // pretend location exists.
-          setCoords(null);
-          setLocNotice(null);
-          setLocDenied(false);
-        }
-      })
-      .finally(() => setLocating(false));
+    // First-use gate: on a fresh device the in-app explainer appears before
+    // the native location dialog. Granted/denied states go straight through.
+    requestWithExplainer(() => {
+      if (locating) return;
+      setLocating(true);
+      setLocNotice(null);
+      setLocDenied(false);
+      setLocDismissed(false);
+      requestCustomerLocation()
+        .then((outcome) => {
+          if (outcome.status === 'granted') {
+            setCoords(outcome.coords);
+            setLocNotice(null);
+            setLocDenied(false);
+            setLocDismissed(false);
+          } else if (isDeniedOutcome(outcome)) {
+            // Denied is sticky but retryable: the chip stays tappable so the
+            // customer can retry after enabling permission in system settings
+            // (permanently-denied says so explicitly). A calm, dismissible card
+            // explains what happened — browsing and search keep working either way.
+            setCoords(null);
+            setLocNotice(locationOutcomeHint(outcome));
+            setLocDenied(true);
+            setLocDismissed(false);
+          } else {
+            // Unavailable/error: quietly keep the plain feed — the app must not
+            // pretend location exists.
+            setCoords(null);
+            setLocNotice(null);
+            setLocDenied(false);
+          }
+        })
+        .finally(() => setLocating(false));
+    });
   };
 
   const disableNearby = () => {
@@ -466,6 +472,7 @@ export function HomeScreen(props: {
           <ContextCard context={context} onOpenBusiness={props.onOpenBusiness} onOpenOrder={props.onOpenOrder} onOpenBooking={props.onOpenBooking} />
         </section>
       ) : null}
+      {locationExplainer}
     </div>
   );
 }

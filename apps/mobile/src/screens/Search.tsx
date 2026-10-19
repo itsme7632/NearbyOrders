@@ -15,6 +15,7 @@ import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, Money, OpenBadge, RatingChip, VerifiedBadge } from '../components/ui.js';
 import { ExploreIcon, PinIcon, StoreIcon } from '../components/icons.js';
 import { formatDistanceKm, locationOutcomeHint, requestCustomerLocation, type LocationOutcome } from '../location.js';
+import { useLocationExplainer } from '../components/LocationPermissionExplainer.js';
 import { clearRecentSearches, getRecentSearches, recordSearch } from '../recent-searches.js';
 
 /**
@@ -51,6 +52,7 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locNote, setLocNote] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
+  const { requestWithExplainer, explainer: locationExplainer } = useLocationExplainer();
   // Cursor pagination: the first page comes from useAsyncData; "Load more"
   // accumulates further pages without refetching what is already visible.
   const [extraPages, setExtraPages] = useState<SearchPage[]>([]);
@@ -133,19 +135,23 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
   };
 
   const enableLocation = () => {
-    setLocNote(null);
-    setLocating(true);
-    requestCustomerLocation()
-      .then((outcome: LocationOutcome) => {
-        if (outcome.status === 'granted') {
-          setCoords(outcome.coords);
-          setLocNote(null);
-        } else {
-          setCoords(null);
-          setLocNote(locationOutcomeHint(outcome));
-        }
-      })
-      .finally(() => setLocating(false));
+    // First-use gate: the in-app explainer appears before the native dialog
+    // on a fresh device; granted/denied states go straight through.
+    requestWithExplainer(() => {
+      setLocNote(null);
+      setLocating(true);
+      requestCustomerLocation()
+        .then((outcome: LocationOutcome) => {
+          if (outcome.status === 'granted') {
+            setCoords(outcome.coords);
+            setLocNote(null);
+          } else {
+            setCoords(null);
+            setLocNote(locationOutcomeHint(outcome));
+          }
+        })
+        .finally(() => setLocating(false));
+    });
   };
 
   const disableLocation = () => {
@@ -403,6 +409,7 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
           ) : null}
         </>
       )}
+      {locationExplainer}
     </div>
   );
 }

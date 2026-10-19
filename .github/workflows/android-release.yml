@@ -80,7 +80,7 @@ jobs:
         working-directory: apps/mobile
         run: pnpm exec cap sync android
 
-      - name: Declare location permissions
+      - name: Declare runtime permissions
         working-directory: apps/mobile
         run: |
           python3 - <<'PY'
@@ -92,6 +92,13 @@ jobs:
           for permission in (
               "android.permission.ACCESS_COARSE_LOCATION",
               "android.permission.ACCESS_FINE_LOCATION",
+              # POST_NOTIFICATIONS is a runtime permission on Android 13+ and
+              # MUST be declared in the manifest: without this tag the
+              # Capacitor push plugin's requestPermissions() is a silent
+              # no-op and the OS never shows the notification permission
+              # dialog (the push-notifications plugin's own manifest does not
+              # declare it).
+              "android.permission.POST_NOTIFICATIONS",
           ):
               tag = f'<uses-permission android:name="{permission}" />'
               if permission not in text:

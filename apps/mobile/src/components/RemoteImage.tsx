@@ -21,7 +21,7 @@ type RemoteImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'> & {
  * that fallback request is aborted. This keeps fast direct loads fast while
  * removing most of the sequential delay on the Android WebView failure path.
  */
-export function RemoteImage({ src, onError, ...props }: RemoteImageProps) {
+export function RemoteImage({ src, onError, onLoad, ...props }: RemoteImageProps) {
   const [displaySrc, setDisplaySrc] = useState(src);
   const [usingBlobFallback, setUsingBlobFallback] = useState(false);
   const objectUrlRef = useRef<string | null>(null);
@@ -95,10 +95,11 @@ export function RemoteImage({ src, onError, ...props }: RemoteImageProps) {
     };
   }, [src]);
 
-  const handleLoad: React.ReactEventHandler<HTMLImageElement> = () => {
+  const handleLoad: React.ReactEventHandler<HTMLImageElement> = (event) => {
     loadedRef.current = true;
     fetchControllerRef.current?.abort();
     fetchControllerRef.current = null;
+    onLoad?.(event);
   };
 
   const handleError: ReactEventHandler<HTMLImageElement> = async (event) => {

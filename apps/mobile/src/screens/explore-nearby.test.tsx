@@ -19,6 +19,9 @@ vi.mock('../api.js', async (importOriginal) => ({
 vi.mock('../location.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../location.js')>()),
   requestCustomerLocation: vi.fn(),
+  // The first-use explainer gate is tested separately; these tests exercise
+  // the location flow itself, so simulate the already-decided state.
+  checkLocationPermissionState: vi.fn().mockResolvedValue('granted'),
 }));
 
 const base = (patch: Partial<Business> = {}): Business => ({

@@ -197,9 +197,20 @@
 :root[data-theme="dark"] .btn-secondary:hover { background: #3d2a28; }
 :root[data-theme="dark"] .btn-ghost:hover { background: rgba(242, 245, 247, 0.06); }
 
-/* Focus rings use an ember tint on dark instead of the slate one. */
+/* Focus rings use an ember tint on dark instead of the slate one.
+   The .auth-input inner input is explicitly excluded: the wrapper owns the
+   single focus boundary, so the inner input must never paint its own ring
+   (higher specificity than the neutralization in styles.css would otherwise
+   let this rule win and render as a doubled edge). */
 :root[data-theme="dark"] .auth-input:focus-within {
   box-shadow: 0 0 0 3px rgba(226, 58, 46, 0.22);
+}
+:root[data-theme="dark"] .field .auth-input input:focus,
+:root[data-theme="dark"] .auth-input input:focus,
+:root[data-theme="dark"] .field .auth-input input:focus-visible,
+:root[data-theme="dark"] .auth-input input:focus-visible {
+  box-shadow: none;
+  outline: none;
 }
 :root[data-theme="dark"] .field input:focus,
 :root[data-theme="dark"] .field textarea:focus,

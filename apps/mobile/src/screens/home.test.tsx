@@ -115,6 +115,9 @@ beforeEach(() => {
   vi.spyOn(api, 'listMyBookings').mockResolvedValue([]);
   vi.spyOn(api, 'listFavorites').mockResolvedValue([]);
   vi.spyOn(api, 'getSession').mockReturnValue(null);
+  // The first-use explainer gate is tested separately; these tests exercise
+  // the location flow itself, so simulate the already-decided state.
+  vi.spyOn(location, 'checkLocationPermissionState').mockResolvedValue('granted');
 });
 
 describe('Home category display', () => {

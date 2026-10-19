@@ -13,6 +13,7 @@ import {
 } from '../components/ExploreFilters.js';
 import { ExploreIcon, PinIcon } from '../components/icons.js';
 import { requestCustomerLocation, locationOutcomeHint, isDeniedOutcome, type LocationOutcome } from '../location.js';
+import { useLocationExplainer } from '../components/LocationPermissionExplainer.js';
 import { DEFAULT_RADIUS_KM, RADIUS_OPTIONS_KM } from '@nearbyorders/shared';
 import { useMapProvider } from '../maps/useMapProvider.js';
 import { ExploreMapView } from './ExploreMapView.js';
@@ -46,6 +47,7 @@ export function ExploreScreen(props: {
   const [locDenied, setLocDenied] = useState(false);
   const [locDismissed, setLocDismissed] = useState(false);
   const [locating, setLocating] = useState(false);
+  const { requestWithExplainer, explainer: locationExplainer } = useLocationExplainer();
   const [selectedMarker, setSelectedMarker] = useState<string | null>(null);
   const [filters, setFilters] = useState<ExploreFilters>(DEFAULT_EXPLORE_FILTERS);
   const { handle: mapHandle } = useMapProvider();
@@ -91,29 +93,33 @@ export function ExploreScreen(props: {
   );
 
   const enableNearby = () => {
-    setLocNote(null);
-    setLocDenied(false);
-    setLocDismissed(false);
-    setLocating(true);
-    requestCustomerLocation()
-      .then((outcome: LocationOutcome) => {
-        if (outcome.status === 'granted') {
-          setCoords(outcome.coords);
-          setRadiusKm(DEFAULT_RADIUS_KM);
-          setMode('nearby');
-          setLocDenied(false);
-        } else if (isDeniedOutcome(outcome)) {
-          // Denied stays non-blocking: the full list keeps working and a calm
-          // card explains the situation with a retry and a dismiss path.
-          setLocNote(locationOutcomeHint(outcome));
-          setLocDenied(true);
-          setLocDismissed(false);
-        } else {
-          setLocNote(locationOutcomeHint(outcome));
-          setLocDenied(false);
-        }
-      })
-      .finally(() => setLocating(false));
+    // First-use gate: the in-app explainer appears before the native dialog
+    // on a fresh device; granted/denied states go straight through.
+    requestWithExplainer(() => {
+      setLocNote(null);
+      setLocDenied(false);
+      setLocDismissed(false);
+      setLocating(true);
+      requestCustomerLocation()
+        .then((outcome: LocationOutcome) => {
+          if (outcome.status === 'granted') {
+            setCoords(outcome.coords);
+            setRadiusKm(DEFAULT_RADIUS_KM);
+            setMode('nearby');
+            setLocDenied(false);
+          } else if (isDeniedOutcome(outcome)) {
+            // Denied stays non-blocking: the full list keeps working and a calm
+            // card explains the situation with a retry and a dismiss path.
+            setLocNote(locationOutcomeHint(outcome));
+            setLocDenied(true);
+            setLocDismissed(false);
+          } else {
+            setLocNote(locationOutcomeHint(outcome));
+            setLocDenied(false);
+          }
+        })
+        .finally(() => setLocating(false));
+    });
   };
 
   const disableNearby = () => {
@@ -375,6 +381,7 @@ export function ExploreScreen(props: {
           )}
         </>
       ) : null}
+      {locationExplainer}
     </div>
   );
 }

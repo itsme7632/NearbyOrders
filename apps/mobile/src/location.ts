@@ -230,6 +230,47 @@ export const requestCustomerLocation = (
     message: 'Could not determine your location. Please try again.',
   }));
 
+/**
+ * Current location permission state WITHOUT prompting. Used by the first-use
+ * explainer gate: we only show the in-app explanation (and only then the OS
+ * dialog) when the OS can still show a prompt and the user has never been
+ * asked. Granted/denied states go straight to the normal flow, which already
+ * handles them gracefully.
+ */
+export type LocationPermissionState = 'granted' | 'denied' | 'prompt' | 'unavailable';
+
+export const checkLocationPermissionState = async (): Promise<LocationPermissionState> => {
+  try {
+    const mod = (await import('@capacitor/core')) as {
+      Capacitor: { isNativePlatform?: () => boolean };
+    };
+    if (mod.Capacitor.isNativePlatform?.()) {
+      const plugin = (await import('@capacitor/geolocation')) as {
+        Geolocation: CapacitorGeolocationLike;
+      };
+      const status = await plugin.Geolocation.checkPermissions();
+      if (hasFixPermission(status)) return 'granted';
+      if (canStillPrompt(status)) return 'prompt';
+      // The OS will not show a prompt anymore (denied twice / "don't ask
+      // again"): the user must enable it in system settings.
+      return 'denied';
+    }
+  } catch {
+    /* @capacitor/core not resolvable (plain web/test) — fall through. */
+  }
+  try {
+    const perms = (globalThis as { navigator?: { permissions?: { query: (q: { name: string }) => Promise<{ state: string }> } } }).navigator?.permissions;
+    if (perms?.query) {
+      const result = await perms.query({ name: 'geolocation' });
+      if (result.state === 'granted') return 'granted';
+      if (result.state === 'denied') return 'denied';
+    }
+  } catch {
+    /* Permissions API unavailable — treat as promptable. */
+  }
+  return 'prompt';
+};
+
 /* --------------------------- distance display --------------------------- */
 
 /** Formats a server-computed distance (km) as a human-readable string. */

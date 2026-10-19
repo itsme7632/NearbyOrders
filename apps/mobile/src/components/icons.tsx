@@ -256,6 +256,14 @@ export function ChevronRightIcon(props: IconProps) {
   );
 }
 
+export function ChevronLeftIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m14.5 6.5-6 5.5 6 5.5" />
+    </Icon>
+  );
+}
+
 export function HeartIcon(props: IconProps & { filled?: boolean }) {
   // Destructure before spreading so `filled` never reaches the DOM
   // (React would warn about a non-boolean attribute otherwise).

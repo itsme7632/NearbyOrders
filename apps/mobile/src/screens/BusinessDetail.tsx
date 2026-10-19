@@ -4,7 +4,7 @@ import { getBusiness, listBusinessReviews, listFeaturedBusinesses, getSession, r
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, ListSkeleton, Loading, Money, OpenBadge, VerifiedBadge } from '../components/ui.js';
 import { useToast } from '../components/primitives.js';
-import { StoreIcon, PinIcon } from '../components/icons.js';
+import { StoreIcon, PinIcon, ChevronLeftIcon } from '../components/icons.js';
 import { dayOfWeek, formatSlotTime, todayPkt } from '../time.js';
 import { addToCart, replaceWith } from '../cart.js';
 import { useCartCount } from '../useCartCount.js';
@@ -16,6 +16,16 @@ import { BusinessMapContext } from './BusinessMapContext.js';
 import './BusinessDetail.css';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
+
+/**
+ * Hero image treatment: landscape photos get the cinematic cover treatment;
+ * near-square or portrait sources (usually business logos) get contain so
+ * they are never awkwardly cropped or blown up. Exported for tests.
+ */
+export function heroFitForDimensions(naturalWidth: number, naturalHeight: number): 'cover' | 'contain' {
+  if (naturalWidth <= 0 || naturalHeight <= 0) return 'cover';
+  return naturalWidth / naturalHeight < 1.25 ? 'contain' : 'cover';
+}
 
 type DetailTab = 'overview' | 'services' | 'products' | 'reviews';
 
@@ -41,6 +51,9 @@ export function BusinessDetailScreen(props: {
   const cartCount = useCartCount();
   const [tab, setTab] = useState<DetailTab>('overview');
   const [cartNotice, setCartNotice] = useState<string | null>(null);
+  // Hero image treatment: landscape photos get cover; near-square/portrait
+  // sources (usually logos) get contain so they are never awkwardly cropped.
+  const [heroFit, setHeroFit] = useState<'cover' | 'contain'>('cover');
   const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
 
   /** Adds to cart; a foreign-business cart asks the user before replacing. */
@@ -129,9 +142,19 @@ export function BusinessDetailScreen(props: {
       {/* Full-bleed hero: media behind, gradient scrim, identity overlaid —
           then the floating action bar. Back control floats on the media. */}
       <div className="biz-hero-full">
-        <div className="biz-hero-media" role="img" aria-label={b.imageUrl ? `${b.name} photo` : undefined}>
+        <div className={`biz-hero-media${heroFit === 'contain' ? ' biz-hero-fit-contain' : ''}`} role="img" aria-label={b.imageUrl ? `${b.name} photo` : undefined}>
           {b.imageUrl ? (
-            <RemoteImage src={resolveImageUrl(b.imageUrl) ?? undefined} alt={`${b.name} photo`} />
+            <RemoteImage
+              src={resolveImageUrl(b.imageUrl) ?? undefined}
+              alt={`${b.name} photo`}
+              onLoad={(e) => {
+                // Near-square / portrait sources are usually logos: contain
+                // them on the gradient instead of blowing them up with cover.
+                // Landscape photos keep the cinematic cover treatment.
+                const img = e.currentTarget;
+                setHeroFit(heroFitForDimensions(img.naturalWidth, img.naturalHeight));
+              }}
+            />
           ) : (
             <span className="hero-initial" aria-hidden>
               {b.name[0]?.toUpperCase() ?? '?'}
@@ -140,7 +163,7 @@ export function BusinessDetailScreen(props: {
           <div className="biz-hero-scrim" aria-hidden />
         </div>
         <button className="back-float" onClick={props.onBack} aria-label="Back">
-          ‹
+          <ChevronLeftIcon size={20} aria-hidden />
         </button>
 
         <header className="biz-hero-overlay">

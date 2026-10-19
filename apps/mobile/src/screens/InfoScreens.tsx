@@ -29,10 +29,7 @@ function InfoPage(props: { title: string; sub?: string; children: ReactNode; onB
 
 function SupportLink(props: { children?: ReactNode }) {
   return (
-    <a
-      href={`mailto:${SUPPORT_EMAIL}`}
-      style={{ color: '#16222E', fontWeight: 800, textDecoration: 'underline' }}
-    >
+    <a href={`mailto:${SUPPORT_EMAIL}`} className="info-link">
       {props.children ?? 'Contact NearbyOrders'}
     </a>
   );
@@ -40,18 +37,18 @@ function SupportLink(props: { children?: ReactNode }) {
 
 function Section(props: { title: string; children: ReactNode }) {
   return (
-    <section style={{ marginTop: 22 }}>
-      <h2 style={{ margin: '0 0 8px', fontSize: 18, lineHeight: 1.25, color: '#16222E' }}>{props.title}</h2>
-      <div style={{ color: '#40515D', fontSize: 14, lineHeight: 1.7 }}>{props.children}</div>
+    <section className="info-section">
+      <h2>{props.title}</h2>
+      <div className="info-section-body">{props.children}</div>
     </section>
   );
 }
 
 function FAQ(props: { question: string; children: ReactNode }) {
   return (
-    <details style={{ borderTop: '1px solid #DCE2E7', padding: '12px 0' }}>
-      <summary style={{ cursor: 'pointer', fontWeight: 800, color: '#16222E' }}>{props.question}</summary>
-      <div style={{ paddingTop: 8, color: '#40515D', lineHeight: 1.65 }}>{props.children}</div>
+    <details className="info-faq">
+      <summary>{props.question}</summary>
+      <div className="info-faq-answer">{props.children}</div>
     </details>
   );
 }
@@ -220,7 +217,7 @@ export function PrivacyScreen(props: { onBack: () => void }) {
 export function AboutScreen(props: { onBack: () => void }) {
   return (
     <InfoPage title="About NearbyOrders" sub="Local commerce, built for real neighborhoods" onBack={props.onBack}>
-      <p style={{ marginTop: 0, fontSize: 17, fontWeight: 800, color: '#16222E' }}>
+      <p className="info-tagline">
         Find nearby. Book or order.
       </p>
       <p>
