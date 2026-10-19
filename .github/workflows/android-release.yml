@@ -131,10 +131,15 @@ jobs:
               text = text.replace(marker, signing, 1)
 
           if "signingConfig signingConfigs.release" not in text:
-              marker = "release {"
-              if marker not in text:
+              build_types_marker = "buildTypes {"
+              build_types_index = text.find(build_types_marker)
+              if build_types_index == -1:
+                  raise SystemExit("Could not find buildTypes block in app/build.gradle")
+              release_index = text.find("release {", build_types_index)
+              if release_index == -1:
                   raise SystemExit("Could not find release build type in app/build.gradle")
-              text = text.replace(marker, "release {\n            signingConfig signingConfigs.release", 1)
+              insertion = release_index + len("release {")
+              text = text[:insertion] + "\n            signingConfig signingConfigs.release" + text[insertion:]
 
           gradle.write_text(text)
           PY
