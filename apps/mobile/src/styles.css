@@ -3567,14 +3567,47 @@ nav.business-nav-v3 .nav-item.active {
    center keeps the important middle of landscape photos; near-square or
    portrait sources (usually logos) switch to contain via .biz-hero-fit-contain
    so they are never awkwardly cropped or blown up. Never distorted. */
-.biz-hero-media { position: relative; aspect-ratio: 16 / 10; max-height: 300px; background: linear-gradient(140deg, var(--brand-strong), var(--brand-pressed)); overflow: hidden; }
+.biz-hero-media { position: relative; aspect-ratio: 16 / 10; max-height: 300px; background: var(--raised); overflow: hidden; }
 .biz-hero-media img { width: 100%; height: 100%; object-fit: cover; object-position: center; display: block; }
-.biz-hero-fit-contain img { object-fit: contain; padding: 28px; }
+/* Logo sources: the hero stays a clean slate; the logo lives in the overlapping circle. */
+.biz-hero-fit-logo { background: var(--raised); }
 .biz-hero-scrim {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(22, 34, 46, 0.08) 30%, rgba(22, 34, 46, 0.72) 100%);
+  background: linear-gradient(180deg, rgba(12, 18, 24, 0.08) 30%, rgba(12, 18, 24, 0.55) 100%);
 }
+/* Concept A: overlapping circular business logo. */
+.biz-logo-overlap {
+  position: absolute;
+  left: 24px;
+  bottom: -60px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: var(--raised);
+  border: 3px solid var(--border-strong);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+.biz-logo-overlap img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 12px;
+  display: block;
+}
+.biz-logo-overlap .biz-logo-initial {
+  font-size: 44px;
+  font-weight: 800;
+  color: var(--ink);
+}
+/* Business identity below the hero. */
+.biz-identity { padding: 76px 24px 0; }
+.biz-identity-badges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.biz-identity-name { margin: 0 0 8px; font-size: 28px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); overflow-wrap: anywhere; }
 .biz-hero-media .hero-initial {
   position: absolute;
   inset: 0;
@@ -3610,17 +3643,9 @@ nav.business-nav-v3 .nav-item.active {
   position: absolute;
   inset: -4px;
 }
-.biz-hero-overlay { position: absolute; left: 0; right: 0; bottom: 0; padding: 16px; color: #fff; }
-.biz-hero-overlay-badges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
-.biz-hero-overlay .badge-verified { background: rgba(255, 255, 255, 0.92); color: var(--brand-strong); }
-.biz-hero-overlay .badge-open { background: var(--success); color: #fff; }
-.biz-hero-overlay .badge-closed { background: rgba(255, 255, 255, 0.25); color: #fff; }
 .biz-hero-close { font-size: 12px; opacity: 0.9; }
-.biz-hero-overlay .biz-hero-name { margin: 0; color: #fff; font-size: 23px; letter-spacing: -0.02em; text-shadow: 0 1px 8px rgba(0,0,0,0.35); overflow-wrap: anywhere; }
-.biz-hero-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 5px; font-size: 12.5px; }
+.biz-hero-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 5px; font-size: 12.5px; color: var(--muted); }
 .biz-hero-meta-item { opacity: 0.92; }
-.biz-hero-overlay .biz-card-rating { color: #ffd98a; }
-.biz-hero-overlay .biz-card-rating .muted { color: rgba(255,255,255,0.8); }
 
 /* ---- Business action bar: primary CTAs under the hero ---- */
 .biz-action-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }

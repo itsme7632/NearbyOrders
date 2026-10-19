@@ -139,61 +139,73 @@ export function BusinessDetailScreen(props: {
 
   return (
     <div className="screen biz-detail">
-      {/* Full-bleed hero: media behind, gradient scrim, identity overlaid —
-          then the floating action bar. Back control floats on the media. */}
+      {/* Full-bleed hero: media behind, back control floats on it.
+          Concept A: the business logo lives in its own overlapping circular
+          container; the identity (name/meta/badges) sits below in content. */}
       <div className="biz-hero-full">
-        <div className={`biz-hero-media${heroFit === 'contain' ? ' biz-hero-fit-contain' : ''}`} role="img" aria-label={b.imageUrl ? `${b.name} photo` : undefined}>
-          {b.imageUrl ? (
+        <div className={`biz-hero-media${heroFit === 'contain' ? ' biz-hero-fit-logo' : ''}`} role="img" aria-label={b.imageUrl ? `${b.name} photo` : undefined}>
+          {b.imageUrl && heroFit !== 'contain' ? (
             <RemoteImage
               src={resolveImageUrl(b.imageUrl) ?? undefined}
               alt={`${b.name} photo`}
               onLoad={(e) => {
-                // Near-square / portrait sources are usually logos: contain
-                // them on the gradient instead of blowing them up with cover.
-                // Landscape photos keep the cinematic cover treatment.
                 const img = e.currentTarget;
                 setHeroFit(heroFitForDimensions(img.naturalWidth, img.naturalHeight));
               }}
             />
-          ) : (
-            <span className="hero-initial" aria-hidden>
-              {b.name[0]?.toUpperCase() ?? '?'}
-            </span>
-          )}
+          ) : null}
           <div className="biz-hero-scrim" aria-hidden />
         </div>
         <button className="back-float" onClick={props.onBack} aria-label="Back">
           <ChevronLeftIcon size={20} aria-hidden />
         </button>
 
-        <header className="biz-hero-overlay">
-          <div className="biz-hero-overlay-badges">
-            <VerifiedBadge verified={b.isVerified} />
-            {featuredPlacement ? (
-              <span className="biz-hero-featured" aria-label={`Featured business: ${featuredPlacement.placementLabel}`}>
-                {featuredPlacement.placementLabel}
-              </span>
-            ) : null}
-            {b.isOpenNow !== undefined ? <OpenBadge open={b.isOpenNow} /> : null}
-            {closingNote && b.isOpenNow ? <span className="biz-hero-close">{closingNote}</span> : null}
-          </div>
-          <h1 className="biz-hero-name">{b.name}</h1>
-          <div className="biz-hero-meta">
-            <span className="biz-hero-meta-item">
-              {b.categories.map((c) => c.name).join(' • ') || 'Local business'}
-            </span>
-            {distanceLabel ? (
-              <span className="biz-hero-meta-item">
-                <PinIcon size={13} aria-hidden /> {distanceLabel} away
-              </span>
-            ) : place ? (
-              <span className="biz-hero-meta-item">
-                <PinIcon size={13} aria-hidden /> {place}
-              </span>
-            ) : null}
-          </div>
-        </header>
+        {/* Overlapping circular logo: the image contained without distortion
+            when it is a logo; the business initial otherwise. */}
+        <div className="biz-logo-overlap" aria-hidden>
+          {b.imageUrl && heroFit === 'contain' ? (
+            <RemoteImage
+              src={resolveImageUrl(b.imageUrl) ?? undefined}
+              alt=""
+              onLoad={(e) => {
+                const img = e.currentTarget;
+                setHeroFit(heroFitForDimensions(img.naturalWidth, img.naturalHeight));
+              }}
+            />
+          ) : (
+            <span className="biz-logo-initial">{b.name[0]?.toUpperCase() ?? '?'}</span>
+          )}
+        </div>
       </div>
+
+      {/* Business identity: name, meta, badges — below the hero. */}
+      <header className="biz-identity">
+        <div className="biz-identity-badges">
+          <VerifiedBadge verified={b.isVerified} />
+          {featuredPlacement ? (
+            <span className="biz-hero-featured" aria-label={`Featured business: ${featuredPlacement.placementLabel}`}>
+              {featuredPlacement.placementLabel}
+            </span>
+          ) : null}
+          {b.isOpenNow !== undefined ? <OpenBadge open={b.isOpenNow} /> : null}
+          {closingNote && b.isOpenNow ? <span className="biz-hero-close">{closingNote}</span> : null}
+        </div>
+        <h1 className="biz-identity-name">{b.name}</h1>
+        <div className="biz-hero-meta">
+          <span className="biz-hero-meta-item">
+            {b.categories.map((c) => c.name).join(' • ') || 'Local business'}
+          </span>
+          {distanceLabel ? (
+            <span className="biz-hero-meta-item">
+              <PinIcon size={13} aria-hidden /> {distanceLabel} away
+            </span>
+          ) : place ? (
+            <span className="biz-hero-meta-item">
+              <PinIcon size={13} aria-hidden /> {place}
+            </span>
+          ) : null}
+        </div>
+      </header>
 
       {/* Utility actions under the hero; the primary CTA lives in the sticky
           bar pinned above the bottom nav. */}
