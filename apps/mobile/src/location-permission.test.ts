@@ -67,3 +67,59 @@ describe('checkLocationPermissionState', () => {
     expect(await checkLocationPermissionState()).toBe('prompt');
   });
 });
+
+describe('acquireViaCapacitorPlugin options', () => {
+  it('requests high accuracy with a generous timeout', async () => {
+    const getCurrentPosition = vi.fn().mockResolvedValue({
+      coords: { latitude: 31.51, longitude: 74.34 },
+    });
+    vi.doMock('@capacitor/core', () => ({
+      Capacitor: { isNativePlatform: () => true },
+    }));
+    vi.doMock('@capacitor/geolocation', () => ({
+      Geolocation: {
+        checkPermissions: vi.fn().mockResolvedValue({ location: 'granted', coarseLocation: 'granted' }),
+        requestPermissions: vi.fn(),
+        getCurrentPosition,
+      },
+    }));
+    const { acquireViaCapacitorPlugin } = await import('./location.js');
+    const geo = {
+      checkPermissions: vi.fn().mockResolvedValue({ location: 'granted', coarseLocation: 'granted' }),
+      requestPermissions: vi.fn(),
+      getCurrentPosition,
+    };
+    const outcome = await acquireViaCapacitorPlugin(geo, 8000);
+    expect(outcome.status).toBe('granted');
+    expect(getCurrentPosition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enableHighAccuracy: true,
+        maximumAge: 60000,
+      })
+    );
+    const opts = getCurrentPosition.mock.calls[0][0];
+    expect(opts.timeout).toBeGreaterThanOrEqual(20000);
+  });
+
+  it('classifies timeout as unavailable (not denied)', async () => {
+    const geo = {
+      checkPermissions: vi.fn().mockResolvedValue({ location: 'granted', coarseLocation: 'granted' }),
+      requestPermissions: vi.fn(),
+      getCurrentPosition: vi.fn().mockRejectedValue({ code: 'OS-PLUG-GLOC-0010', message: 'Could not obtain location in time.' }),
+    };
+    const { acquireViaCapacitorPlugin } = await import('./location.js');
+    const outcome = await acquireViaCapacitorPlugin(geo, 8000);
+    expect(outcome.status).toBe('unavailable');
+  });
+
+  it('classifies location services disabled as unavailable', async () => {
+    const geo = {
+      checkPermissions: vi.fn().mockResolvedValue({ location: 'granted', coarseLocation: 'granted' }),
+      requestPermissions: vi.fn(),
+      getCurrentPosition: vi.fn().mockRejectedValue({ code: 'OS-PLUG-GLOC-0007', message: 'Location services are not enabled.' }),
+    };
+    const { acquireViaCapacitorPlugin } = await import('./location.js');
+    const outcome = await acquireViaCapacitorPlugin(geo, 8000);
+    expect(outcome.status).toBe('unavailable');
+  });
+});

@@ -131,7 +131,7 @@ describe('distance and directions helpers (Phase 11)', () => {
     expect(locationOutcomeHint({ status: 'granted', coords: { lat: 0, lng: 0 } })).toBeNull();
     expect(locationOutcomeHint({ status: 'denied' })).toMatch(/denied/i);
     expect(locationOutcomeHint({ status: 'permanently-denied' })).toMatch(/settings/i);
-    expect(locationOutcomeHint({ status: 'unavailable' })).toMatch(/not available/i);
+    expect(locationOutcomeHint({ status: 'unavailable' })).toMatch(/could not get your location/i);
     expect(locationOutcomeHint({ status: 'error', message: 'x' })).toBe('x');
   });
 
@@ -178,7 +178,9 @@ describe('native permission flow (Capacitor Geolocation)', () => {
     expect(outcome).toEqual({ status: 'granted', coords: { lat: 31.5204, lng: 74.3587 } });
     expect(geo.checkPermissions).toHaveBeenCalledTimes(1);
     expect(geo.requestPermissions).not.toHaveBeenCalled();
-    expect(geo.getCurrentPosition).toHaveBeenCalledWith({ timeout: 8000 });
+    expect(geo.getCurrentPosition).toHaveBeenCalledWith(
+      expect.objectContaining({ enableHighAccuracy: true, maximumAge: 60000 })
+    );
   });
 
   it('requests permission when the OS can still prompt, then reads the position', async () => {

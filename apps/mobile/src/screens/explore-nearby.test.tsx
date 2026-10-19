@@ -95,7 +95,7 @@ describe('Explore Near You discovery (Phase 11)', () => {
     vi.mocked(requestCustomerLocation).mockResolvedValue(unavailable);
     render(<ExploreScreen onOpenBusiness={() => {}} />);
     fireEvent.click(await screen.findByRole('button', { name: /near you/i }));
-    await screen.findByText(/not available on this device/i);
+    await screen.findByText(/could not get your location/i);
     expect(api.listNearbyBusinesses).not.toHaveBeenCalled();
   });
 

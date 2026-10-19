@@ -139,30 +139,17 @@ export function BusinessDetailScreen(props: {
 
   return (
     <div className="screen biz-detail">
-      {/* Full-bleed hero: media behind, back control floats on it.
-          Concept A: the business logo lives in its own overlapping circular
-          container; the identity (name/meta/badges) sits below in content. */}
-      <div className="biz-hero-full">
-        <div className={`biz-hero-media${heroFit === 'contain' ? ' biz-hero-fit-logo' : ''}`} role="img" aria-label={b.imageUrl ? `${b.name} photo` : undefined}>
-          {b.imageUrl && heroFit !== 'contain' ? (
-            <RemoteImage
-              src={resolveImageUrl(b.imageUrl) ?? undefined}
-              alt={`${b.name} photo`}
-              onLoad={(e) => {
-                const img = e.currentTarget;
-                setHeroFit(heroFitForDimensions(img.naturalWidth, img.naturalHeight));
-              }}
-            />
-          ) : null}
-          <div className="biz-hero-scrim" aria-hidden />
-        </div>
+      {/* Concept 3: compact marketplace header. Minimal top bar, identity row
+          with circular logo beside the name (no overlap, no empty hero). */}
+      <div className="biz-topbar">
         <button className="back-float" onClick={props.onBack} aria-label="Back">
           <ChevronLeftIcon size={20} aria-hidden />
         </button>
+        <span className="biz-topbar-title">Business</span>
+      </div>
 
-        {/* Overlapping circular logo: the image contained without distortion
-            when it is a logo; the business initial otherwise. */}
-        <div className="biz-logo-overlap" aria-hidden>
+      <header className="biz-identity-row">
+        <div className="biz-logo-circle" aria-hidden>
           {b.imageUrl && heroFit === 'contain' ? (
             <RemoteImage
               src={resolveImageUrl(b.imageUrl) ?? undefined}
@@ -176,34 +163,32 @@ export function BusinessDetailScreen(props: {
             <span className="biz-logo-initial">{b.name[0]?.toUpperCase() ?? '?'}</span>
           )}
         </div>
-      </div>
-
-      {/* Business identity: name, meta, badges — below the hero. */}
-      <header className="biz-identity">
-        <div className="biz-identity-badges">
-          <VerifiedBadge verified={b.isVerified} />
-          {featuredPlacement ? (
-            <span className="biz-hero-featured" aria-label={`Featured business: ${featuredPlacement.placementLabel}`}>
-              {featuredPlacement.placementLabel}
-            </span>
-          ) : null}
-          {b.isOpenNow !== undefined ? <OpenBadge open={b.isOpenNow} /> : null}
-          {closingNote && b.isOpenNow ? <span className="biz-hero-close">{closingNote}</span> : null}
-        </div>
-        <h1 className="biz-identity-name">{b.name}</h1>
-        <div className="biz-hero-meta">
-          <span className="biz-hero-meta-item">
-            {b.categories.map((c) => c.name).join(' • ') || 'Local business'}
-          </span>
-          {distanceLabel ? (
+        <div className="biz-identity-text">
+          <h1 className="biz-identity-name">{b.name}</h1>
+          <div className="biz-hero-meta">
             <span className="biz-hero-meta-item">
-              <PinIcon size={13} aria-hidden /> {distanceLabel} away
+              {b.categories.map((c) => c.name).join(' • ') || 'Local business'}
             </span>
-          ) : place ? (
-            <span className="biz-hero-meta-item">
-              <PinIcon size={13} aria-hidden /> {place}
-            </span>
-          ) : null}
+            {distanceLabel ? (
+              <span className="biz-hero-meta-item">
+                <PinIcon size={13} aria-hidden /> {distanceLabel} away
+              </span>
+            ) : place ? (
+              <span className="biz-hero-meta-item">
+                <PinIcon size={13} aria-hidden /> {place}
+              </span>
+            ) : null}
+          </div>
+          <div className="biz-identity-badges">
+            <VerifiedBadge verified={b.isVerified} />
+            {featuredPlacement ? (
+              <span className="biz-hero-featured" aria-label={`Featured business: ${featuredPlacement.placementLabel}`}>
+                {featuredPlacement.placementLabel}
+              </span>
+            ) : null}
+            {b.isOpenNow !== undefined ? <OpenBadge open={b.isOpenNow} /> : null}
+            {closingNote && b.isOpenNow ? <span className="biz-hero-close">{closingNote}</span> : null}
+          </div>
         </div>
       </header>
 

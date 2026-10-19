@@ -3577,37 +3577,54 @@ nav.business-nav-v3 .nav-item.active {
   background: linear-gradient(180deg, rgba(12, 18, 24, 0.08) 30%, rgba(12, 18, 24, 0.55) 100%);
 }
 /* Concept A: overlapping circular business logo. */
-.biz-logo-overlap {
-  position: absolute;
-  left: 24px;
-  bottom: -60px;
-  width: 120px;
-  height: 120px;
+/* Concept 3: compact marketplace header. */
+.biz-topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 24px;
+}
+.biz-topbar .back-float {
+  position: static;
+}
+.biz-topbar-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.biz-identity-row {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  padding: 16px 24px 0;
+}
+.biz-logo-circle {
+  width: 110px;
+  height: 110px;
   border-radius: 50%;
   background: var(--raised);
-  border: 3px solid var(--border-strong);
+  border: 3px solid var(--border);
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 2;
+  flex-shrink: 0;
 }
-.biz-logo-overlap img {
+.biz-logo-circle img {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  padding: 12px;
+  padding: 10px;
   display: block;
 }
-.biz-logo-overlap .biz-logo-initial {
-  font-size: 44px;
+.biz-logo-circle .biz-logo-initial {
+  font-size: 40px;
   font-weight: 800;
   color: var(--ink);
 }
-/* Business identity below the hero. */
-.biz-identity { padding: 76px 24px 0; }
-.biz-identity-badges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
-.biz-identity-name { margin: 0 0 8px; font-size: 28px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); overflow-wrap: anywhere; }
+.biz-identity-text { flex: 1; min-width: 0; }
+.biz-identity-badges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.biz-identity-name { margin: 0 0 6px; font-size: 26px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); overflow-wrap: anywhere; }
 .biz-hero-media .hero-initial {
   position: absolute;
   inset: 0;

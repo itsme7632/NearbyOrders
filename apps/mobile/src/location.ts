@@ -36,7 +36,7 @@ export const locationOutcomeHint = (outcome: LocationOutcome): string | null => 
     case 'permanently-denied':
       return 'Location is turned off for NearbyOrders. Enable it in your device settings to see nearby businesses.';
     case 'unavailable':
-      return 'Location is not available on this device.';
+      return 'Could not get your location. Make sure location services are on, then tap to retry.';
     case 'error':
       return outcome.message;
   }
@@ -89,7 +89,7 @@ type PermissionStatus = { location: PermissionState; coarseLocation: PermissionS
 export type CapacitorGeolocationLike = {
   checkPermissions: () => Promise<PermissionStatus>;
   requestPermissions: () => Promise<PermissionStatus>;
-  getCurrentPosition: (opts?: { timeout?: number }) => Promise<{ coords: { latitude: number; longitude: number } }>;
+  getCurrentPosition: (opts?: { timeout?: number; enableHighAccuracy?: boolean; maximumAge?: number }) => Promise<{ coords: { latitude: number; longitude: number } }>;
 };
 
 /**
@@ -189,7 +189,14 @@ export const acquireViaCapacitorPlugin = async (
   }
 
   try {
-    const pos = await geo.getCurrentPosition({ timeout: timeoutMs });
+    // Request a high-accuracy fix with a generous timeout. Cold GPS can take
+    // 15-30s on a real device; 8s was failing consistently. maximumAge lets
+    // the plugin return a recent cached fix instead of waiting for a fresh one.
+    const pos = await geo.getCurrentPosition({
+      timeout: Math.max(timeoutMs, 20000),
+      enableHighAccuracy: true,
+      maximumAge: 60000,
+    });
     const { latitude, longitude } = pos.coords;
     // A non-finite fix is not a location — reporting it as granted would
     // fabricate nearby results. Treat it as unavailable.
