@@ -313,6 +313,7 @@ export function App() {
   const { permission: pushPermission, requestPermission: requestPushPermission } = usePushRegistration({
     onDeepLink: handlePushDeepLink,
     onForegroundNotification: (push) => enqueueForegroundPush(push),
+    session,
   });
 
   /**

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { listBusinesses, listCategories, listNearbyBusinesses, searchMarketplace, type Business, type Category } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { BusinessRow, EmptyState, ErrorState, SectionHeader } from '../components/ui.js';
@@ -12,7 +12,7 @@ import {
   type ExploreFilters,
 } from '../components/ExploreFilters.js';
 import { ExploreIcon, PinIcon } from '../components/icons.js';
-import { requestCustomerLocation, locationOutcomeHint, isDeniedOutcome, type LocationOutcome } from '../location.js';
+import { clearCustomerCoords, requestCustomerLocation, locationOutcomeHint, isDeniedOutcome, restoreCustomerCoords, saveCustomerCoords, type LocationOutcome } from '../location.js';
 import { useLocationExplainer } from '../components/LocationPermissionExplainer.js';
 import { DEFAULT_RADIUS_KM, RADIUS_OPTIONS_KM } from '@nearbyorders/shared';
 import { useMapProvider } from '../maps/useMapProvider.js';
@@ -48,6 +48,18 @@ export function ExploreScreen(props: {
   const [locDismissed, setLocDismissed] = useState(false);
   const [locating, setLocating] = useState(false);
   const { requestWithExplainer, explainer: locationExplainer } = useLocationExplainer();
+
+  // Restore persisted coordinates on mount when the OS permission is still granted.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const restored = await restoreCustomerCoords();
+      if (cancelled || !restored) return;
+      setCoords(restored);
+      setMode('nearby');
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const [selectedMarker, setSelectedMarker] = useState<string | null>(null);
   const [filters, setFilters] = useState<ExploreFilters>(DEFAULT_EXPLORE_FILTERS);
   const { handle: mapHandle } = useMapProvider();
@@ -104,16 +116,20 @@ export function ExploreScreen(props: {
         .then((outcome: LocationOutcome) => {
           if (outcome.status === 'granted') {
             setCoords(outcome.coords);
+            saveCustomerCoords(outcome.coords);
             setRadiusKm(DEFAULT_RADIUS_KM);
             setMode('nearby');
             setLocDenied(false);
           } else if (isDeniedOutcome(outcome)) {
             // Denied stays non-blocking: the full list keeps working and a calm
             // card explains the situation with a retry and a dismiss path.
+            setCoords(null);
+            clearCustomerCoords();
             setLocNote(locationOutcomeHint(outcome));
             setLocDenied(true);
             setLocDismissed(false);
           } else {
+            setCoords(null);
             setLocNote(locationOutcomeHint(outcome));
             setLocDenied(false);
           }
@@ -125,6 +141,7 @@ export function ExploreScreen(props: {
   const disableNearby = () => {
     setMode('all');
     setCoords(null);
+    clearCustomerCoords();
     setLocNote(null);
     setLocDenied(false);
     setLocDismissed(false);

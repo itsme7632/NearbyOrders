@@ -14,7 +14,7 @@ import {
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, Money, OpenBadge, RatingChip, VerifiedBadge } from '../components/ui.js';
 import { ExploreIcon, PinIcon, StoreIcon } from '../components/icons.js';
-import { formatDistanceKm, locationOutcomeHint, requestCustomerLocation, type LocationOutcome } from '../location.js';
+import { clearCustomerCoords, formatDistanceKm, locationOutcomeHint, requestCustomerLocation, restoreCustomerCoords, saveCustomerCoords, type LocationOutcome } from '../location.js';
 import { useLocationExplainer } from '../components/LocationPermissionExplainer.js';
 import { clearRecentSearches, getRecentSearches, recordSearch } from '../recent-searches.js';
 
@@ -53,6 +53,16 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
   const [locNote, setLocNote] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
   const { requestWithExplainer, explainer: locationExplainer } = useLocationExplainer();
+
+  // Restore persisted coordinates on mount when the OS permission is still granted.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const restored = await restoreCustomerCoords();
+      if (!cancelled && restored) setCoords(restored);
+    })();
+    return () => { cancelled = true; };
+  }, []);
   // Cursor pagination: the first page comes from useAsyncData; "Load more"
   // accumulates further pages without refetching what is already visible.
   const [extraPages, setExtraPages] = useState<SearchPage[]>([]);
@@ -144,9 +154,11 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
         .then((outcome: LocationOutcome) => {
           if (outcome.status === 'granted') {
             setCoords(outcome.coords);
+            saveCustomerCoords(outcome.coords);
             setLocNote(null);
           } else {
             setCoords(null);
+            clearCustomerCoords();
             setLocNote(locationOutcomeHint(outcome));
           }
         })
@@ -156,6 +168,7 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
 
   const disableLocation = () => {
     setCoords(null);
+    clearCustomerCoords();
     setLocNote(null);
     if (sort === 'distance') setSort('relevance');
   };

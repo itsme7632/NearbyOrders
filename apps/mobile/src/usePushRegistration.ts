@@ -32,9 +32,12 @@ export type PushPermissionState = 'unknown' | 'granted' | 'denied' | 'prompt' | 
 export function usePushRegistration(opts: {
   onDeepLink: (link: string) => void;
   onForegroundNotification: (push: ForegroundPush) => void;
+  /** Current session; when it changes (sign-in/out) the permission check re-runs. */
+  session: Session | null;
 }): { permission: PushPermissionState; requestPermission: () => Promise<boolean> } {
   const [permission, setPermission] = useState<PushPermissionState>('unknown');
   const registeredFor = useRef<string | null>(null);
+  const sessionUserId = opts.session?.user.id ?? null;
   const sessionRef = useRef<Session | null>(getSession());
   sessionRef.current = getSession();
   const deepLinkRef = useRef(opts.onDeepLink);
@@ -63,9 +66,13 @@ export function usePushRegistration(opts: {
   }, []);
 
   // Silent session-start check: register only when permission is already granted.
+  // Re-runs when the session changes so a sign-in after app start is handled.
   useEffect(() => {
-    const session = sessionRef.current;
-    if (!session) return;
+    const session = opts.session;
+    if (!session) {
+      registeredFor.current = null;
+      return;
+    }
     if (registeredFor.current === session.user.id) return;
     registeredFor.current = session.user.id;
 
@@ -83,7 +90,8 @@ export function usePushRegistration(opts: {
     return () => {
       cancelled = true;
     };
-  }, [registerToken]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registerToken, sessionUserId]);
 
   // Contextual permission request (user tapped "Enable notifications").
   const requestPermission = useCallback(async (): Promise<boolean> => {

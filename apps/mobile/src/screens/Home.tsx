@@ -1,5 +1,5 @@
 import { RemoteImage } from '../components/RemoteImage.js';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   getSession,
   listBusinesses,
@@ -23,7 +23,7 @@ import {
   type SearchPage,
   type ServiceSearchResult,
 } from '../api.js';
-import { formatDistanceKm, isDeniedOutcome, locationOutcomeHint, requestCustomerLocation } from '../location.js';
+import { clearCustomerCoords, formatDistanceKm, isDeniedOutcome, locationOutcomeHint, requestCustomerLocation, restoreCustomerCoords, saveCustomerCoords } from '../location.js';
 import { useLocationExplainer } from '../components/LocationPermissionExplainer.js';
 import { longDateLabel } from '../time.js';
 import { useAsyncData } from '../hooks.js';
@@ -65,28 +65,6 @@ function daypartGreeting(date = new Date()): string {
   if (h < 12) return 'Good morning';
   if (h < 17) return 'Good afternoon';
   return 'Good evening';
-}
-
-/**
- * Area context for the location bar: the locality/city most common among the
- * loaded businesses. Honest by construction — it can only name a place that
- * the real result set actually contains, so it never invents a location.
- */
-function dominantPlace(businesses: Business[]): string | null {
-  const counts = new Map<string, number>();
-  for (const b of businesses) {
-    const place = b.locality?.trim() || b.city?.trim();
-    if (place) counts.set(place, (counts.get(place) ?? 0) + 1);
-  }
-  let best: string | null = null;
-  let bestCount = 0;
-  for (const [place, count] of counts) {
-    if (count > bestCount) {
-      best = place;
-      bestCount = count;
-    }
-  }
-  return best;
 }
 
 /** Order statuses that represent work still in flight for the customer. */
@@ -163,6 +141,29 @@ export function HomeScreen(props: {
   const { requestWithExplainer, explainer: locationExplainer } = useLocationExplainer();
   const nearbyKey = coords ? `${coords.lat.toFixed(4)},${coords.lng.toFixed(4)}` : 'all';
 
+  // Restore persisted coordinates on startup. Only trusted when the OS
+  // permission is still granted; otherwise they are discarded. When
+  // restored, a fresh fix is attempted in the background to keep them current.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const restored = await restoreCustomerCoords();
+      if (cancelled || !restored) return;
+      setCoords(restored);
+      // Refresh in the background; a failure keeps the persisted fix.
+      try {
+        const outcome = await requestCustomerLocation();
+        if (!cancelled && outcome.status === 'granted') {
+          setCoords(outcome.coords);
+          saveCustomerCoords(outcome.coords);
+        }
+      } catch {
+        /* Keep the persisted coordinates. */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const businesses = useAsyncData<Business[]>(async () => {
     if (coords) {
       return listNearbyBusinesses({ lat: coords.lat, lng: coords.lng, radiusKm: NEARBY_RADIUS_KM, limit: 20 });
@@ -199,6 +200,7 @@ export function HomeScreen(props: {
         .then((outcome) => {
           if (outcome.status === 'granted') {
             setCoords(outcome.coords);
+            saveCustomerCoords(outcome.coords);
             setLocNotice(null);
             setLocDenied(false);
             setLocDismissed(false);
@@ -208,14 +210,15 @@ export function HomeScreen(props: {
             // (permanently-denied says so explicitly). A calm, dismissible card
             // explains what happened — browsing and search keep working either way.
             setCoords(null);
+            clearCustomerCoords();
             setLocNotice(locationOutcomeHint(outcome));
             setLocDenied(true);
             setLocDismissed(false);
           } else {
-            // Unavailable/error: quietly keep the plain feed — the app must not
-            // pretend location exists.
+            // Unavailable/error: say so plainly with a retry action instead of
+            // silently pretending. The feed stays usable without location.
             setCoords(null);
-            setLocNotice(null);
+            setLocNotice(locationOutcomeHint(outcome));
             setLocDenied(false);
           }
         })
@@ -225,6 +228,7 @@ export function HomeScreen(props: {
 
   const disableNearby = () => {
     setCoords(null);
+    clearCustomerCoords();
     setLocNotice(null);
     setLocDenied(false);
     setLocDismissed(false);
@@ -241,7 +245,6 @@ export function HomeScreen(props: {
   const spotlightPool = showOpenNow ? openNow : popular;
   const [spotlight, ...spotlightRest] = spotlightPool;
   const feed = showOpenNow ? popular.filter((b) => b.isOpenNow !== true) : spotlightRest;
-  const place = dominantPlace(popular);
   const firstName = me.data?.firstName?.trim() || null;
   const nearby = coords !== null;
 
@@ -268,7 +271,7 @@ export function HomeScreen(props: {
         ) : (
           <button type="button" className="home-context-place home-context-toggle" onClick={enableNearby} aria-label="Show businesses near your location">
             <PinIcon size={13} />
-            {place ? `Around ${place}` : 'Your neighborhood'}
+            Set your location
           </button>
         )}
         {showOpenNow ? (

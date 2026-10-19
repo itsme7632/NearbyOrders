@@ -296,3 +296,59 @@ export const directionsUrl = (b: { latitude?: number | null; longitude?: number 
   const place = [b.address, b.city].filter(Boolean).join(', ');
   return place ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place)}` : null;
 };
+
+/* --------------------------- persistence --------------------------- */
+
+const CUSTOMER_COORDS_KEY = 'no_customer_coords';
+
+export type PersistedCoords = { lat: number; lng: number; at: number };
+
+/** Persist successfully acquired customer coordinates. Foreground only. */
+export const saveCustomerCoords = (coords: { lat: number; lng: number }): void => {
+  try {
+    const payload: PersistedCoords = { lat: coords.lat, lng: coords.lng, at: Date.now() };
+    window.localStorage.setItem(CUSTOMER_COORDS_KEY, JSON.stringify(payload));
+  } catch {
+    /* Storage unavailable — the in-memory coords still work for this session. */
+  }
+};
+
+/** Load persisted customer coordinates, or null when absent/invalid. */
+export const loadCustomerCoords = (): PersistedCoords | null => {
+  try {
+    const raw = window.localStorage.getItem(CUSTOMER_COORDS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PersistedCoords>;
+    if (typeof parsed.lat !== 'number' || typeof parsed.lng !== 'number') return null;
+    if (!Number.isFinite(parsed.lat) || !Number.isFinite(parsed.lng)) return null;
+    if (parsed.lat < -90 || parsed.lat > 90 || parsed.lng < -180 || parsed.lng > 180) return null;
+    return { lat: parsed.lat, lng: parsed.lng, at: typeof parsed.at === 'number' ? parsed.at : 0 };
+  } catch {
+    return null;
+  }
+};
+
+/** Clear persisted customer coordinates (e.g. when the user disables nearby mode). */
+export const clearCustomerCoords = (): void => {
+  try {
+    window.localStorage.removeItem(CUSTOMER_COORDS_KEY);
+  } catch {
+    /* ignore */
+  }
+};
+
+/**
+ * Restore persisted coordinates on startup. Only trusts them when the OS
+ * permission is still granted; otherwise returns null so the app does not
+ * pretend to have a location the user revoked.
+ */
+export const restoreCustomerCoords = async (): Promise<{ lat: number; lng: number } | null> => {
+  const persisted = loadCustomerCoords();
+  if (!persisted) return null;
+  const state = await checkLocationPermissionState();
+  if (state !== 'granted') {
+    clearCustomerCoords();
+    return null;
+  }
+  return { lat: persisted.lat, lng: persisted.lng };
+};
