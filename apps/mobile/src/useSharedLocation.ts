@@ -91,6 +91,8 @@ function getSnapshot(): StoreState {
  * 2. Kick off a background GPS refresh; success replaces the coords, failure
  *    changes nothing (no clear, no notice).
  */
+const AUTO_ACQUIRE_KEY = 'no_loc_auto_acquire_v1';
+
 function ensureRestore() {
   if (restoreStarted) return;
   restoreStarted = true;
@@ -107,13 +109,41 @@ function ensureRestore() {
         // Inconclusive check: keep the saved coords.
       }
       // Only a device that has granted before (proven by the saved fix) gets
-      // a background refresh; a fresh install must never trigger a
-      // permission prompt without a user action.
+      // a background refresh.
       const outcome = await acquirePosition(20000);
       if (outcome.status === 'granted' && outcome.coords) {
         saveCustomerCoords(outcome.coords);
         setState({ coords: outcome.coords, locNotice: null });
       }
+      return;
+    }
+    // Fresh install (no saved fix): ONE automatic acquisition attempt, so a
+    // granted device lands on "Near you" without the user having to find
+    // and tap the location label first (requirement, 2026-10-20). When the
+    // permission is already granted this is silent; when it is still
+    // undecided, acquirePosition surfaces the native permission ask. The
+    // attempt is one-shot per install: a denial or dismissal is never
+    // re-asked automatically on later launches.
+    let alreadyAttempted = false;
+    try {
+      alreadyAttempted = window.localStorage.getItem(AUTO_ACQUIRE_KEY) === '1';
+      if (!alreadyAttempted) window.localStorage.setItem(AUTO_ACQUIRE_KEY, '1');
+    } catch {
+      /* storage unavailable: the in-process restoreStarted guard still
+         bounds this to one attempt per launch */
+    }
+    if (alreadyAttempted) return;
+    setState({ locating: true });
+    try {
+      const outcome = await acquirePosition(20000);
+      if (outcome.status === 'granted' && outcome.coords) {
+        saveCustomerCoords(outcome.coords);
+        setState({ coords: outcome.coords, locating: false, locNotice: null });
+      } else {
+        setState({ locating: false, locNotice: outcome.status === 'denied' ? locationOutcomeHint(outcome) : null });
+      }
+    } catch {
+      setState({ locating: false, locNotice: null });
     }
   })();
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { businessTabs, navigationTabs, ownerScreens, parseHash, resolveTab } from './navigation.js';
+import { businessTabs, isRouteHash, navigationTabs, ownerScreens, parseHash, resolveTab } from './navigation.js';
 
 describe('customer navigation', () => {
   it('exposes the locked tab set in order', () => {
@@ -136,5 +136,19 @@ describe('email-auth routes', () => {
   it('does not confuse auth routes with tab or owner routes', () => {
     expect(parseHash('#/verify-email').name).not.toBe('tabs');
     expect(parseHash('#/forgot-password').name).not.toBe('tabs');
+  });
+
+  it('isRouteHash accepts real routes and the canonical root only', () => {
+    expect(isRouteHash('')).toBe(true);
+    expect(isRouteHash('#')).toBe(true);
+    expect(isRouteHash('#/')).toBe(true);
+    expect(isRouteHash('#/business/butt-spices')).toBe(true);
+    expect(isRouteHash('#/book/biz-1/svc-1')).toBe(true);
+    expect(isRouteHash('#/cart')).toBe(true);
+    expect(isRouteHash('#/search?q=pizza')).toBe(true);
+    // Stray fragments are NOT routes: the router must ignore them.
+    expect(isRouteHash('#app-content')).toBe(false);
+    expect(isRouteHash('#biz-products')).toBe(false);
+    expect(isRouteHash('#/no-such-screen')).toBe(false);
   });
 });

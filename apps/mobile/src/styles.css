@@ -2978,6 +2978,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   left: 12px;
   z-index: 200;
   padding: 10px 16px;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
   border-radius: 10px;
   background: var(--brand);
   color: #fff;
@@ -3238,6 +3241,13 @@ nav.business-nav-v3 .nav-item.active {
 
 /* ---- Home: search-first hero ---- */
 /* ---- Home location context: slim status line above the greeting ---- */
+.home-loc-diagnostic {
+  margin: 2px 2px 0;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--text-faint, #8595a8);
+  font-variant-numeric: tabular-nums;
+}
 .home-context {
   display: flex;
   align-items: center;

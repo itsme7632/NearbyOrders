@@ -651,9 +651,13 @@ export function App() {
       {/* Skip link: jumps keyboard users past the header/nav to the main
           content. tabIndex={-1} lets the target receive programmatic focus so
           screen readers announce it reliably after activation. */}
-      <a href="#app-content" className="skip-link">
+      <button
+        type="button"
+        className="skip-link"
+        onClick={() => document.getElementById('app-content')?.focus()}
+      >
         Skip to content
-      </a>
+      </button>
       {!authFlow ? (
         businessMode ? (
           // Business mode renders ONE dedicated owner app header at shell

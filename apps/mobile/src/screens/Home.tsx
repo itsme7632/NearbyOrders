@@ -232,6 +232,11 @@ export function HomeScreen(props: {
           </span>
         ) : null}
       </div>
+      {coords ? (
+        <p className="home-loc-diagnostic" aria-label="Current location fix">
+          GPS {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
+        </p>
+      ) : null}
       {locDenied && !locDismissed && !nearby ? (
         <div className="location-denied-card" role="status" aria-live="polite">
           <span className="location-denied-icon" aria-hidden>

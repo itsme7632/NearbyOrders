@@ -135,3 +135,17 @@ export function parseHash(hash: string): Route {
   }
   return { name: 'tabs' };
 }
+
+/**
+ * True when `hash` is a genuine app route: the canonical root ('' / '#/'),
+ * or any hash parseHash resolves to a NAMED route. parseHash falls through
+ * to the tabs route for ANY unrecognized value, so a non-empty fragment that
+ * is not a named route (an in-page anchor like #app-content, a stray
+ * fragment left by the WebView) is NOT a navigation command. The router
+ * uses this to refuse stray fragments instead of dumping the user on Home.
+ */
+export function isRouteHash(hash: string): boolean {
+  const clean = hash.replace(/^#\/?/, '').split('?')[0];
+  if (!clean) return true;
+  return parseHash(hash).name !== 'tabs';
+}

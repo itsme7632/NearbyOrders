@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { parseHash, type Route } from './navigation.js';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { parseHash, isRouteHash, type Route } from './navigation.js';
 import { ApiError } from './api.js';
 
 const LAST_ROUTE_KEY = 'no_last_route';
@@ -35,9 +35,19 @@ export function useRoute(): [Route, (to: string) => void, () => void] {
     }
     return parseHash(current);
   });
+  // The last hash that parsed to a REAL route. A stray fragment (in-page
+  // anchor, WebView fragment residue) is repaired back to this value
+  // instead of being routed: parseHash's tabs fallthrough would otherwise
+  // turn ANY unrecognized fragment into a trip Home, mid-interaction.
+  const lastGoodHash = useRef<string>(window.location.hash);
   useEffect(() => {
     const onHashChange = () => {
       const hash = window.location.hash;
+      if (!isRouteHash(hash)) {
+        window.history.replaceState(null, '', lastGoodHash.current || '#/');
+        return;
+      }
+      lastGoodHash.current = hash;
       try {
         if (restorableRoute(hash)) window.sessionStorage.setItem(LAST_ROUTE_KEY, hash);
         else window.sessionStorage.removeItem(LAST_ROUTE_KEY);

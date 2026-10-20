@@ -55,6 +55,7 @@ function Probe({ id }: { id: string }) {
 }
 
 beforeEach(() => {
+  window.localStorage.clear();
   vi.mocked(location.loadCustomerCoords).mockReturnValue(null);
   vi.mocked(location.checkLocationPermissionState).mockResolvedValue('granted');
   vi.mocked(location.locationOutcomeHint).mockReturnValue('Could not get your location. Tap to retry.');
@@ -154,5 +155,38 @@ describe('useSharedLocation store', () => {
     await act(async () => {});
     expect(screen.getByTestId('home')).toHaveTextContent('31.51,74.34');
     expect(screen.getByTestId('home-notice')).toHaveTextContent('Could not get your location');
+  });
+
+  it('fresh install auto-acquires once when permission is granted: no tap needed', async () => {
+    vi.mocked(location.acquirePosition).mockResolvedValue({ status: 'granted', coords: FRESH_FIX } as never);
+    vi.mocked(location.acquirePosition).mockClear();
+    __resetSharedLocationForTests();
+
+    render(<Probe id="home" />);
+    await act(async () => {});
+    // The fix arrived on its own — requestLocation was never invoked.
+    expect(location.acquirePosition).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('home')).toHaveTextContent('31.505,74.335');
+    expect(location.saveCustomerCoords).toHaveBeenCalledWith(FRESH_FIX);
+  });
+
+  it('fresh install auto-acquire is one-shot: later launches do not re-ask after a denial', async () => {
+    vi.mocked(location.acquirePosition).mockResolvedValue({ status: 'denied' } as never);
+    vi.mocked(location.acquirePosition).mockClear();
+    __resetSharedLocationForTests();
+
+    render(<Probe id="home" />);
+    await act(async () => {});
+    expect(location.acquirePosition).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('home')).toHaveTextContent('none');
+    cleanup();
+
+    // Simulate the next launch: flag persisted, so no second automatic ask.
+    vi.mocked(location.acquirePosition).mockClear();
+    __resetSharedLocationForTests();
+    render(<Probe id="home" />);
+    await act(async () => {});
+    expect(location.acquirePosition).not.toHaveBeenCalled();
+    expect(screen.getByTestId('home')).toHaveTextContent('none');
   });
 });
