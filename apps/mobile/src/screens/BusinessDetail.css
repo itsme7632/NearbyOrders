@@ -2,9 +2,10 @@
    Co-located with BusinessDetail.tsx. Tokens come from styles.css; all class
    names are new and unique to this screen. */
 
-/* The sticky action bar sits above the floating bottom nav — keep the last
-   of the scrollable content clear of it. */
-.biz-detail { padding-bottom: calc(200px + env(safe-area-inset-bottom)); overflow-x: clip; }
+/* Keep the last of the scrollable content clear of the floating bottom nav.
+   There is no fixed CTA bar on this page (removed 2026-10-20: it covered
+   content and duplicated the per-service Book controls). */
+.biz-detail { padding-bottom: calc(104px + env(safe-area-inset-bottom)); overflow-x: clip; }
 
 /* ---- Atlas hero: confident identity over the media ---- */
 .biz-detail .biz-hero-name {
@@ -131,50 +132,6 @@
 .bd-status-open { color: var(--success); }
 .bd-status-closed { color: var(--error); }
 .bd-glance-sub { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); }
-
-/* Contextual primary action pinned above the floating bottom nav. Real
-   <button>, safe-area aware, never covers the scroll content. Ember is the
-   single accent: this is the screen's one primary conversion action. */
-.bd-sticky-bar {
-  position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(78px + env(safe-area-inset-bottom));
-  width: min(460px, calc(100% - 24px));
-  z-index: 40;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  padding: var(--space-2) var(--space-3);
-}
-.bd-sticky-cta {
-  display: block;
-  width: 100%;
-  min-height: 52px;
-  border-radius: var(--radius-md);
-  background: var(--action);
-  color: #fff;
-  font-family: var(--font-sans);
-  font-size: 16px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  box-shadow: 0 4px 14px rgba(226, 58, 46, 0.35);
-}
-.bd-sticky-cta:active { background: var(--action-strong); }
-.bd-sticky-cta:disabled {
-  background: var(--bg);
-  color: var(--disabled);
-  box-shadow: none;
-  border: 1px solid var(--border);
-}
-.bd-sticky-hint {
-  margin: var(--space-1) 0 0;
-  font-size: 12.5px;
-  line-height: 1.4;
-  color: var(--text-muted);
-  text-align: center;
-}
 
 /* ---- Catalog rows: commerce-first, prominent prices ---- */
 .biz-detail .svc-rows {

@@ -100,25 +100,95 @@ async function requestEnvelope<T>(path: string, options: { method?: string; body
   return doRequestEnvelope<T>(path, options);
 }
 
-async function doRequestEnvelope<T>(path: string, options: { method?: string; body?: unknown; auth?: boolean } = {}): Promise<T> {
-  const headers: Record<string, string> = {};
-  if (options.body !== undefined) headers['content-type'] = 'application/json';
-  if (options.auth && session) headers.authorization = `Bearer ${session.accessToken}`;
+/**
+ * Mid-session access-token refresh (root-cause fix, 2026-10-20).
+ *
+ * Access tokens live ~15 minutes; previously ANY authed request that met an
+ * expired token got a 401 and the caller cleared the whole session, dumping
+ * the user out of whatever they were doing (e.g. tapping Save/Book on a
+ * business page "sent them Home"). Now a 401 on an authed request first
+ * exchanges the securely stored refresh token for a fresh pair and retries
+ * the request ONCE. The session is only cleared when the refresh itself
+ * fails (revoked/expired refresh token) or the retry is also rejected.
+ *
+ * Concurrent 401s share one refresh: the API rotates refresh tokens, so
+ * parallel refreshes with the same token would invalidate each other.
+ */
+let refreshInFlight: Promise<boolean> | null = null;
 
-  let res: Response;
-  try {
-    res = await fetch(`${API_BASE}${path}`, {
-      method: options.method ?? 'GET',
-      headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    });
-  } catch {
-    throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the NearbyOrders API. Is the API server running?');
+function refreshAccessToken(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = (async (): Promise<boolean> => {
+      try {
+        const stored = await getRefreshTokenStorage()
+          .getRefreshToken()
+          .catch(() => null);
+        if (!stored) return false;
+        const res = await fetch(`${API_BASE}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ refreshToken: stored }),
+        });
+        if (!res.ok) return false;
+        const payload = (await res.json().catch(() => null)) as {
+          data?: { accessToken?: string; refreshToken?: string; user?: Session['user'] };
+          accessToken?: string;
+          refreshToken?: string;
+          user?: Session['user'];
+        } | null;
+        const data = payload?.data ?? payload;
+        if (!data?.accessToken) return false;
+        const user = data.user ?? session?.user;
+        if (!user) return false;
+        if (data.refreshToken) {
+          await getRefreshTokenStorage()
+            .setRefreshToken(data.refreshToken)
+            .catch(() => {
+              /* rotation write failed; the new pair still works this run */
+            });
+        }
+        setSession({ accessToken: data.accessToken, user });
+        return true;
+      } catch {
+        return false;
+      } finally {
+        refreshInFlight = null;
+      }
+    })();
+  }
+  return refreshInFlight;
+}
+
+async function doRequestEnvelope<T>(path: string, options: { method?: string; body?: unknown; auth?: boolean } = {}): Promise<T> {
+  const attempt = async (): Promise<{ res: Response; payload: unknown }> => {
+    const headers: Record<string, string> = {};
+    if (options.body !== undefined) headers['content-type'] = 'application/json';
+    if (options.auth && session) headers.authorization = `Bearer ${session.accessToken}`;
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}${path}`, {
+        method: options.method ?? 'GET',
+        headers,
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      });
+    } catch {
+      throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the NearbyOrders API. Is the API server running?');
+    }
+    const payload = res.status === 204 ? null : await res.json().catch(() => null);
+    return { res, payload };
+  };
+
+  let { res, payload } = await attempt();
+
+  // Expired access token: refresh once and retry once before giving up.
+  if (res.status === 401 && options.auth) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      ({ res, payload } = await attempt());
+    }
   }
 
   if (res.status === 204) return undefined as T;
-
-  const payload = await res.json().catch(() => null);
 
   if (!res.ok) {
     const err = (payload as { error?: { code?: string; message?: string; details?: unknown } } | null)?.error;

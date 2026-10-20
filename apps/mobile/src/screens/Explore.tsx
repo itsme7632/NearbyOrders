@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { listBusinesses, listCategories, listNearbyBusinesses, searchMarketplace, type Business, type Category } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { BusinessRow, EmptyState, ErrorState, SectionHeader } from '../components/ui.js';
@@ -42,7 +42,7 @@ export function ExploreScreen(props: {
   const [mode, setMode] = useState<DiscoveryMode>('all');
   const [view, setView] = useState<ViewMode>('list');
   const [radiusKm, setRadiusKm] = useState<number>(DEFAULT_RADIUS_KM);
-  const { coords, locating, locNotice: locNote, hasLocation, requestLocation, clearLocation } = useSharedLocation();
+  const { coords, locating, locNotice: locNote, hasLocation, requestLocation } = useSharedLocation();
   // Map center: separate from the user's GPS location. When the user drags
   // the map, the visible center becomes the search center.
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
@@ -98,28 +98,43 @@ export function ExploreScreen(props: {
   );
 
   const enableNearby = () => {
+    // Already located: the chip is a pure view toggle back to nearby mode —
+    // no new GPS request, no explainer.
+    if (hasLocation) {
+      setMode('nearby');
+      setRadiusKm(DEFAULT_RADIUS_KM);
+      return;
+    }
     // First-use gate: the in-app explainer appears before the native dialog
     // on a fresh device; granted/denied states go straight through.
     requestWithExplainer(() => {
       setLocDenied(false);
       setLocDismissed(false);
       requestLocation();
-      // Switch to nearby mode once coords are available; the effect below
-      // handles the transition when the shared state updates.
+      // Switch to nearby mode once coords are available; the rising-edge
+      // effect above handles the transition when the shared state updates.
     });
   };
 
-  // When shared coords become available, switch to nearby mode.
+  // When shared coords first become available (rising edge only), switch to
+  // nearby mode. The rising-edge guard matters: the "Near you" chip toggles
+  // this screen's VIEW back to 'all' without touching the shared location,
+  // and a naive [hasLocation, mode] effect would instantly undo that toggle.
+  const hadLocation = useRef(false);
   useEffect(() => {
-    if (hasLocation && mode === 'all') {
+    if (hasLocation && !hadLocation.current) {
       setMode('nearby');
       setRadiusKm(DEFAULT_RADIUS_KM);
     }
-  }, [hasLocation, mode]);
+    hadLocation.current = hasLocation;
+  }, [hasLocation]);
 
+  // View toggle ONLY (root-cause fix, 2026-10-20): this used to also call
+  // clearLocation(), destroying the shared coordinates and their persisted
+  // copy for Home and Search too — the on-device "Near you" flip. The
+  // location itself is never cleared from a view control.
   const disableNearby = () => {
     setMode('all');
-    clearLocation();
     setLocDenied(false);
     setLocDismissed(false);
     setSelectedMarker(null);

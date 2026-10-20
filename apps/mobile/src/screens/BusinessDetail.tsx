@@ -54,12 +54,10 @@ export function __resetFeaturedCacheForTests() {
   featuredFetch = null;
 }
 
-type DetailTab = 'overview' | 'reviews';
-
-/** The contextual primary CTA pinned above the bottom nav. */
-type DetailCta =
-  | { state: 'action'; label: string; onClick: () => void }
-  | { state: 'disabled'; label: string; hint: string };
+/** Business Detail primary section. 'products' is the DEFAULT view
+ * (product-first profile); Overview and Reviews are explicit upper-nav
+ * states, never rendered above Products by default. */
+type DetailTab = 'products' | 'overview' | 'reviews';
 
 export function BusinessDetailScreen(props: {
   idOrSlug: string;
@@ -78,7 +76,7 @@ export function BusinessDetailScreen(props: {
   // returns currently-active placements; a failed fetch quietly hides the badge.
   const featured = useAsyncData<FeaturedPlacement[]>(() => getCachedFeatured(), [props.idOrSlug]);
   const cartCount = useCartCount();
-  const [tab, setTab] = useState<DetailTab>('overview');
+  const [tab, setTab] = useState<DetailTab>('products');
   const [cartNotice, setCartNotice] = useState<string | null>(null);
   const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
 
@@ -133,34 +131,11 @@ export function BusinessDetailScreen(props: {
     : [];
   const closingNote = closings.length ? `Closes ${formatSlotTime(closings[closings.length - 1].closesAt ?? '')}` : undefined;
 
-  // Contextual primary CTA: the right action for the business type/state, and
-  // never an invalid one (no Book without bookable services, no Order without
-  // an orderable catalog, no fake delivery action). The bar is pinned above
-  // the bottom nav via CSS; the content padding keeps it from covering text.
-  let cta: DetailCta;
-  if (props.onBook && bookable) {
-    cta = { state: 'action', label: 'Book a service', onClick: () => props.onBook?.() };
-  } else if (props.canOrder && orderable) {
-    cta = { state: 'action', label: 'Order products', onClick: () => document.getElementById('biz-products')?.scrollIntoView?.({ behavior: 'smooth' }) };
-  } else if (b.isOpenNow === false) {
-    cta = { state: 'disabled', label: 'Closed', hint: 'This business is currently closed.' };
-  } else {
-    cta = {
-      state: 'disabled',
-      label: 'Unavailable',
-      hint:
-        orderable && !props.canOrder
-          ? 'Sign in as a customer to order.'
-          : 'This business has no bookable services or products right now.',
-    };
-  }
-
   const tabs: { key: DetailTab; label: string; show: boolean }[] = [
     { key: 'overview', label: 'Overview', show: true },
     { key: 'reviews', label: 'Reviews', show: true },
   ];
   const visibleTabs = tabs.filter((t) => t.show);
-  const activeTab = visibleTabs.some((t) => t.key === tab) ? tab : 'overview';
 
   return (
     <div className="screen biz-detail">
@@ -213,8 +188,8 @@ export function BusinessDetailScreen(props: {
         </div>
       </header>
 
-      {/* Utility actions under the hero; the primary CTA lives in the sticky
-          bar pinned above the bottom nav. */}
+      {/* Utility actions under the identity row. Booking and ordering live
+          on the individual service/product rows — no fixed CTA bar. */}
       <div className="biz-action-bar">
         <SaveHeart businessId={b.id} />
         {b.phone ? (
@@ -235,18 +210,19 @@ export function BusinessDetailScreen(props: {
       <div className="biz-upper-nav" role="tablist" aria-label="Business information">
         {visibleTabs.map((t) => (
           <button
+            type="button"
             key={t.key}
             role="tab"
-            aria-selected={activeTab === t.key}
-            className={activeTab === t.key ? 'biz-upper-nav-active' : 'biz-upper-nav-btn'}
-            onClick={() => setTab(t.key)}
+            aria-selected={tab === t.key}
+            className={tab === t.key ? 'biz-upper-nav-active' : 'biz-upper-nav-btn'}
+            onClick={() => setTab(tab === t.key ? 'products' : t.key)}
           >
             {t.label}
           </button>
         ))}
       </div>
 
-      {activeTab === 'overview' ? (
+      {tab === 'overview' ? (
         <>
           {b.description ? (
             <section className="detail-section" aria-label="About">
@@ -280,7 +256,15 @@ export function BusinessDetailScreen(props: {
                 onBook={props.onBook}
               />
               {b.services.length > 3 && props.onBook ? (
-                <Button full variant="ghost" sm onClick={() => document.getElementById('biz-services')?.scrollIntoView?.({ behavior: 'smooth' })}>
+                <Button
+                  full
+                  variant="ghost"
+                  sm
+                  onClick={() => {
+                    setTab('products');
+                    requestAnimationFrame(() => document.getElementById('biz-services')?.scrollIntoView?.({ behavior: 'smooth' }));
+                  }}
+                >
                   See all services
                 </Button>
               ) : null}
@@ -290,37 +274,8 @@ export function BusinessDetailScreen(props: {
         </>
       ) : null}
 
-      {b.services?.length ? (
-        <section id="biz-services" className="detail-section" aria-label="Services">
-          <h2 className="detail-section-title">Services</h2>
-          <div className="svc-rows">
-            {b.services.map((s) => (
-              <div key={s.id} className="svc-row">
-                <div className="svc-main">
-                  <div className="item-row">
-                    <span className="item-name">{s.name}</span>
-                    <Money minor={s.priceMinor} currency={s.currency} />
-                  </div>
-                  {s.description ? <p className="item-desc">{s.description}</p> : null}
-                  <div className="svc-tags">
-                    {s.durationMinutes ? <span className="pill">{s.durationMinutes} min</span> : null}
-                    {props.onBook && s.isActive && s.durationMinutes ? (
-                      <button type="button" className="pill pill-action" onClick={() => props.onBook?.(s.id)}>
-                        Book
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          {/* Booking happens per service (the Book pills above) or via the
-              single sticky primary CTA. There is deliberately NO second
-              full-width "Book a service" button here: it duplicated the
-              sticky bar on screen (reported 2026-10-20). */}
-        </section>
-      ) : null}
-
+      {tab === 'products' ? (
+        <>
       <section id="biz-products" className="detail-section" aria-label="Products">
         <div className="detail-section-header">
           <h2 className="detail-section-title">Products</h2>
@@ -400,23 +355,41 @@ export function BusinessDetailScreen(props: {
           <p className="detail-section-text">No products yet.</p>
         )}
       </section>
+      {b.services?.length ? (
+        <section id="biz-services" className="detail-section" aria-label="Services">
+          <h2 className="detail-section-title">Services</h2>
+          <div className="svc-rows">
+            {b.services.map((s) => (
+              <div key={s.id} className="svc-row">
+                <div className="svc-main">
+                  <div className="item-row">
+                    <span className="item-name">{s.name}</span>
+                    <Money minor={s.priceMinor} currency={s.currency} />
+                  </div>
+                  {s.description ? <p className="item-desc">{s.description}</p> : null}
+                  <div className="svc-tags">
+                    {s.durationMinutes ? <span className="pill">{s.durationMinutes} min</span> : null}
+                    {props.onBook && s.isActive && s.durationMinutes ? (
+                      <button type="button" className="pill pill-action" onClick={() => props.onBook?.(s.id)}>
+                        Book
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Booking happens per service (the Book pills above). There is
+              deliberately NO page-level "Book a service" bar: it duplicated
+              these controls and covered content (reported 2026-10-20). */}
+        </section>
+      ) : null}
 
-      {activeTab === 'reviews' ? <ReviewsTab businessId={b.id} /> : null}
+        </>
+      ) : null}
 
-      {/* Contextual primary action, pinned above the floating bottom nav and
-          safe-area aware. Real <button>; disabled states are explicit. */}
-      <div className="bd-sticky-bar" role="region" aria-label="Primary action">
-        <button
-          type="button"
-          className="bd-sticky-cta"
-          onClick={cta.state === 'action' ? cta.onClick : undefined}
-          disabled={cta.state === 'disabled'}
-          aria-disabled={cta.state === 'disabled'}
-        >
-          {cta.label}
-        </button>
-        {cta.state === 'disabled' ? <p className="bd-sticky-hint">{cta.hint}</p> : null}
-      </div>
+      {tab === 'reviews' ? <ReviewsTab businessId={b.id} /> : null}
+
     </div>
   );
 }

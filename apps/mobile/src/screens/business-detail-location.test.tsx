@@ -180,34 +180,46 @@ const allDayHours = (): BusinessHour[] =>
     closesAt: '17:00',
   }));
 
-describe('BusinessDetail sticky CTA matrix (Phase 2C)', () => {
-  it('offers Book when the business has bookable services', async () => {
+describe('BusinessDetail commerce actions (product-first, no sticky CTA bar)', () => {
+  // The Phase 2C sticky CTA bar was removed by requirement (2026-10-20): it
+  // duplicated the per-row controls and covered content. The capability
+  // matrix it encoded is preserved here against the controls that remain:
+  // per-service Book buttons and per-product Add buttons in the DEFAULT
+  // (products) view, and the absence of any page-level CTA bar.
+  it('offers per-service Book in the default view when the business has bookable services', async () => {
     vi.mocked(api.getBusiness).mockResolvedValue(business({ services: [svc()], isOpenNow: true }));
     const onBook = vi.fn();
     renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}, onBook: onBook});
-    const cta = await screen.findByRole('button', { name: 'Book a service' });
-    expect(cta).toBeEnabled();
-    fireEvent.click(cta);
-    expect(onBook).toHaveBeenCalledWith();
+    const book = await screen.findByRole('button', { name: 'Book' });
+    expect(book).toBeEnabled();
+    fireEvent.click(book);
+    expect(onBook).toHaveBeenCalledWith('svc-1');
+    // No page-level CTA bar exists anymore.
+    expect(screen.queryByRole('button', { name: 'Book a service' })).toBeNull();
+    expect(document.querySelector('.bd-sticky-bar')).toBeNull();
   });
 
-  it('offers Order when orderable and signed in, and opens the Products tab', async () => {
+  it('offers per-product Add in the default view when orderable and signed in', async () => {
     vi.mocked(api.getBusiness).mockResolvedValue(business({ products: [product()], isOpenNow: true }));
     renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}, canOrder: true, onOpenCart: () => {}});
-    const cta = await screen.findByRole('button', { name: 'Order products' });
-    expect(cta).toBeEnabled();
-    fireEvent.click(cta);
-    // The CTA navigates within the tab system rather than inventing an action.
-    await screen.findByText('Chicken Biryani');
+    // Products are the default content: visible without any tab interaction.
+    const add = await screen.findByRole('button', { name: 'Add Chicken Biryani to cart' });
+    fireEvent.click(add);
+    expect(await screen.findByText('Added Chicken Biryani to your cart.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Order products' })).toBeNull();
   });
 
-  it('prefers Book over Order when both are available', async () => {
+  it('shows both per-row controls and no page-level CTA when both booking and ordering are available', async () => {
     vi.mocked(api.getBusiness).mockResolvedValue(
       business({ services: [svc()], products: [product()], isOpenNow: true }),
     );
     renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}, onBook: () => {}, canOrder: true, onOpenCart: () => {}});
-    await screen.findByRole('button', { name: 'Book a service' });
+    await screen.findByText('Gulberg Grill');
+    expect(screen.getByRole('button', { name: 'Book' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Add Chicken Biryani to cart' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Book a service' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Order products' })).toBeNull();
+    expect(document.querySelector('.bd-sticky-bar')).toBeNull();
   });
 
   it('never shows a Book button when no bookable services exist', async () => {
@@ -216,37 +228,37 @@ describe('BusinessDetail sticky CTA matrix (Phase 2C)', () => {
     );
     renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}, onBook: () => {}});
     await screen.findByText('Gulberg Grill');
+    expect(screen.queryByRole('button', { name: 'Book' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Book a service' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Unavailable' })).toBeDisabled();
   });
 
-  it('never shows Order when products are missing or ordering is off', async () => {
+  it('never offers ordering when ordering is off, and shows the sign-in state instead', async () => {
     vi.mocked(api.getBusiness).mockResolvedValue(business({ products: [product()] }));
     renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}, canOrder: false});
     await screen.findByText('Gulberg Grill');
+    expect(screen.queryByRole('button', { name: 'Add Chicken Biryani to cart' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Order products' })).toBeNull();
-    const cta = screen.getByRole('button', { name: 'Unavailable' });
-    expect(cta).toBeDisabled();
-    expect(cta).toHaveAttribute('aria-disabled', 'true');
-    // The sign-in hint renders both under the sticky CTA and on the disabled
-    // cart button in the products section; either presence satisfies the UX.
     expect(screen.getAllByText(/Sign in as a customer to order/).length).toBeGreaterThan(0);
   });
 
-  it('shows a disabled Closed CTA when the business is closed and nothing is actionable', async () => {
+  it('shows the Closed badge and no actions when the business is closed and nothing is actionable', async () => {
     vi.mocked(api.getBusiness).mockResolvedValue(business({ isOpenNow: false }));
     renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}});
     await screen.findByText('Gulberg Grill');
-    const cta = screen.getByRole('button', { name: 'Closed' });
-    expect(cta).toBeDisabled();
-    expect(screen.getByText('This business is currently closed.')).toBeTruthy();
+    expect(screen.getAllByText('Closed').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Book' })).toBeNull();
+    expect(document.querySelector('.bd-sticky-bar')).toBeNull();
   });
 
-  it('keeps the sticky Book CTA usable even when the business is closed right now', async () => {
+  it('keeps per-service Book usable even when the business is closed right now', async () => {
     // Future bookings are still valid; closed-now must not kill the action.
     vi.mocked(api.getBusiness).mockResolvedValue(business({ services: [svc()], isOpenNow: false }));
-    renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}, onBook: () => {}});
-    expect(await screen.findByRole('button', { name: 'Book a service' })).toBeEnabled();
+    const onBook = vi.fn();
+    renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}, onBook: onBook});
+    const book = await screen.findByRole('button', { name: 'Book' });
+    expect(book).toBeEnabled();
+    fireEvent.click(book);
+    expect(onBook).toHaveBeenCalledWith('svc-1');
   });
 });
 
@@ -261,6 +273,7 @@ describe('BusinessDetail trust area (Phase 2C)', () => {
     });
     renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}});
     await screen.findByText('Gulberg Grill');
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
     const glance = screen.getByRole('region', { name: 'At a glance' });
     expect(within(glance).getByText(/4\.5/)).toBeTruthy();
     expect(within(glance).getByText(/12 reviews/)).toBeTruthy();
@@ -270,6 +283,7 @@ describe('BusinessDetail trust area (Phase 2C)', () => {
     vi.mocked(api.getBusiness).mockResolvedValue(business({ isOpenNow: true, hours: allDayHours() }));
     renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}});
     await screen.findByText('Gulberg Grill');
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
     const glance = screen.getByRole('region', { name: 'At a glance' });
     // The hero badge also says "Open now"; scope to the trust block.
     expect(within(glance).getByText('Open now')).toBeTruthy();
@@ -283,6 +297,7 @@ describe('BusinessDetail trust area (Phase 2C)', () => {
     );
     renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}, onBook: () => {}});
     await screen.findByText('Gulberg Grill');
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
     expect(screen.getByText('Online booking')).toBeTruthy();
     expect(screen.getByText('2 services')).toBeTruthy();
   });
@@ -293,6 +308,7 @@ describe('BusinessDetail trust area (Phase 2C)', () => {
     );
     renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}, onBook: () => {}});
     await screen.findByText('Gulberg Grill');
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
     expect(screen.queryByText('Online booking')).toBeNull();
   });
 
@@ -302,6 +318,7 @@ describe('BusinessDetail trust area (Phase 2C)', () => {
     );
     renderDetail({ idOrSlug: "gulberg-grill", onBack: () => {}});
     await screen.findByText('Gulberg Grill');
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
     expect(screen.getByText('0300 1234567')).toBeTruthy();
     expect(screen.getByText('hi@gulberg.test')).toBeTruthy();
     // No coordinates → the text address appears once in the trust block.

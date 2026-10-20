@@ -136,7 +136,7 @@ export function HomeScreen(props: {
   // Shared location state: Home, Explore, and Search all read the same
   // coords so one screen can never show "Near you" while another shows
   // "Set your location" after the same grant.
-  const { coords, locating, locNotice, hasLocation, requestLocation, clearLocation } = useSharedLocation();
+  const { coords, locating, locNotice, hasLocation, requestLocation } = useSharedLocation();
   const [locDenied, setLocDenied] = useState(false);
   const [locDismissed, setLocDismissed] = useState(false);
   const { requestWithExplainer, explainer: locationExplainer } = useLocationExplainer();
@@ -175,10 +175,15 @@ export function HomeScreen(props: {
     });
   };
 
-  const disableNearby = () => {
-    clearLocation();
+  // The location label is a STATUS, not a kill switch (root-cause fix,
+  // 2026-10-20: tapping "Near you" used to call clearLocation(), wiping the
+  // shared coords + persistence for every screen, which is exactly the
+  // "Near you → Set your location" flip seen on device). Tapping it now
+  // simply refreshes the fix; the shared location survives.
+  const refreshLocation = () => {
     setLocDenied(false);
     setLocDismissed(false);
+    requestLocation();
   };
 
   const homeCategories = categories.data?.slice(0, HOME_CATEGORY_LIMIT) ?? [];
@@ -206,7 +211,7 @@ export function HomeScreen(props: {
             Locating…
           </span>
         ) : nearby ? (
-          <button type="button" className="home-context-place home-context-toggle" onClick={disableNearby} aria-label="Nearby mode on. Tap to show all businesses.">
+          <button type="button" className="home-context-place home-context-toggle" onClick={refreshLocation} aria-label="Nearby mode on. Tap to refresh your location.">
             <PinIcon size={13} />
             Near you
           </button>

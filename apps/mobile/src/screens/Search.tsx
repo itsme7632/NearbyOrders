@@ -50,7 +50,14 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
   const [type, setType] = useState<SearchTypeFilter>('all');
   const [sort, setSort] = useState<SearchSort>('relevance');
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
-  const { coords, locating, locNotice: locNote, requestLocation, clearLocation } = useSharedLocation();
+  const { coords, locating, locNotice: locNote, requestLocation } = useSharedLocation();
+  // Per-screen VIEW preference only (root-cause fix, 2026-10-20): turning
+  // location off here used to call clearLocation(), wiping the shared
+  // coordinates for Home and Explore too. The shared location is never
+  // cleared from this screen; this flag only stops THIS screen's queries
+  // from using it.
+  const [locationOff, setLocationOff] = useState(false);
+  const effectiveCoords = locationOff ? null : coords;
   const { requestWithExplainer, explainer: locationExplainer } = useLocationExplainer();
     let cancelled = false;
   // Cursor pagination: the first page comes from useAsyncData; "Load more"
@@ -95,11 +102,11 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
         type,
         sort,
         categoryId,
-        lat: coords?.lat,
-        lng: coords?.lng,
+        lat: effectiveCoords?.lat,
+        lng: effectiveCoords?.lng,
         limit: PAGE_SIZE,
       }),
-    [query, type, sort, categoryId, coords],
+    [query, type, sort, categoryId, effectiveCoords],
   );
 
   // Any new primary search resets the accumulated pages.
@@ -121,8 +128,8 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
         type,
         sort,
         categoryId,
-        lat: coords?.lat,
-        lng: coords?.lng,
+        lat: effectiveCoords?.lat,
+        lng: effectiveCoords?.lng,
         limit: PAGE_SIZE,
         cursor,
       });
@@ -143,7 +150,7 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
   };
 
   const disableLocation = () => {
-    clearLocation();
+    setLocationOff(true);
     if (sort === 'distance') setSort('relevance');
   };
 
@@ -299,7 +306,7 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
       <section aria-label="Sort and location" style={{ marginTop: 8 }}>
         <div className="filter-row">
           {(['relevance', 'distance', 'rating'] as SearchSort[]).map((s) => {
-            const usable = s !== 'distance' || coords !== null;
+            const usable = s !== 'distance' || effectiveCoords !== null;
             if (!usable && sort !== 'distance') return null;
             return (
               <button
@@ -314,9 +321,13 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
               </button>
             );
           })}
-          {coords ? (
+          {effectiveCoords ? (
             <button type="button" className="chip chip-active" onClick={disableLocation}>
               <PinIcon size={14} /> Location on ✓
+            </button>
+          ) : coords ? (
+            <button type="button" className="chip" onClick={() => setLocationOff(false)}>
+              <PinIcon size={14} /> Location off
             </button>
           ) : (
             <button type="button" className="chip" onClick={enableLocation} disabled={locating}>

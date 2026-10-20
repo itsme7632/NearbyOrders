@@ -139,19 +139,25 @@ describe('Explore Near You discovery (Phase 11)', () => {
     expect(api.listNearbyBusinesses).not.toHaveBeenCalled();
   });
 
-  it('tapping the active chip exits nearby mode and restores the default list', async () => {
+  it('tapping the active chip exits the nearby VIEW and restores the default list, without clearing the shared location', async () => {
     // Start from the granted shared state (same setup as the passing
-    // "granted" test): the mount effect switches the component to nearby.
+    // "granted" test): the rising-edge effect switches to nearby mode.
     sharedLoc.coords = { lat: 31.5204, lng: 74.3587 };
     sharedLoc.hasLocation = true;
     render(<ExploreScreen onOpenBusiness={() => {}} />);
     await screen.findByText('Nearby Bistro');
-    // The active chip calls the real disableNearby: setMode('all') is genuine
-    // component state, so the UI reacts without any mock re-render.
+    // The chip toggles this screen's view only. It must NEVER clear the
+    // shared location (that was the on-device flip bug: Home and Search
+    // lost the fix too).
     fireEvent.click(screen.getByRole('button', { name: /near you/i }));
-    expect(sharedLoc.clearLocation).toHaveBeenCalled();
+    expect(sharedLoc.clearLocation).not.toHaveBeenCalled();
+    expect(sharedLoc.coords).toEqual({ lat: 31.5204, lng: 74.3587 });
     await waitFor(() => expect(screen.getByText('Gulberg Grill')).toBeInTheDocument());
     expect(screen.getByText('All businesses')).toBeInTheDocument();
+    // And the view can go straight back to nearby without a new GPS fix,
+    // because the coordinates were never destroyed.
+    fireEvent.click(screen.getByRole('button', { name: /near you/i }));
+    await screen.findByText('Nearby Bistro');
   });
 
   it('empty nearby results show an honest empty state', async () => {

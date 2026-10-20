@@ -4,8 +4,10 @@
  *
  * - Actions (Overview/Reviews tabs, Call, Directions, Share) must never
  *   navigate the app back to Home: the hash route must stay on the business.
- * - Exactly ONE primary CTA bar may exist; the Services section must not
- *   render a second full-width "Book this service" button duplicating it.
+ * - NO fixed/sticky CTA bar may exist; booking is per-service and ordering
+ *   is per-product. The default section is PRODUCTS (product-first page):
+ *   Overview content (About etc.) renders only when Overview is selected,
+ *   Reviews only when Reviews is selected.
  * - The circular logo's rendered image must actually be clipped round:
  *   styles.css must give .biz-logo-circle img object-fit: cover (contain
  *   showed the source image's own square opaque background as a square
@@ -75,12 +77,18 @@ describe('BusinessDetail actions never navigate Home', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'Reviews' }));
     expect(window.location.hash).toBe('#/business/butt-spices');
-    // Reviews surface replaces the overview content; page identity remains.
+    // Reviews surface replaces the default content; page identity remains.
     expect(screen.getByText('Butt Spices')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
     expect(window.location.hash).toBe('#/business/butt-spices');
     expect(screen.getByText('About')).toBeInTheDocument();
+
+    // Tapping the active Overview button returns to the products default.
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    expect(window.location.hash).toBe('#/business/butt-spices');
+    expect(document.getElementById('biz-products')).not.toBeNull();
+    expect(screen.queryByText('About')).toBeNull();
   });
 
   it('Call is a tel: link and Directions is a maps link; neither touches the route', async () => {
@@ -107,23 +115,53 @@ describe('BusinessDetail actions never navigate Home', () => {
   });
 });
 
-describe('BusinessDetail CTA duplication', () => {
-  it('renders exactly one sticky primary CTA bar', async () => {
+describe('BusinessDetail has no fixed CTA overlay', () => {
+  it('renders no sticky/fixed booking bar at all', async () => {
     const { container } = renderDetail();
     await screen.findByText('Butt Spices');
-    expect(container.querySelectorAll('.bd-sticky-bar')).toHaveLength(1);
+    expect(container.querySelectorAll('.bd-sticky-bar')).toHaveLength(0);
+    expect(screen.queryByText('Book a service')).toBeNull();
+    // Per-service booking still exists in the default view.
+    expect(screen.getAllByRole('button', { name: 'Book' }).length).toBeGreaterThan(0);
   });
+});
 
-  it('the Services section has no duplicate full-width "Book this service" button', async () => {
+describe('BusinessDetail is product-first', () => {
+  it('default view shows Products before Services, with no Overview content above them', async () => {
     renderDetail();
     await screen.findByText('Butt Spices');
-    // "Book a service" may appear only once on the page: the sticky CTA.
-    expect(screen.getAllByText('Book a service')).toHaveLength(1);
+    const products = document.getElementById('biz-products');
     const services = document.getElementById('biz-services');
+    expect(products).not.toBeNull();
     expect(services).not.toBeNull();
-    expect(services!.textContent).not.toContain('Book this service');
-    // Per-service booking still exists.
-    expect(screen.getAllByRole('button', { name: 'Book' }).length).toBeGreaterThan(0);
+    // Products section precedes Services in document order.
+    expect(products!.compareDocumentPosition(services!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Overview content is NOT rendered by default.
+    expect(screen.queryByText('About')).toBeNull();
+    expect(screen.queryByText('Opening hours')).toBeNull();
+    expect(screen.queryByRole('region', { name: 'At a glance' })).toBeNull();
+    // The catalog itself is immediately visible.
+    expect(screen.getByText('Red Chilli 250g')).toBeInTheDocument();
+    expect(screen.getByText('Spice Grinding')).toBeInTheDocument();
+  });
+
+  it('Overview is a separate explicit state, not the default page', async () => {
+    renderDetail();
+    await screen.findByText('Butt Spices');
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    expect(screen.getByText('About')).toBeInTheDocument();
+    // The catalog sections leave the page while Overview is selected.
+    expect(document.getElementById('biz-products')).toBeNull();
+    expect(document.getElementById('biz-services')).toBeNull();
+  });
+
+  it('Reviews is a separate explicit state', async () => {
+    renderDetail();
+    await screen.findByText('Butt Spices');
+    fireEvent.click(screen.getByRole('tab', { name: 'Reviews' }));
+    expect(document.getElementById('biz-products')).toBeNull();
+    expect(screen.queryByText('About')).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Reviews' })).toHaveAttribute('aria-selected', 'true');
   });
 });
 

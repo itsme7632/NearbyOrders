@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { BusinessDetailScreen } from './BusinessDetail.js';
 import { ToastProvider } from '../components/primitives.js';
 import * as api from '../api.js';
@@ -72,6 +72,7 @@ describe('BusinessDetail delivery capability (Phase 3H)', () => {
       </ToastProvider>,
     );
     await screen.findByText('Gulberg Grill');
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
 
     const dt = screen.getByText('Delivery');
     expect(dt.tagName).toBe('DT');
@@ -92,6 +93,7 @@ describe('BusinessDetail delivery capability (Phase 3H)', () => {
       </ToastProvider>,
     );
     await screen.findByText('Gulberg Grill');
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
 
     const dt = screen.getByText('Delivery');
     expect(dt.parentElement!.textContent).toContain('Pickup only');
@@ -106,6 +108,7 @@ describe('BusinessDetail delivery capability (Phase 3H)', () => {
       </ToastProvider>,
     );
     await screen.findByText('Gulberg Grill');
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
     expect(screen.queryByText('Delivery')).toBeNull();
   });
 });

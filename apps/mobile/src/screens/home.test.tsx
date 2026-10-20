@@ -217,9 +217,12 @@ describe('Home nearby mode', () => {
     expect(api.listNearbyBusinesses).not.toHaveBeenCalled();
   });
 
-  it('toggles nearby mode back off', async () => {
-    // Stateful mock: clearLocation flips the state like the real hook.
-    let state = {
+  it('tapping "Near you" refreshes the fix and never clears the shared location', async () => {
+    // Regression (2026-10-20): this button used to call clearLocation(),
+    // wiping the shared coordinates for every screen whenever the status
+    // label was tapped — the on-device "Near you" flip. It is a status +
+    // refresh control now.
+    const state = {
       coords: { lat: 31.47, lng: 74.4 } as { lat: number; lng: number } | null,
       locating: false,
       locNotice: null as string | null,
@@ -227,19 +230,14 @@ describe('Home nearby mode', () => {
       requestLocation: vi.fn(),
       clearLocation: vi.fn(),
     };
-    state.clearLocation = vi.fn(() => {
-      state.coords = null;
-      state.hasLocation = false;
-    });
     vi.spyOn(sharedLocation, 'useSharedLocation').mockImplementation(() => state);
     render(<HomeScreen {...defaultProps()} />);
-    const toggle = await screen.findByRole('button', { name: 'Nearby mode on. Tap to show all businesses.' });
+    const toggle = await screen.findByRole('button', { name: 'Nearby mode on. Tap to refresh your location.' });
     fireEvent.click(toggle);
-    // The mock updated; re-render to reflect the cleared state.
-    mockUseSharedLocation({ coords: null, hasLocation: false });
-    render(<HomeScreen {...defaultProps()} />);
-    await screen.findByRole('button', { name: 'Show businesses near your location' });
-    expect(api.listBusinesses).toHaveBeenCalled();
+    expect(state.requestLocation).toHaveBeenCalled();
+    expect(state.clearLocation).not.toHaveBeenCalled();
+    // The nearby feed is still what renders — the location survived the tap.
+    expect(api.listNearbyBusinesses).toHaveBeenCalled();
   });
 });
 
