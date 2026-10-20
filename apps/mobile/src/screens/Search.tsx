@@ -14,7 +14,8 @@ import {
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, Money, OpenBadge, RatingChip, VerifiedBadge } from '../components/ui.js';
 import { ExploreIcon, PinIcon, StoreIcon } from '../components/icons.js';
-import { clearCustomerCoords, formatDistanceKm, locationOutcomeHint, requestCustomerLocation, restoreCustomerCoords, saveCustomerCoords, type LocationOutcome } from '../location.js';
+import { formatDistanceKm } from '../location.js';
+import { useSharedLocation } from '../useSharedLocation.js';
 import { useLocationExplainer } from '../components/LocationPermissionExplainer.js';
 import { clearRecentSearches, getRecentSearches, recordSearch } from '../recent-searches.js';
 
@@ -49,20 +50,9 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
   const [type, setType] = useState<SearchTypeFilter>('all');
   const [sort, setSort] = useState<SearchSort>('relevance');
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [locNote, setLocNote] = useState<string | null>(null);
-  const [locating, setLocating] = useState(false);
+  const { coords, locating, locNotice: locNote, requestLocation, clearLocation } = useSharedLocation();
   const { requestWithExplainer, explainer: locationExplainer } = useLocationExplainer();
-
-  // Restore persisted coordinates on mount when the OS permission is still granted.
-  useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      const restored = await restoreCustomerCoords();
-      if (!cancelled && restored) setCoords(restored);
-    })();
-    return () => { cancelled = true; };
-  }, []);
   // Cursor pagination: the first page comes from useAsyncData; "Load more"
   // accumulates further pages without refetching what is already visible.
   const [extraPages, setExtraPages] = useState<SearchPage[]>([]);
@@ -148,28 +138,12 @@ export function SearchScreen(props: { initialQuery?: string; onBack: () => void;
     // First-use gate: the in-app explainer appears before the native dialog
     // on a fresh device; granted/denied states go straight through.
     requestWithExplainer(() => {
-      setLocNote(null);
-      setLocating(true);
-      requestCustomerLocation()
-        .then((outcome: LocationOutcome) => {
-          if (outcome.status === 'granted') {
-            setCoords(outcome.coords);
-            saveCustomerCoords(outcome.coords);
-            setLocNote(null);
-          } else {
-            setCoords(null);
-            clearCustomerCoords();
-            setLocNote(locationOutcomeHint(outcome));
-          }
-        })
-        .finally(() => setLocating(false));
+      requestLocation();
     });
   };
 
   const disableLocation = () => {
-    setCoords(null);
-    clearCustomerCoords();
-    setLocNote(null);
+    clearLocation();
     if (sort === 'distance') setSort('relevance');
   };
 

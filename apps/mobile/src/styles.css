@@ -7036,3 +7036,43 @@ nav.nav-v3, nav.business-nav-v3 {
 .push-explainer h2 { margin: 0 0 8px; font-size: 20px; }
 .push-explainer p { margin: 0 0 20px; }
 .push-explainer-actions { display: grid; gap: 8px; }
+
+/* Upper business navigation: Overview/Reviews alongside actions. */
+.biz-upper-nav {
+  display: flex;
+  gap: 8px;
+  padding: 12px 24px 0;
+}
+.biz-upper-nav-btn, .biz-upper-nav-active {
+  padding: 10px 20px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink2);
+  cursor: pointer;
+}
+.biz-upper-nav-active {
+  background: var(--ember);
+  border-color: var(--ember);
+  color: #fff;
+}
+
+/* Section header with action. */
+.detail-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.btn-add-product {
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--ember);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+}

@@ -228,7 +228,9 @@ describe('BusinessDetail sticky CTA matrix (Phase 2C)', () => {
     const cta = screen.getByRole('button', { name: 'Unavailable' });
     expect(cta).toBeDisabled();
     expect(cta).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.getByText(/Sign in as a customer to order/)).toBeTruthy();
+    // The sign-in hint renders both under the sticky CTA and on the disabled
+    // cart button in the products section; either presence satisfies the UX.
+    expect(screen.getAllByText(/Sign in as a customer to order/).length).toBeGreaterThan(0);
   });
 
   it('shows a disabled Closed CTA when the business is closed and nothing is actionable', async () => {

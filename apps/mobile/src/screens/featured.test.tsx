@@ -2,7 +2,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 import { HomeScreen } from './Home.js';
-import { BusinessDetailScreen } from './BusinessDetail.js';
+import { BusinessDetailScreen, __resetFeaturedCacheForTests } from './BusinessDetail.js';
 import { SearchScreen } from './Search.js';
 import { ToastProvider } from '../components/primitives.js';
 import * as api from '../api.js';
@@ -190,6 +190,9 @@ describe('BusinessDetail Featured badge (Phase 20)', () => {
     );
 
   beforeEach(() => {
+    // The detail screen caches featured placements per session; reset so each
+    // test's mock governs the fetch.
+    __resetFeaturedCacheForTests();
     vi.mocked(api.getBusiness).mockResolvedValue(business());
     vi.mocked(api.listBusinessReviews).mockResolvedValue({ items: [], nextCursor: null, averageRating: null, reviewCount: 0 });
   });

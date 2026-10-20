@@ -12,7 +12,7 @@ import {
   type ExploreFilters,
 } from '../components/ExploreFilters.js';
 import { ExploreIcon, PinIcon } from '../components/icons.js';
-import { clearCustomerCoords, requestCustomerLocation, locationOutcomeHint, isDeniedOutcome, restoreCustomerCoords, saveCustomerCoords, type LocationOutcome } from '../location.js';
+import { useSharedLocation } from '../useSharedLocation.js';
 import { useLocationExplainer } from '../components/LocationPermissionExplainer.js';
 import { DEFAULT_RADIUS_KM, RADIUS_OPTIONS_KM } from '@nearbyorders/shared';
 import { useMapProvider } from '../maps/useMapProvider.js';
@@ -42,24 +42,17 @@ export function ExploreScreen(props: {
   const [mode, setMode] = useState<DiscoveryMode>('all');
   const [view, setView] = useState<ViewMode>('list');
   const [radiusKm, setRadiusKm] = useState<number>(DEFAULT_RADIUS_KM);
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [locNote, setLocNote] = useState<string | null>(null);
+  const { coords, locating, locNotice: locNote, hasLocation, requestLocation, clearLocation } = useSharedLocation();
+  // Map center: separate from the user's GPS location. When the user drags
+  // the map, the visible center becomes the search center.
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [locDenied, setLocDenied] = useState(false);
   const [locDismissed, setLocDismissed] = useState(false);
-  const [locating, setLocating] = useState(false);
   const { requestWithExplainer, explainer: locationExplainer } = useLocationExplainer();
+  // Effective search center: map drag wins, then GPS location.
+  const searchCenter = mapCenter ?? coords;
 
-  // Restore persisted coordinates on mount when the OS permission is still granted.
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const restored = await restoreCustomerCoords();
-      if (cancelled || !restored) return;
-      setCoords(restored);
-      setMode('nearby');
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  // The shared hook handles restoration; no local restore needed.
   const [selectedMarker, setSelectedMarker] = useState<string | null>(null);
   const [filters, setFilters] = useState<ExploreFilters>(DEFAULT_EXPLORE_FILTERS);
   const { handle: mapHandle } = useMapProvider();
@@ -76,8 +69,8 @@ export function ExploreScreen(props: {
       // needs real coordinates, which /search does not return. The extra
       // filters narrow/reorder its server result set via server-computed
       // fields (see applyNearbyFilters); nothing is invented.
-      if (mode === 'nearby' && coords) {
-        const rows = await listNearbyBusinesses({ lat: coords.lat, lng: coords.lng, radiusKm, limit: 50 });
+      if (mode === 'nearby' && searchCenter) {
+        const rows = await listNearbyBusinesses({ lat: searchCenter.lat, lng: searchCenter.lng, radiusKm, limit: 50 });
         return applyNearbyFilters(rows, filters);
       }
       // Filtered discovery goes through the unified /search endpoint — the
@@ -101,48 +94,32 @@ export function ExploreScreen(props: {
         category: selectedCategory,
       });
     },
-    [query, selectedCategory, categoryId, mode, coords, radiusKm, filters],
+    [query, selectedCategory, categoryId, mode, searchCenter, radiusKm, filters],
   );
 
   const enableNearby = () => {
     // First-use gate: the in-app explainer appears before the native dialog
     // on a fresh device; granted/denied states go straight through.
     requestWithExplainer(() => {
-      setLocNote(null);
       setLocDenied(false);
       setLocDismissed(false);
-      setLocating(true);
-      requestCustomerLocation()
-        .then((outcome: LocationOutcome) => {
-          if (outcome.status === 'granted') {
-            setCoords(outcome.coords);
-            saveCustomerCoords(outcome.coords);
-            setRadiusKm(DEFAULT_RADIUS_KM);
-            setMode('nearby');
-            setLocDenied(false);
-          } else if (isDeniedOutcome(outcome)) {
-            // Denied stays non-blocking: the full list keeps working and a calm
-            // card explains the situation with a retry and a dismiss path.
-            setCoords(null);
-            clearCustomerCoords();
-            setLocNote(locationOutcomeHint(outcome));
-            setLocDenied(true);
-            setLocDismissed(false);
-          } else {
-            setCoords(null);
-            setLocNote(locationOutcomeHint(outcome));
-            setLocDenied(false);
-          }
-        })
-        .finally(() => setLocating(false));
+      requestLocation();
+      // Switch to nearby mode once coords are available; the effect below
+      // handles the transition when the shared state updates.
     });
   };
 
+  // When shared coords become available, switch to nearby mode.
+  useEffect(() => {
+    if (hasLocation && mode === 'all') {
+      setMode('nearby');
+      setRadiusKm(DEFAULT_RADIUS_KM);
+    }
+  }, [hasLocation, mode]);
+
   const disableNearby = () => {
     setMode('all');
-    setCoords(null);
-    clearCustomerCoords();
-    setLocNote(null);
+    clearLocation();
     setLocDenied(false);
     setLocDismissed(false);
     setSelectedMarker(null);
@@ -152,15 +129,14 @@ export function ExploreScreen(props: {
   const searchThisArea = (center: LatLng) => {
     // The visible map center becomes the new search center; distance stays
     // server-authoritative. Nearby mode is required for a map search.
-    setCoords(center);
+    setMapCenter(center);
     setSelectedMarker(null);
-    setLocNote(null);
     if (mode !== 'nearby') setMode('nearby');
   };
 
   const results = businesses.data ?? [];
   const activeFilters = (selectedCategory ? 1 : 0) + (query ? 1 : 0) + countActiveFilters(filters);
-  const mapUsable = mode === 'nearby' && coords !== null;
+  const mapUsable = mode === 'nearby' && searchCenter !== null;
 
   return (
     <div className="screen explore-screen">
@@ -238,7 +214,7 @@ export function ExploreScreen(props: {
 
       {/* Filter bar: quick toggles + full filter sheet (Phase 2B). */}
       <section aria-label="Discovery filters" style={{ marginTop: 2 }}>
-        <ExploreFilterBar filters={filters} onChange={setFilters} canSortByDistance={coords !== null} />
+        <ExploreFilterBar filters={filters} onChange={setFilters} canSortByDistance={searchCenter !== null} />
       </section>
 
       {/* Radius: only meaningful in nearby mode; drives the server query. */}
@@ -321,7 +297,7 @@ export function ExploreScreen(props: {
               <ExploreMapView
                 handle={mapHandle}
                 results={results}
-                searchCenter={coords}
+                searchCenter={searchCenter}
                 selectedId={selectedMarker}
                 onSelect={setSelectedMarker}
                 onOpenBusiness={props.onOpenBusiness}

@@ -23,7 +23,8 @@ import {
   type SearchPage,
   type ServiceSearchResult,
 } from '../api.js';
-import { clearCustomerCoords, formatDistanceKm, isDeniedOutcome, locationOutcomeHint, requestCustomerLocation, restoreCustomerCoords, saveCustomerCoords } from '../location.js';
+import { formatDistanceKm } from '../location.js';
+import { useSharedLocation } from '../useSharedLocation.js';
 import { useLocationExplainer } from '../components/LocationPermissionExplainer.js';
 import { longDateLabel } from '../time.js';
 import { useAsyncData } from '../hooks.js';
@@ -132,37 +133,14 @@ export function HomeScreen(props: {
   // Opt-in nearby mode: no permission prompt fires until the customer taps the
   // location context. On grant the feed comes from the dedicated nearby
   // endpoint with server-computed distances; every other state keeps the
-  // plain discovery feed so the app stays useful without location.
-  const [locating, setLocating] = useState(false);
-  const [coords, setCoords] = useState<Coords | null>(null);
-  const [locNotice, setLocNotice] = useState<string | null>(null);
+  // Shared location state: Home, Explore, and Search all read the same
+  // coords so one screen can never show "Near you" while another shows
+  // "Set your location" after the same grant.
+  const { coords, locating, locNotice, hasLocation, requestLocation, clearLocation } = useSharedLocation();
   const [locDenied, setLocDenied] = useState(false);
   const [locDismissed, setLocDismissed] = useState(false);
   const { requestWithExplainer, explainer: locationExplainer } = useLocationExplainer();
   const nearbyKey = coords ? `${coords.lat.toFixed(4)},${coords.lng.toFixed(4)}` : 'all';
-
-  // Restore persisted coordinates on startup. Only trusted when the OS
-  // permission is still granted; otherwise they are discarded. When
-  // restored, a fresh fix is attempted in the background to keep them current.
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const restored = await restoreCustomerCoords();
-      if (cancelled || !restored) return;
-      setCoords(restored);
-      // Refresh in the background; a failure keeps the persisted fix.
-      try {
-        const outcome = await requestCustomerLocation();
-        if (!cancelled && outcome.status === 'granted') {
-          setCoords(outcome.coords);
-          saveCustomerCoords(outcome.coords);
-        }
-      } catch {
-        /* Keep the persisted coordinates. */
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
 
   const businesses = useAsyncData<Business[]>(async () => {
     if (coords) {
@@ -191,45 +169,14 @@ export function HomeScreen(props: {
     // First-use gate: on a fresh device the in-app explainer appears before
     // the native location dialog. Granted/denied states go straight through.
     requestWithExplainer(() => {
-      if (locating) return;
-      setLocating(true);
-      setLocNotice(null);
       setLocDenied(false);
       setLocDismissed(false);
-      requestCustomerLocation()
-        .then((outcome) => {
-          if (outcome.status === 'granted') {
-            setCoords(outcome.coords);
-            saveCustomerCoords(outcome.coords);
-            setLocNotice(null);
-            setLocDenied(false);
-            setLocDismissed(false);
-          } else if (isDeniedOutcome(outcome)) {
-            // Denied is sticky but retryable: the chip stays tappable so the
-            // customer can retry after enabling permission in system settings
-            // (permanently-denied says so explicitly). A calm, dismissible card
-            // explains what happened — browsing and search keep working either way.
-            setCoords(null);
-            clearCustomerCoords();
-            setLocNotice(locationOutcomeHint(outcome));
-            setLocDenied(true);
-            setLocDismissed(false);
-          } else {
-            // Unavailable/error: say so plainly with a retry action instead of
-            // silently pretending. The feed stays usable without location.
-            setCoords(null);
-            setLocNotice(locationOutcomeHint(outcome));
-            setLocDenied(false);
-          }
-        })
-        .finally(() => setLocating(false));
+      requestLocation();
     });
   };
 
   const disableNearby = () => {
-    setCoords(null);
-    clearCustomerCoords();
-    setLocNotice(null);
+    clearLocation();
     setLocDenied(false);
     setLocDismissed(false);
   };
@@ -246,7 +193,7 @@ export function HomeScreen(props: {
   const [spotlight, ...spotlightRest] = spotlightPool;
   const feed = showOpenNow ? popular.filter((b) => b.isOpenNow !== true) : spotlightRest;
   const firstName = me.data?.firstName?.trim() || null;
-  const nearby = coords !== null;
+  const nearby = hasLocation;
 
   return (
     <div className="screen home-screen">

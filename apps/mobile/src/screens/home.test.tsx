@@ -4,9 +4,27 @@ import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/re
 import { HomeScreen } from './Home.js';
 import * as api from '../api.js';
 import * as location from '../location.js';
+import * as sharedLocation from '../useSharedLocation.js';
 import type { Booking, Business, Category, FavoriteEntry, Order } from '../api.js';
 
 afterEach(cleanup);
+
+// Mock the shared location hook: tests control coords directly.
+const mockUseSharedLocation = (overrides: Partial<ReturnType<typeof sharedLocation.useSharedLocation>> = {}) => {
+  vi.spyOn(sharedLocation, 'useSharedLocation').mockReturnValue({
+    coords: null,
+    locating: false,
+    locNotice: null,
+    hasLocation: false,
+    requestLocation: vi.fn(),
+    clearLocation: vi.fn(),
+    ...overrides,
+  });
+};
+
+beforeEach(() => {
+  mockUseSharedLocation();
+});
 
 const manyCategories: Category[] = [
   'Automotive',
@@ -172,16 +190,15 @@ describe('Home search entry', () => {
 
 describe('Home nearby mode', () => {
   it('switches to the nearby feed with real distances when location is granted', async () => {
-    vi.spyOn(location, 'requestCustomerLocation').mockResolvedValue({
-      status: 'granted',
+    mockUseSharedLocation({
       coords: { lat: 31.47, lng: 74.4 },
+      hasLocation: true,
     });
     vi.spyOn(api, 'listNearbyBusinesses').mockResolvedValue([
       business({ id: 'biz-n1', name: 'Near Bakery', distanceKm: 1.2 }),
       business({ id: 'biz-n2', name: 'Near Tailor', distanceKm: 2.8, isOpenNow: false }),
     ]);
     render(<HomeScreen {...defaultProps()} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Show businesses near your location' }));
     await screen.findByText('Near you');
     expect(api.listNearbyBusinesses).toHaveBeenCalledWith({ lat: 31.47, lng: 74.4, radiusKm: 10, limit: 20 });
     // Server-computed distances surface on the rows.
@@ -189,10 +206,11 @@ describe('Home nearby mode', () => {
   });
 
   it('shows a retry affordance when location is denied, without breaking the feed', async () => {
-    vi.spyOn(location, 'requestCustomerLocation').mockResolvedValue({ status: 'denied' });
+    mockUseSharedLocation({
+      locNotice: 'Location permission was denied.',
+    });
     vi.spyOn(api, 'listBusinesses').mockResolvedValue([business()]);
     render(<HomeScreen {...defaultProps()} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Show businesses near your location' }));
     await screen.findByRole('button', { name: 'Location is off. Tap to try again.' });
     // The plain discovery feed still renders — nothing is faked.
     expect(await screen.findByText('Butt Spices')).toBeTruthy();
@@ -200,14 +218,26 @@ describe('Home nearby mode', () => {
   });
 
   it('toggles nearby mode back off', async () => {
-    vi.spyOn(location, 'requestCustomerLocation').mockResolvedValue({
-      status: 'granted',
-      coords: { lat: 31.47, lng: 74.4 },
+    // Stateful mock: clearLocation flips the state like the real hook.
+    let state = {
+      coords: { lat: 31.47, lng: 74.4 } as { lat: number; lng: number } | null,
+      locating: false,
+      locNotice: null as string | null,
+      hasLocation: true,
+      requestLocation: vi.fn(),
+      clearLocation: vi.fn(),
+    };
+    state.clearLocation = vi.fn(() => {
+      state.coords = null;
+      state.hasLocation = false;
     });
+    vi.spyOn(sharedLocation, 'useSharedLocation').mockImplementation(() => state);
     render(<HomeScreen {...defaultProps()} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Show businesses near your location' }));
     const toggle = await screen.findByRole('button', { name: 'Nearby mode on. Tap to show all businesses.' });
     fireEvent.click(toggle);
+    // The mock updated; re-render to reflect the cleared state.
+    mockUseSharedLocation({ coords: null, hasLocation: false });
+    render(<HomeScreen {...defaultProps()} />);
     await screen.findByRole('button', { name: 'Show businesses near your location' });
     expect(api.listBusinesses).toHaveBeenCalled();
   });

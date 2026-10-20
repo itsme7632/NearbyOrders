@@ -16,6 +16,24 @@ vi.mock('../api.js', async (importOriginal) => ({
   searchMarketplace: vi.fn(),
 }));
 
+// Stateful shared-location mock: tests mutate `sharedLoc` to simulate grants.
+// The request/clear fns apply the same state transitions the real hook
+// performs (grant -> coords set, clear -> coords cleared); tests that need
+// the component to react to a transition re-render after invoking them,
+// since the module mock has no React state of its own.
+export const sharedLoc = {
+  coords: null as { lat: number; lng: number } | null,
+  locating: false,
+  locNotice: null as string | null,
+  hasLocation: false,
+  requestLocation: vi.fn(),
+  clearLocation: vi.fn(),
+};
+vi.mock('../useSharedLocation.js', () => ({
+  useSharedLocation: vi.fn(() => sharedLoc),
+  __resetSharedLocationForTests: vi.fn(),
+}));
+
 vi.mock('../location.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../location.js')>()),
   requestCustomerLocation: vi.fn(),
@@ -50,6 +68,21 @@ const errorOutcome: LocationOutcome = { status: 'error', message: 'GPS is acting
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Reset shared location state
+  sharedLoc.coords = null;
+  sharedLoc.locating = false;
+  sharedLoc.locNotice = null;
+  sharedLoc.hasLocation = false;
+  // Simulate the real hook: a grant sets shared coords, clearing removes them.
+  sharedLoc.requestLocation = vi.fn(() => {
+    sharedLoc.coords = { lat: 31.5204, lng: 74.3587 };
+    sharedLoc.hasLocation = true;
+  });
+  sharedLoc.clearLocation = vi.fn(() => {
+    sharedLoc.coords = null;
+    sharedLoc.hasLocation = false;
+    sharedLoc.locating = false;
+  });
   vi.mocked(api.listCategories).mockResolvedValue([
     { id: 'cat-1', name: 'Food & Dining', slug: 'food-dining', isActive: true },
   ]);
@@ -58,7 +91,6 @@ beforeEach(() => {
   // ExploreScreen only calls /search when advanced filters are active; the
   // default keeps the suite hermetic if that ever changes.
   vi.mocked(api.searchMarketplace).mockResolvedValue({ results: [], nextCursor: null, total: 0, sort: 'relevance' });
-  vi.mocked(requestCustomerLocation).mockResolvedValue(granted);
 });
 
 describe('Explore Near You discovery (Phase 11)', () => {
@@ -71,10 +103,10 @@ describe('Explore Near You discovery (Phase 11)', () => {
   });
 
   it('granted: switches to nearby mode and uses server-authoritative distance', async () => {
+    sharedLoc.coords = { lat: 31.5204, lng: 74.3587 };
+    sharedLoc.hasLocation = true;
     render(<ExploreScreen onOpenBusiness={() => {}} />);
-    fireEvent.click(await screen.findByRole('button', { name: /near you/i }));
     await screen.findByText('Nearby Bistro');
-    expect(requestCustomerLocation).toHaveBeenCalledTimes(1);
     expect(api.listNearbyBusinesses).toHaveBeenCalledWith(
       expect.objectContaining({ lat: 31.5204, lng: 74.3587, radiusKm: 25 }),
     );
@@ -83,7 +115,7 @@ describe('Explore Near You discovery (Phase 11)', () => {
   });
 
   it('denied: keeps default discovery, no fabricated location', async () => {
-    vi.mocked(requestCustomerLocation).mockResolvedValue(denied);
+    sharedLoc.locNotice = 'Location permission was denied.';
     render(<ExploreScreen onOpenBusiness={() => {}} />);
     fireEvent.click(await screen.findByRole('button', { name: /near you/i }));
     await screen.findByText(/location permission was denied/i);
@@ -92,7 +124,7 @@ describe('Explore Near You discovery (Phase 11)', () => {
   });
 
   it('unavailable: keeps default discovery', async () => {
-    vi.mocked(requestCustomerLocation).mockResolvedValue(unavailable);
+    sharedLoc.locNotice = 'Could not get your location.';
     render(<ExploreScreen onOpenBusiness={() => {}} />);
     fireEvent.click(await screen.findByRole('button', { name: /near you/i }));
     await screen.findByText(/could not get your location/i);
@@ -100,7 +132,7 @@ describe('Explore Near You discovery (Phase 11)', () => {
   });
 
   it('error: shows the error message, keeps default discovery', async () => {
-    vi.mocked(requestCustomerLocation).mockResolvedValue(errorOutcome);
+    sharedLoc.locNotice = 'GPS is acting up';
     render(<ExploreScreen onOpenBusiness={() => {}} />);
     fireEvent.click(await screen.findByRole('button', { name: /near you/i }));
     await screen.findByText('GPS is acting up');
@@ -108,19 +140,34 @@ describe('Explore Near You discovery (Phase 11)', () => {
   });
 
   it('tapping the active chip exits nearby mode and restores the default list', async () => {
+    // Start from the granted shared state (same setup as the passing
+    // "granted" test): the mount effect switches the component to nearby.
+    sharedLoc.coords = { lat: 31.5204, lng: 74.3587 };
+    sharedLoc.hasLocation = true;
     render(<ExploreScreen onOpenBusiness={() => {}} />);
-    fireEvent.click(await screen.findByRole('button', { name: /near you/i }));
     await screen.findByText('Nearby Bistro');
+    // The active chip calls the real disableNearby: setMode('all') is genuine
+    // component state, so the UI reacts without any mock re-render.
     fireEvent.click(screen.getByRole('button', { name: /near you/i }));
+    expect(sharedLoc.clearLocation).toHaveBeenCalled();
     await waitFor(() => expect(screen.getByText('Gulberg Grill')).toBeInTheDocument());
     expect(screen.getByText('All businesses')).toBeInTheDocument();
   });
 
   it('empty nearby results show an honest empty state', async () => {
     vi.mocked(api.listNearbyBusinesses).mockResolvedValue([]);
+    sharedLoc.coords = { lat: 31.5204, lng: 74.3587 };
+    sharedLoc.hasLocation = true;
     render(<ExploreScreen onOpenBusiness={() => {}} />);
-    fireEvent.click(await screen.findByRole('button', { name: /near you/i }));
     await screen.findByText('Nothing nearby yet');
     expect(screen.getByText(/no businesses within 25 km/i)).toBeInTheDocument();
+  });
+
+  it('clicking Near you requests location through the shared hook', async () => {
+    render(<ExploreScreen onOpenBusiness={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: /near you/i }));
+    // The explainer gate is async; the shared hook is the single path to GPS.
+    await waitFor(() => expect(sharedLoc.requestLocation).toHaveBeenCalled());
+    expect(api.listNearbyBusinesses).not.toHaveBeenCalled();
   });
 });

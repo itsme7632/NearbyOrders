@@ -27,6 +27,20 @@ vi.mock('../api.js', async (importOriginal) => ({
   searchMarketplace: vi.fn(),
 }));
 
+// Stateful shared-location mock: tests mutate `sharedLoc` to simulate grants.
+export const sharedLoc = {
+  coords: null as { lat: number; lng: number } | null,
+  locating: false,
+  locNotice: null as string | null,
+  hasLocation: false,
+  requestLocation: vi.fn(),
+  clearLocation: vi.fn(),
+};
+vi.mock('../useSharedLocation.js', () => ({
+  useSharedLocation: vi.fn(() => sharedLoc),
+  __resetSharedLocationForTests: vi.fn(),
+}));
+
 vi.mock('../location.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../location.js')>()),
   requestCustomerLocation: vi.fn(),
@@ -88,6 +102,11 @@ const granted: LocationOutcome = { status: 'granted', coords: { lat: 31.5204, ln
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Reset shared location state (individual tests opt into the granted state).
+  sharedLoc.coords = null;
+  sharedLoc.locating = false;
+  sharedLoc.locNotice = null;
+  sharedLoc.hasLocation = false;
   vi.mocked(api.listCategories).mockResolvedValue([
     { id: 'cat-1', name: 'Food & Dining', slug: 'food-dining', isActive: true },
   ]);
@@ -412,9 +431,12 @@ describe('ExploreScreen filter integration (Phase 2B)', () => {
       base({ id: 'open-1', name: 'Open Star', isOpenNow: true, averageRating: 4.8 }),
       base({ id: 'closed-1', name: 'Closed Cafe', isOpenNow: false, averageRating: 4.9 }),
     ]);
+    // Simulate the already-granted shared location: the mount effect switches
+    // the component into nearby mode, so no click-through is needed.
+    sharedLoc.coords = { lat: 31.5204, lng: 74.3587 };
+    sharedLoc.hasLocation = true;
     render(<ExploreScreen onOpenBusiness={() => {}} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /near you/i }));
     await screen.findByText('Closed Cafe');
     expect(api.listNearbyBusinesses).toHaveBeenCalledTimes(1);
 

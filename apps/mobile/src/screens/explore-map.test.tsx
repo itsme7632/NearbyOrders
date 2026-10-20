@@ -17,6 +17,20 @@ vi.mock('../api.js', async (importOriginal) => ({
   searchMarketplace: vi.fn(),
 }));
 
+// Stateful shared-location mock: tests mutate `sharedLoc` to simulate grants.
+export const sharedLoc = {
+  coords: null as { lat: number; lng: number } | null,
+  locating: false,
+  locNotice: null as string | null,
+  hasLocation: false,
+  requestLocation: vi.fn(),
+  clearLocation: vi.fn(),
+};
+vi.mock('../useSharedLocation.js', () => ({
+  useSharedLocation: vi.fn(() => sharedLoc),
+  __resetSharedLocationForTests: vi.fn(),
+}));
+
 vi.mock('../location.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../location.js')>()),
   requestCustomerLocation: vi.fn(),
@@ -108,6 +122,11 @@ beforeEach(() => {
   panCalls.length = 0;
   idleListeners.clear();
   fakeCenter = { lat: 31.5204, lng: 74.3587 };
+  // Reset shared location state (individual tests opt into the granted state).
+  sharedLoc.coords = null;
+  sharedLoc.locating = false;
+  sharedLoc.locNotice = null;
+  sharedLoc.hasLocation = false;
   vi.mocked(api.listCategories).mockResolvedValue([
     { id: 'cat-1', name: 'Food & Dining', slug: 'food-dining', isActive: true },
   ]);
@@ -123,8 +142,11 @@ beforeEach(() => {
 });
 
 const enterNearbyMap = async () => {
+  // Simulate the already-granted shared location: the mount effect switches
+  // the component into nearby mode, so no click-through is needed.
+  sharedLoc.coords = { lat: 31.5204, lng: 74.3587 };
+  sharedLoc.hasLocation = true;
   render(<ExploreScreen onOpenBusiness={() => {}} />);
-  fireEvent.click(await screen.findByRole('button', { name: /near you/i }));
   await screen.findByText('Nearby Bistro');
   fireEvent.click(screen.getByRole('radio', { name: 'Map' }));
   await screen.findByTestId('map-canvas');
@@ -149,8 +171,9 @@ describe('Explore map view (Phase 12)', () => {
 
   it('marker selection is reflected and opens Business Detail from the preview', async () => {
     const onOpen = vi.fn();
+    sharedLoc.coords = { lat: 31.5204, lng: 74.3587 };
+    sharedLoc.hasLocation = true;
     render(<ExploreScreen onOpenBusiness={onOpen} />);
-    fireEvent.click(await screen.findByRole('button', { name: /near you/i }));
     await screen.findByText('Nearby Bistro');
     fireEvent.click(screen.getByRole('radio', { name: 'Map' }));
     await screen.findByTestId('map-canvas');
@@ -205,8 +228,9 @@ describe('Explore map view (Phase 12)', () => {
 
   it('empty map results show an honest empty state', async () => {
     vi.mocked(api.listNearbyBusinesses).mockResolvedValue([]);
+    sharedLoc.coords = { lat: 31.5204, lng: 74.3587 };
+    sharedLoc.hasLocation = true;
     render(<ExploreScreen onOpenBusiness={() => {}} />);
-    fireEvent.click(await screen.findByRole('button', { name: /near you/i }));
     fireEvent.click(await screen.findByRole('radio', { name: 'Map' }));
     await screen.findByText(/no businesses with map locations in this area yet/i);
   });

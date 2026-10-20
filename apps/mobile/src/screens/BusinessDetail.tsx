@@ -27,7 +27,33 @@ export function heroFitForDimensions(naturalWidth: number, naturalHeight: number
   return naturalWidth / naturalHeight < 1.25 ? 'contain' : 'cover';
 }
 
-type DetailTab = 'overview' | 'services' | 'products' | 'reviews';
+// Module-level cache for featured placements: fetched once per session, not
+// on every BusinessDetail mount (was causing 429 rate-limit errors).
+let featuredCache: FeaturedPlacement[] | null = null;
+let featuredFetch: Promise<FeaturedPlacement[]> | null = null;
+function getCachedFeatured(): Promise<FeaturedPlacement[]> {
+  if (featuredCache) return Promise.resolve(featuredCache);
+  if (!featuredFetch) {
+    featuredFetch = listFeaturedBusinesses()
+      .then((list) => {
+        featuredCache = list;
+        return list;
+      })
+      .catch((): FeaturedPlacement[] => {
+        featuredFetch = null; // Allow retry on next mount
+        return [];
+      });
+  }
+  return featuredFetch;
+}
+
+/** Reset the module-level featured cache (tests only). */
+export function __resetFeaturedCacheForTests() {
+  featuredCache = null;
+  featuredFetch = null;
+}
+
+type DetailTab = 'overview' | 'reviews';
 
 /** The contextual primary CTA pinned above the bottom nav. */
 type DetailCta =
@@ -43,17 +69,13 @@ export function BusinessDetailScreen(props: {
   onOpenCart?: () => void;
 }) {
   const business = useAsyncData<Business>(() => getBusiness(props.idOrSlug), [props.idOrSlug]);
-  // Featured placement check: fully server-driven — the endpoint only returns
-  // currently-active placements, so list membership means this business is
-  // featured right now. A failed fetch quietly hides the badge; it never
-  // errors the whole screen.
-  const featured = useAsyncData<FeaturedPlacement[]>(() => listFeaturedBusinesses().catch((): FeaturedPlacement[] => []), [props.idOrSlug]);
+  // Featured placement check: cached at module level so opening 3-4 businesses
+  // in a row does not hammer the API (was causing 429s). The endpoint only
+  // returns currently-active placements; a failed fetch quietly hides the badge.
+  const featured = useAsyncData<FeaturedPlacement[]>(() => getCachedFeatured(), [props.idOrSlug]);
   const cartCount = useCartCount();
   const [tab, setTab] = useState<DetailTab>('overview');
   const [cartNotice, setCartNotice] = useState<string | null>(null);
-  // Hero image treatment: landscape photos get cover; near-square/portrait
-  // sources (usually logos) get contain so they are never awkwardly cropped.
-  const [heroFit, setHeroFit] = useState<'cover' | 'contain'>('cover');
   const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
 
   /** Adds to cart; a foreign-business cart asks the user before replacing. */
@@ -114,7 +136,7 @@ export function BusinessDetailScreen(props: {
   if (props.onBook && bookable) {
     cta = { state: 'action', label: 'Book a service', onClick: () => props.onBook?.() };
   } else if (props.canOrder && orderable) {
-    cta = { state: 'action', label: 'Order products', onClick: () => setTab('products') };
+    cta = { state: 'action', label: 'Order products', onClick: () => document.getElementById('biz-products')?.scrollIntoView?.({ behavior: 'smooth' }) };
   } else if (b.isOpenNow === false) {
     cta = { state: 'disabled', label: 'Closed', hint: 'This business is currently closed.' };
   } else {
@@ -130,8 +152,6 @@ export function BusinessDetailScreen(props: {
 
   const tabs: { key: DetailTab; label: string; show: boolean }[] = [
     { key: 'overview', label: 'Overview', show: true },
-    { key: 'services', label: 'Services', show: Boolean(b.services?.length) },
-    { key: 'products', label: 'Products', show: Boolean(b.products?.length) },
     { key: 'reviews', label: 'Reviews', show: true },
   ];
   const visibleTabs = tabs.filter((t) => t.show);
@@ -150,14 +170,10 @@ export function BusinessDetailScreen(props: {
 
       <header className="biz-identity-row">
         <div className="biz-logo-circle" aria-hidden>
-          {b.imageUrl && heroFit === 'contain' ? (
+          {b.imageUrl ? (
             <RemoteImage
               src={resolveImageUrl(b.imageUrl) ?? undefined}
               alt=""
-              onLoad={(e) => {
-                const img = e.currentTarget;
-                setHeroFit(heroFitForDimensions(img.naturalWidth, img.naturalHeight));
-              }}
             />
           ) : (
             <span className="biz-logo-initial">{b.name[0]?.toUpperCase() ?? '?'}</span>
@@ -209,14 +225,15 @@ export function BusinessDetailScreen(props: {
         <ShareButton name={b.name} />
       </div>
 
-      {/* Primary content navigation: Reviews is a first-class tab. */}
-      <div className="tab-strip" role="tablist" aria-label="Business sections">
+      {/* Upper navigation: Overview and Reviews live alongside the actions,
+          not as a separate disconnected tab bar. */}
+      <div className="biz-upper-nav" role="tablist" aria-label="Business information">
         {visibleTabs.map((t) => (
           <button
             key={t.key}
             role="tab"
             aria-selected={activeTab === t.key}
-            className={activeTab === t.key ? 'tab-active' : undefined}
+            className={activeTab === t.key ? 'biz-upper-nav-active' : 'biz-upper-nav-btn'}
             onClick={() => setTab(t.key)}
           >
             {t.label}
@@ -258,7 +275,7 @@ export function BusinessDetailScreen(props: {
                 onBook={props.onBook}
               />
               {b.services.length > 3 && props.onBook ? (
-                <Button full variant="ghost" sm onClick={() => setTab('services')}>
+                <Button full variant="ghost" sm onClick={() => document.getElementById('biz-services')?.scrollIntoView?.({ behavior: 'smooth' })}>
                   See all services
                 </Button>
               ) : null}
@@ -268,8 +285,9 @@ export function BusinessDetailScreen(props: {
         </>
       ) : null}
 
-      {activeTab === 'services' && b.services?.length ? (
-        <section className="detail-section detail-section-tab" aria-label="Services">
+      {b.services?.length ? (
+        <section id="biz-services" className="detail-section" aria-label="Services">
+          <h2 className="detail-section-title">Services</h2>
           <div className="svc-rows">
             {b.services.map((s) => (
               <div key={s.id} className="svc-row">
@@ -303,78 +321,87 @@ export function BusinessDetailScreen(props: {
         </section>
       ) : null}
 
-      {activeTab === 'products' && b.products?.length ? (
-        <section className="detail-section detail-section-tab" aria-label="Products">
-          {cartNotice ? (
-            <div className="cart-notice" role="status">
-              <span>{cartNotice}</span>
-              {props.onOpenCart && cartCount > 0 ? (
-                <button type="button" className="pill pill-action" onClick={props.onOpenCart}>
-                  View cart ({cartCount})
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-          {/* Cross-business guard: never silently replace another shop's items. */}
-          {pendingProduct ? (
-            <div className="cart-conflict" role="alertdialog" aria-label="Cart contains items from another business">
-              <p>
-                Your cart contains items from <strong>another business</strong>. Clear it and add{' '}
-                <strong>{pendingProduct.name}</strong>?
-              </p>
-              <div className="btn-row">
-                <Button sm onClick={confirmReplace}>
-                  Clear cart and add
-                </Button>
-                <Button sm variant="ghost" onClick={() => setPendingProduct(null)}>
-                  Cancel
-                </Button>
+      <section id="biz-products" className="detail-section" aria-label="Products">
+        <div className="detail-section-header">
+          <h2 className="detail-section-title">Products</h2>
+          <button type="button" className="btn-add-product" onClick={() => {/* TODO: open product editor */}}>
+            + Add Product
+          </button>
+        </div>
+        {b.products?.length ? (
+          <>
+            {cartNotice ? (
+              <div className="cart-notice" role="status">
+                <span>{cartNotice}</span>
+                {props.onOpenCart && cartCount > 0 ? (
+                  <button type="button" className="pill pill-action" onClick={props.onOpenCart}>
+                    View cart ({cartCount})
+                  </button>
+                ) : null}
               </div>
-            </div>
-          ) : null}
-          <div className="svc-rows">
-            {b.products.map((p) => (
-              <div key={p.id} className="svc-row">
-                {p.imageUrl ? (
-                  <RemoteImage className="svc-thumb" src={resolveImageUrl(p.imageUrl) ?? undefined} alt="" loading="lazy" />
-                ) : (
-                  <span className="svc-thumb pop-card-initial" aria-hidden>
-                    {p.name[0]?.toUpperCase() ?? '?'}
-                  </span>
-                )}
-                <div className="svc-main">
-                  <div className="item-row">
-                    <span className="item-name">{p.name}</span>
-                    <Money minor={p.priceMinor} currency={p.currency} />
-                  </div>
-                  {p.description ? <p className="item-desc">{p.description}</p> : null}
-                  {props.canOrder ? (
-                    <div className="svc-tags">
-                      <button
-                        type="button"
-                        className="pill pill-action"
-                        onClick={() => handleAdd(p)}
-                        aria-label={`Add ${p.name} to cart`}
-                      >
-                        + Add
-                      </button>
-                    </div>
-                  ) : null}
+            ) : null}
+            {pendingProduct ? (
+              <div className="cart-conflict" role="alertdialog" aria-label="Cart contains items from another business">
+                <p>
+                  Your cart contains items from <strong>another business</strong>. Clear it and add{' '}
+                  <strong>{pendingProduct.name}</strong>?
+                </p>
+                <div className="btn-row">
+                  <Button sm onClick={confirmReplace}>
+                    Clear cart and add
+                  </Button>
+                  <Button sm variant="ghost" onClick={() => setPendingProduct(null)}>
+                    Cancel
+                  </Button>
                 </div>
               </div>
-            ))}
-          </div>
-          {props.canOrder && props.onOpenCart ? (
-            <Button full variant="secondary" onClick={props.onOpenCart}>
-              {cartCount > 0 ? `Go to cart (${cartCount})` : 'Go to cart'}
-            </Button>
-          ) : (
-            <Button full disabled>
-              Sign in as a customer to order
-            </Button>
-          )}
-        </section>
-      ) : null}
+            ) : null}
+            <div className="svc-rows">
+              {b.products.map((p) => (
+                <div key={p.id} className="svc-row">
+                  {p.imageUrl ? (
+                    <RemoteImage className="svc-thumb" src={resolveImageUrl(p.imageUrl) ?? undefined} alt="" loading="lazy" />
+                  ) : (
+                    <span className="svc-thumb pop-card-initial" aria-hidden>
+                      {p.name[0]?.toUpperCase() ?? '?'}
+                    </span>
+                  )}
+                  <div className="svc-main">
+                    <div className="item-row">
+                      <span className="item-name">{p.name}</span>
+                      <Money minor={p.priceMinor} currency={p.currency} />
+                    </div>
+                    {p.description ? <p className="item-desc">{p.description}</p> : null}
+                    {props.canOrder ? (
+                      <div className="svc-tags">
+                        <button
+                          type="button"
+                          className="pill pill-action"
+                          onClick={() => handleAdd(p)}
+                          aria-label={`Add ${p.name} to cart`}
+                        >
+                          + Add
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {props.canOrder && props.onOpenCart ? (
+              <Button full variant="secondary" onClick={props.onOpenCart}>
+                {cartCount > 0 ? `Go to cart (${cartCount})` : 'Go to cart'}
+              </Button>
+            ) : (
+              <Button full disabled>
+                Sign in as a customer to order
+              </Button>
+            )}
+          </>
+        ) : (
+          <p className="detail-section-text">No products yet.</p>
+        )}
+      </section>
 
       {activeTab === 'reviews' ? <ReviewsTab businessId={b.id} /> : null}
 

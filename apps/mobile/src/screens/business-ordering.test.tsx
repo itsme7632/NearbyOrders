@@ -49,8 +49,8 @@ const renderDetail = async (props: Partial<Parameters<typeof BusinessDetailScree
       {...props}
     />,
   </ToastProvider>);
-  // The tabbed Business Profile keeps catalog data behind its Products tab.
-  fireEvent.click(await screen.findByRole('tab', { name: 'Products' }));
+  // Products now render as a scrollable section on the page (no tab bar);
+  // the catalog is visible as soon as the detail loads.
 };
 
 describe('add to cart from business detail', () => {
@@ -70,7 +70,9 @@ describe('add to cart from business detail', () => {
 
     await screen.findByText('Chicken Biryani');
     expect(screen.queryByRole('button', { name: /Add .* to cart/ })).toBeNull();
-    expect(screen.getByText('Sign in as a customer to order')).toBeTruthy();
+    // The sign-in hint renders both under the sticky CTA and on the disabled
+    // cart button in the products section.
+    expect(screen.getAllByText('Sign in as a customer to order').length).toBeGreaterThan(0);
   });
 
   it('asks before replacing a cart from another business and never swaps silently', async () => {

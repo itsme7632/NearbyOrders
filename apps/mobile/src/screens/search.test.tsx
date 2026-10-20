@@ -14,6 +14,20 @@ vi.mock('../api.js', async (importOriginal) => ({
   listCategories: vi.fn(),
 }));
 
+// Stateful shared-location mock: tests mutate `sharedLoc` to simulate grants.
+export const sharedLoc = {
+  coords: null as { lat: number; lng: number } | null,
+  locating: false,
+  locNotice: null as string | null,
+  hasLocation: false,
+  requestLocation: vi.fn(),
+  clearLocation: vi.fn(),
+};
+vi.mock('../useSharedLocation.js', () => ({
+  useSharedLocation: vi.fn(() => sharedLoc),
+  __resetSharedLocationForTests: vi.fn(),
+}));
+
 vi.mock('../location.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../location.js')>()),
   requestCustomerLocation: vi.fn(),
@@ -87,6 +101,11 @@ const page = (results: SearchResult[], extra: Partial<SearchPage> = {}): SearchP
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Reset shared location state (individual tests opt into granted/denied states).
+  sharedLoc.coords = null;
+  sharedLoc.locating = false;
+  sharedLoc.locNotice = null;
+  sharedLoc.hasLocation = false;
   vi.mocked(api.listCategories).mockResolvedValue([
     { id: 'cat-1', name: 'Food & Dining', slug: 'food-dining', isActive: true },
   ]);
@@ -112,21 +131,30 @@ describe('SearchScreen (Phase 14 unified search)', () => {
   });
 
   it('sends server-authoritative parameters (type filter, coordinates) to the API', async () => {
+    // Shared coords ride along on every search once granted.
+    sharedLoc.coords = { lat: 31.5, lng: 74.3 };
+    sharedLoc.hasLocation = true;
     render(<SearchScreen initialQuery="pizza" onBack={() => {}} onOpenBusiness={() => {}} />);
 
     // Wait for the debounced initial search.
     await screen.findByText('Gulberg Grill');
-    expect(api.searchMarketplace).toHaveBeenCalledWith(expect.objectContaining({ q: 'pizza' }));
+    expect(api.searchMarketplace).toHaveBeenCalledWith(
+      expect.objectContaining({ q: 'pizza', lat: 31.5, lng: 74.3 }),
+    );
 
     fireEvent.click(screen.getByRole('radio', { name: 'Services' }));
     await waitFor(() =>
       expect(api.searchMarketplace).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'pizza', type: 'service' })),
     );
+  });
 
+  it('the location toggle delegates to the shared hook', async () => {
+    render(<SearchScreen initialQuery="pizza" onBack={() => {}} onOpenBusiness={() => {}} />);
+    await screen.findByText('Gulberg Grill');
     fireEvent.click(screen.getByRole('button', { name: /use my location/i }));
-    await waitFor(() =>
-      expect(api.searchMarketplace).toHaveBeenLastCalledWith(expect.objectContaining({ lat: 31.5, lng: 74.3 })),
-    );
+    // The explainer gate is async; the shared hook is the single path to GPS.
+    await waitFor(() => expect(sharedLoc.requestLocation).toHaveBeenCalled());
+    expect(api.searchMarketplace).not.toHaveBeenCalledWith(expect.objectContaining({ lat: 31.5 }));
   });
 
   it('shows the honest result count and the effective sort from the server', async () => {
@@ -142,13 +170,14 @@ describe('SearchScreen (Phase 14 unified search)', () => {
   });
 
   it('denied location keeps search usable and never sends coordinates', async () => {
-    vi.mocked(requestCustomerLocation).mockResolvedValue({ status: 'denied' });
+    // The shared hook surfaces the denial as a notice; search keeps working.
+    sharedLoc.locNotice = 'Location permission was denied.';
     render(<SearchScreen initialQuery="pizza" onBack={() => {}} onOpenBusiness={() => {}} />);
     await screen.findByText('Gulberg Grill');
 
-    fireEvent.click(screen.getByRole('button', { name: /use my location/i }));
     await screen.findByText(/location permission was denied/i);
     const calls = vi.mocked(api.searchMarketplace).mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
     expect(calls.every((c) => c[0].lat === undefined && c[0].lng === undefined)).toBe(true);
   });
 
