@@ -358,6 +358,7 @@ export function App() {
         onBook={(serviceId) => push(`/book/${route.idOrSlug}${serviceId ? `/${serviceId}` : ''}`)}
         canOrder={Boolean(session)}
         onOpenCart={session ? openCart : undefined}
+        onManageProducts={(businessId) => push(`/owner/${businessId}/products`)}
       />
     );
   } else if (route.name === 'cart') {

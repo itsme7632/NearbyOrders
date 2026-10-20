@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { formatMoney } from '@nearbyorders/shared';
-import { formatDistanceKm, hasCoordinates } from '../location.js';
+import { displayDistanceKm, formatDistanceKm, hasCoordinates } from '../location.js';
 import type { Business } from '../api.js';
 import { resolveImageUrl } from '../api.js';
 import { StoreIcon } from './icons.js';
@@ -179,8 +179,9 @@ export function ListSkeleton({ count = 4 }: { count?: number }) {
  * category, distance and honest open/closed state in a compact meta line;
  * optional one-line description. Purely presentational — all data is real.
  */
-export function BusinessRow(props: { business: Business; onOpen: () => void; selected?: boolean; showDescription?: boolean }) {
+export function BusinessRow(props: { business: Business; onOpen: () => void; selected?: boolean; showDescription?: boolean; userCoords?: { lat: number; lng: number } | null }) {
   const b = props.business;
+  const rowDistance = displayDistanceKm(b, props.userCoords ?? null);
   return (
     <button
       type="button"
@@ -201,8 +202,8 @@ export function BusinessRow(props: { business: Business; onOpen: () => void; sel
         <span className="biz-row-meta">
           <RatingChip average={b.averageRating} count={b.reviewCount ?? undefined} />
           {b.categories[0] ? <span className="biz-row-cat">{b.categories[0].name}</span> : null}
-          {b.distanceKm !== undefined && b.distanceKm !== null ? (
-            <span className="biz-distance">{formatDistanceKm(b.distanceKm)}</span>
+          {rowDistance !== null ? (
+            <span className="biz-distance">{formatDistanceKm(rowDistance)}</span>
           ) : null}
           {b.isOpenNow !== undefined ? (
             <span className={`biz-open${b.isOpenNow ? '' : ' biz-open-closed'}`}>{b.isOpenNow ? 'Open' : 'Closed'}</span>
@@ -222,14 +223,15 @@ export function BusinessRow(props: { business: Business; onOpen: () => void; sel
  * fallback), category tag, name, rating when available, locality/distance
  * and open/closed status. Purely presentational: all data comes from the API.
  */
-export function BusinessCard(props: { business: Business; onOpen: () => void }) {
+export function BusinessCard(props: { business: Business; onOpen: () => void; userCoords?: { lat: number; lng: number } | null }) {
   const b = props.business;
   const category = b.categories[0]?.name;
   const place = [b.locality, b.city].filter(Boolean).join(', ');
-  // Only server-computed distances for businesses with real coordinates are
-  // shown — never a client-invented estimate (Phase 11).
-  const distance =
-    b.distanceKm !== undefined && b.distanceKm !== null && hasCoordinates(b) ? formatDistanceKm(b.distanceKm) : null;
+  // Only real distances are shown: the server's nearby value, guarded by the
+  // local haversine check when both coordinate pairs are known — never a
+  // client-invented estimate and never a false "0 m" (Phase 11 + 2026-10-20).
+  const cardKm = displayDistanceKm(b, props.userCoords ?? null);
+  const distance = cardKm !== null && hasCoordinates(b) ? formatDistanceKm(cardKm) : null;
   return (
     <button className="biz-card" onClick={props.onOpen}>
       <span className="biz-card-imgwrap">

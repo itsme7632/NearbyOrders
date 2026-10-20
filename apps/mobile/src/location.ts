@@ -288,6 +288,55 @@ export const formatDistanceKm = (distanceKm: number): string | null =>
       : `${Math.round(distanceKm * 1000)} m`
     : null;
 
+/** Great-circle distance between two coordinate pairs, in kilometres. */
+export const distanceKmBetween = (
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number => {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+};
+
+/**
+ * The distance to display for a business card/detail, with an integrity
+ * guard (root-cause fix, 2026-10-20: "0 m" shown for a business 1.77 km
+ * away). Distances normally come from the server's nearby query. But when
+ * the client KNOWS both coordinate pairs (signed-in device fix + the
+ * business's configured coordinates) and the server value claims the user
+ * is effectively standing at the business (< 5 m) while the two pairs are
+ * really 50 m or more apart, the server value is impossible and the locally
+ * computed distance wins. Missing inputs never fabricate a distance: with
+ * no server value the result is null, and a 0 is only ever shown when the
+ * two known pairs genuinely coincide.
+ */
+export const displayDistanceKm = (
+  business: { distanceKm?: number | null; latitude?: unknown; longitude?: unknown },
+  userCoords: { lat: number; lng: number } | null,
+): number | null => {
+  const server = business.distanceKm;
+  if (
+    userCoords &&
+    typeof business.latitude === 'number' &&
+    typeof business.longitude === 'number' &&
+    Number.isFinite(business.latitude) &&
+    Number.isFinite(business.longitude)
+  ) {
+    const local = distanceKmBetween(userCoords, { lat: business.latitude, lng: business.longitude });
+    if (typeof server === 'number' && Number.isFinite(server)) {
+      // Impossible server value: claims ~0 while the pairs are far apart.
+      if (server < 0.005 && local >= 0.05) return local;
+      return server;
+    }
+    return local;
+  }
+  return typeof server === 'number' && Number.isFinite(server) ? server : null;
+};
+
 /** True when the business has real configured coordinates (never invented). */
 export const hasCoordinates = (b: { latitude?: unknown; longitude?: unknown }): boolean =>
   b.latitude !== null &&

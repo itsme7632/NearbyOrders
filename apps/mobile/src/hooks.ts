@@ -2,11 +2,50 @@ import { useCallback, useEffect, useState } from 'react';
 import { parseHash, type Route } from './navigation.js';
 import { ApiError } from './api.js';
 
+const LAST_ROUTE_KEY = 'no_last_route';
+
+/**
+ * Routes worth restoring after a WebView recreation: in-progress flows the
+ * user reached by tapping a business. Root-cause fix (2026-10-20): actions
+ * on Business Detail that leave the app (Call dialer, Directions maps,
+ * system Share sheet) can get the Android activity/WebView destroyed while
+ * backgrounded; on return Capacitor reloads the start URL with an empty
+ * hash and the user landed on Home despite never navigating away. The tab
+ * root and auth/owner flows are deliberately NOT restored.
+ */
+export function restorableRoute(hash: string): string | null {
+  const route = parseHash(hash);
+  return route.name === 'business' || route.name === 'book' ? hash : null;
+}
+
 /** Hash router with push/replace/back support. */
 export function useRoute(): [Route, (to: string) => void, () => void] {
-  const [route, setRoute] = useState<Route>(() => parseHash(window.location.hash));
+  const [route, setRoute] = useState<Route>(() => {
+    const current = window.location.hash;
+    if (parseHash(current).name === 'tabs') {
+      try {
+        const saved = window.sessionStorage.getItem(LAST_ROUTE_KEY);
+        if (saved && restorableRoute(saved)) {
+          window.history.replaceState(null, '', saved);
+          return parseHash(saved);
+        }
+      } catch {
+        /* storage unavailable: fall through to the parsed root */
+      }
+    }
+    return parseHash(current);
+  });
   useEffect(() => {
-    const onHashChange = () => setRoute(parseHash(window.location.hash));
+    const onHashChange = () => {
+      const hash = window.location.hash;
+      try {
+        if (restorableRoute(hash)) window.sessionStorage.setItem(LAST_ROUTE_KEY, hash);
+        else window.sessionStorage.removeItem(LAST_ROUTE_KEY);
+      } catch {
+        /* storage unavailable: routing still works, restore just won't */
+      }
+      setRoute(parseHash(hash));
+    };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);

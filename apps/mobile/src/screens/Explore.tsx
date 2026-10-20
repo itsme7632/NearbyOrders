@@ -305,7 +305,7 @@ export function ExploreScreen(props: {
               />
               <div className="sheet-rows">
                 {results.map((b) => (
-                  <BusinessRow key={b.id} business={b} selected={selectedMarker === b.id} onOpen={() => props.onOpenBusiness(b.id)} />
+                  <BusinessRow key={b.id} business={b} selected={selectedMarker === b.id} onOpen={() => props.onOpenBusiness(b.id)} userCoords={coords} />
                 ))}
               </div>
             </>
@@ -368,7 +368,7 @@ export function ExploreScreen(props: {
           ) : (
             <div className="biz-rows">
               {results.map((b) => (
-                <BusinessRow key={b.id} business={b} onOpen={() => props.onOpenBusiness(b.id)} showDescription />
+                <BusinessRow key={b.id} business={b} onOpen={() => props.onOpenBusiness(b.id)} showDescription userCoords={coords} />
               ))}
             </div>
           )}

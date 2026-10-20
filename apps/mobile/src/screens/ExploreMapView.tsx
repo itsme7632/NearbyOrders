@@ -3,7 +3,7 @@ import type { Business } from '../api.js';
 import { MapCanvas } from '../maps/MapCanvas.js';
 import { useMapProvider, type MapHandle } from '../maps/useMapProvider.js';
 import type { LatLng } from '../maps/provider.js';
-import { hasCoordinates, formatDistanceKm } from '../location.js';
+import { displayDistanceKm, hasCoordinates, formatDistanceKm } from '../location.js';
 import { RatingChip } from '../components/ui.js';
 import { ExploreIcon } from '../components/icons.js';
 import { useOverlayBackHandler } from '../androidBack.js';
@@ -98,6 +98,7 @@ export function ExploreMapView(props: {
       {selected ? (
         <BusinessMapPreview
           business={selected}
+          userCoords={props.searchCenter}
           onClose={() => props.onSelect(null)}
           onOpen={() => props.onOpenBusiness(selected.id)}
         />
@@ -124,9 +125,10 @@ export function ExploreMapView(props: {
 }
 
 /** Compact bottom-sheet-style preview for a selected marker. */
-function BusinessMapPreview(props: { business: Business; onClose: () => void; onOpen: () => void }) {
+function BusinessMapPreview(props: { business: Business; onClose: () => void; onOpen: () => void; userCoords?: LatLng | null }) {
   const b = props.business;
-  const distance = b.distanceKm !== undefined && b.distanceKm !== null ? formatDistanceKm(b.distanceKm) : null;
+  const km = displayDistanceKm(b, props.userCoords ?? null);
+  const distance = km !== null ? formatDistanceKm(km) : null;
   return (
     <div
       className="map-preview-card"

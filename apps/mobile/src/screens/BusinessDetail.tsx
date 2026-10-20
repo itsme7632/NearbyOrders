@@ -1,6 +1,6 @@
 import { RemoteImage } from '../components/RemoteImage.js';
 import { useEffect, useState } from 'react';
-import { getBusiness, listBusinessReviews, listFeaturedBusinesses, getSession, resolveImageUrl, type Business, type FeaturedPlacement, type Product, type PublicReview, type ReviewPage } from '../api.js';
+import { getBusiness, getMyBusinesses, listBusinessReviews, listFeaturedBusinesses, getSession, resolveImageUrl, type Business, type FeaturedPlacement, type Product, type PublicReview, type ReviewPage } from '../api.js';
 import { useAsyncData } from '../hooks.js';
 import { Button, EmptyState, ErrorState, ListSkeleton, Loading, Money, OpenBadge, VerifiedBadge } from '../components/ui.js';
 import { useToast } from '../components/primitives.js';
@@ -9,7 +9,8 @@ import { dayOfWeek, formatSlotTime, todayPkt } from '../time.js';
 import { addToCart, replaceWith } from '../cart.js';
 import { useCartCount } from '../useCartCount.js';
 import { Stars } from '../components/ReviewForm.js';
-import { directionsUrl, formatDistanceKm, hasCoordinates } from '../location.js';
+import { directionsUrl, displayDistanceKm, formatDistanceKm, hasCoordinates } from '../location.js';
+import { useSharedLocation } from '../useSharedLocation.js';
 import { useSavedBusiness } from './customer-experience.js';
 import { HeartIcon } from '../components/icons.js';
 import { BusinessMapContext } from './BusinessMapContext.js';
@@ -67,8 +68,11 @@ export function BusinessDetailScreen(props: {
   /** Signed-in customers can order; owners/others only browse. */
   canOrder?: boolean;
   onOpenCart?: () => void;
+  /** Owner-only: open this business's product manager. */
+  onManageProducts?: (businessId: string) => void;
 }) {
   const business = useAsyncData<Business>(() => getBusiness(props.idOrSlug), [props.idOrSlug]);
+  const { coords: userCoords } = useSharedLocation();
   // Featured placement check: cached at module level so opening 3-4 businesses
   // in a row does not hammer the API (was causing 429s). The endpoint only
   // returns currently-active placements; a failed fetch quietly hides the badge.
@@ -113,10 +117,11 @@ export function BusinessDetailScreen(props: {
   const bookableServices = (b.services ?? []).filter((s) => s.isActive && s.durationMinutes);
   const bookable = bookableServices.length > 0;
   const orderable = (b.products?.length ?? 0) > 0;
-  // Phase 11: distance comes only from the server when the customer searched
-  // nearby; coordinates exist only when the owner configured a real location.
-  const distanceLabel =
-    b.distanceKm !== undefined && b.distanceKm !== null && hasCoordinates(b) ? formatDistanceKm(b.distanceKm) : null;
+  // Distance: the server value when present, integrity-guarded against the
+  // shared device fix (never a false "0 m"); coordinates exist only when the
+  // owner configured a real location.
+  const detailKm = displayDistanceKm(b, userCoords);
+  const distanceLabel = detailKm !== null && hasCoordinates(b) ? formatDistanceKm(detailKm) : null;
   const directions = directionsUrl(b);
   // The street address surfaces as text only when the map context card (which
   // already prints it) is absent — the address never appears twice on screen.
@@ -309,24 +314,17 @@ export function BusinessDetailScreen(props: {
               </div>
             ))}
           </div>
-          {props.onBook && bookable ? (
-            <Button full onClick={() => props.onBook?.()}>
-              Book this service
-            </Button>
-          ) : (
-            <Button full disabled>
-              Booking unavailable
-            </Button>
-          )}
+          {/* Booking happens per service (the Book pills above) or via the
+              single sticky primary CTA. There is deliberately NO second
+              full-width "Book a service" button here: it duplicated the
+              sticky bar on screen (reported 2026-10-20). */}
         </section>
       ) : null}
 
       <section id="biz-products" className="detail-section" aria-label="Products">
         <div className="detail-section-header">
           <h2 className="detail-section-title">Products</h2>
-          <button type="button" className="btn-add-product" onClick={() => {/* TODO: open product editor */}}>
-            + Add Product
-          </button>
+          <AddProductButton businessId={b.id} onManageProducts={props.onManageProducts} />
         </div>
         {b.products?.length ? (
           <>
@@ -559,6 +557,37 @@ function RatingFact(props: { businessId: string; fallbackAverage?: number | null
         </span>
       </dd>
     </div>
+  );
+}
+
+/**
+ * "+ Add Product" is product-management UI: for the business's owner it opens
+ * the owner product manager; for anyone else it explains itself instead of
+ * being a dead button (it was previously a TODO no-op).
+ */
+function AddProductButton(props: { businessId: string; onManageProducts?: (businessId: string) => void }) {
+  const toast = useToast();
+  const [checking, setChecking] = useState(false);
+  const handleClick = () => {
+    const session = getSession();
+    if (!session) {
+      toast.notify('info', 'Sign in as the business owner to add products.');
+      return;
+    }
+    if (!props.onManageProducts || checking) return;
+    setChecking(true);
+    getMyBusinesses()
+      .then((mine) => {
+        if (mine.some((m) => m.id === props.businessId)) props.onManageProducts?.(props.businessId);
+        else toast.notify('info', 'Only the business owner can add products.');
+      })
+      .catch(() => toast.notify('error', 'Could not verify business ownership. Please try again.'))
+      .finally(() => setChecking(false));
+  };
+  return (
+    <button type="button" className="btn-add-product" onClick={handleClick} disabled={checking}>
+      + Add Product
+    </button>
   );
 }
 

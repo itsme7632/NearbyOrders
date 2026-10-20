@@ -353,7 +353,7 @@ export function HomeScreen(props: {
             {showOpenNow && spotlightRest.length ? (
               <div className="biz-rows home-feed-rows">
                 {spotlightRest.slice(0, 3).map((b) => (
-                  <BusinessRow key={b.id} business={b} onOpen={() => props.onOpenBusiness(b.id)} />
+                  <BusinessRow key={b.id} business={b} onOpen={() => props.onOpenBusiness(b.id)} userCoords={coords} />
                 ))}
               </div>
             ) : null}
@@ -371,7 +371,7 @@ export function HomeScreen(props: {
               />
               <div className="biz-rows home-feed-rows">
                 {feed.slice(0, 10).map((b) => (
-                  <BusinessRow key={b.id} business={b} onOpen={() => props.onOpenBusiness(b.id)} showDescription />
+                  <BusinessRow key={b.id} business={b} onOpen={() => props.onOpenBusiness(b.id)} showDescription userCoords={coords} />
                 ))}
               </div>
             </section>

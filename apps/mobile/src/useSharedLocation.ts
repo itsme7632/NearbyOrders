@@ -1,24 +1,33 @@
 /**
- * Shared customer location state.
+ * Shared customer location state: ONE authoritative store for the whole app.
  *
- * Home, Explore, and Search previously each kept their own `coords` useState,
- * so one screen could show "Near you" while another showed "Set your location"
- * after the same grant. This hook provides a single source of truth:
+ * Why a module store + useSyncExternalStore (root-cause fix, 2026-10-20):
+ * the previous version of this hook kept React state per component and ran
+ * the async restore inside the FIRST mounted component's effect, guarded by
+ * that component's `mounted` ref. If that screen unmounted before the restore
+ * promise settled, the restored coordinates were silently dropped and no
+ * other screen ever retried, so the app flipped between "Set your location"
+ * and "Near you" depending on navigation timing. Screens also held divergent
+ * snapshots of the same logical state.
  *
- * - On mount, restores persisted coordinates (only if OS permission is still
- *   granted) and kicks off a background refresh for a fresh fix.
- * - All screens read the same coords/locating/notice state.
- * - Successful acquisitions persist; failures set a retry notice without
- *   silently clearing valid coords.
+ * Now the store lives outside React:
+ * - Every screen subscribes to the same snapshot.
+ * - Restore runs once, independent of any component's lifecycle; its result
+ *   always lands in the store.
+ * - Saved coordinates seed the store synchronously (first paint is correct).
+ * - The async permission verification only clears them when the OS reports
+ *   permission DENIED. An inconclusive check ('prompt', plugin error) keeps
+ *   them: an unverifiable check is not proof the grant was revoked.
+ * - A failed background refresh NEVER clears valid coordinates and never
+ *   raises a notice. Only a newer successful fix replaces them.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import {
   acquirePosition,
   checkLocationPermissionState,
   clearCustomerCoords,
   loadCustomerCoords,
   locationOutcomeHint,
-  restoreCustomerCoords,
   saveCustomerCoords,
 } from './location.js';
 
@@ -36,104 +45,120 @@ export type SharedLocation = {
   clearLocation: () => void;
 };
 
-// Module-level cache so the state survives screen remounts within a session.
-// The hook still uses React state for reactivity; this just seeds it.
-let cachedCoords: Coords | null | undefined;
-let restoreAttempted = false;
+type StoreState = {
+  coords: Coords | null;
+  locating: boolean;
+  locNotice: string | null;
+};
 
-export function useSharedLocation(): SharedLocation {
-  const [coords, setCoords] = useState<Coords | null>(() => {
-    if (cachedCoords !== undefined) return cachedCoords;
-    // First mount: try the synchronous localStorage read. The async
-    // permission check happens in the effect below.
-    const saved = loadCustomerCoords();
-    cachedCoords = saved;
-    return saved;
-  });
-  const [locating, setLocating] = useState(false);
-  const [locNotice, setLocNotice] = useState<string | null>(null);
-  const mounted = useRef(true);
+// ---------------------------------------------------------------------------
+// The store
+// ---------------------------------------------------------------------------
 
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
+let state: StoreState = {
+  coords: loadCustomerCoords(),
+  locating: false,
+  locNotice: null,
+};
+const listeners = new Set<() => void>();
+let restoreStarted = false;
 
-  // On first mount: verify the OS permission is still granted for the
-  // restored coords; if not, clear them. Then kick off a background refresh
-  // so a stale fix gets replaced by a fresh one without blocking the UI.
-  useEffect(() => {
-    if (restoreAttempted) return;
-    restoreAttempted = true;
-    (async () => {
-      const restored = await restoreCustomerCoords();
-      if (!mounted.current) return;
-      if (restored) {
-        cachedCoords = restored;
-        setCoords(restored);
-        setLocNotice(null);
-        // Background refresh: don't show "Locating…" for this, the restored
-        // coords are already usable.
-        const outcome = await acquirePosition(20000);
-        if (!mounted.current) return;
-        if (outcome.status === 'granted' && outcome.coords) {
-          cachedCoords = outcome.coords;
-          setCoords(outcome.coords);
-          saveCustomerCoords(outcome.coords);
-        }
-        // A failed background refresh never clears valid restored coords
-        // and never shows a notice — the user already has a working location.
-      } else {
-        // No valid restored coords (or permission revoked): clear everything
-        // so no screen shows a stale "Near you".
-        cachedCoords = null;
-        setCoords(null);
-      }
-    })();
-  }, []);
+function emit() {
+  for (const l of listeners) l();
+}
 
-  const requestLocation = useCallback(() => {
-    setLocating(true);
-    setLocNotice(null);
-    (async () => {
-      const outcome = await acquirePosition(20000);
-      if (!mounted.current) return;
-      setLocating(false);
-      if (outcome.status === 'granted' && outcome.coords) {
-        cachedCoords = outcome.coords;
-        setCoords(outcome.coords);
-        saveCustomerCoords(outcome.coords);
-        setLocNotice(null);
-      } else {
-        const hint = locationOutcomeHint(outcome);
-        if (hint) setLocNotice(hint);
-        // Do NOT clear existing coords on a failed refresh — a timeout is
-        // not proof the saved location is wrong.
-      }
-    })();
-  }, []);
+function setState(patch: Partial<StoreState>) {
+  state = { ...state, ...patch };
+  emit();
+}
 
-  const clearLocation = useCallback(() => {
-    cachedCoords = null;
-    setCoords(null);
-    setLocNotice(null);
-    clearCustomerCoords();
-  }, []);
-
-  return {
-    coords,
-    locating,
-    locNotice,
-    hasLocation: coords !== null,
-    requestLocation,
-    clearLocation,
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  ensureRestore();
+  return () => {
+    listeners.delete(listener);
   };
 }
 
-/** Reset module state (tests only). */
+function getSnapshot(): StoreState {
+  return state;
+}
+
+/**
+ * One-time startup sequence, decoupled from any component:
+ * 1. If saved coords exist, verify the OS permission is still granted; clear
+ *    ONLY on an explicit denial.
+ * 2. Kick off a background GPS refresh; success replaces the coords, failure
+ *    changes nothing (no clear, no notice).
+ */
+function ensureRestore() {
+  if (restoreStarted) return;
+  restoreStarted = true;
+  void (async () => {
+    if (state.coords) {
+      try {
+        const perm = await checkLocationPermissionState();
+        if (perm === 'denied') {
+          clearCustomerCoords();
+          setState({ coords: null });
+          return;
+        }
+      } catch {
+        // Inconclusive check: keep the saved coords.
+      }
+      // Only a device that has granted before (proven by the saved fix) gets
+      // a background refresh; a fresh install must never trigger a
+      // permission prompt without a user action.
+      const outcome = await acquirePosition(20000);
+      if (outcome.status === 'granted' && outcome.coords) {
+        saveCustomerCoords(outcome.coords);
+        setState({ coords: outcome.coords, locNotice: null });
+      }
+    }
+  })();
+}
+
+function requestLocation() {
+  setState({ locating: true, locNotice: null });
+  void (async () => {
+    const outcome = await acquirePosition(20000);
+    if (outcome.status === 'granted' && outcome.coords) {
+      saveCustomerCoords(outcome.coords);
+      setState({ coords: outcome.coords, locating: false, locNotice: null });
+    } else {
+      const hint = locationOutcomeHint(outcome);
+      // Do NOT clear existing coords on a failed refresh.
+      setState({ locating: false, locNotice: hint });
+    }
+  })();
+}
+
+function clearLocation() {
+  clearCustomerCoords();
+  setState({ coords: null, locNotice: null });
+}
+
+// ---------------------------------------------------------------------------
+// The hook
+// ---------------------------------------------------------------------------
+
+export function useSharedLocation(): SharedLocation {
+  const snap = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const request = useCallback(() => requestLocation(), []);
+  const clear = useCallback(() => clearLocation(), []);
+  return {
+    coords: snap.coords,
+    locating: snap.locating,
+    locNotice: snap.locNotice,
+    hasLocation: snap.coords !== null,
+    requestLocation: request,
+    clearLocation: clear,
+  };
+}
+
+/** Reset the store (tests only). */
 export function __resetSharedLocationForTests() {
-  cachedCoords = undefined;
-  restoreAttempted = false;
+  state = { coords: loadCustomerCoords(), locating: false, locNotice: null };
+  restoreStarted = false;
+  listeners.clear();
 }
